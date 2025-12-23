@@ -1,0 +1,309 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enum for user roles
+enum UserRole {
+  CUSTOMER
+  SALESMAN
+}
+
+// Enum for authentication provider
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+}
+
+// User model
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  password      String?      // Nullable for Google auth users
+  name          String?
+  phone         String?
+  avatar        String?
+  role          UserRole     @default(CUSTOMER)
+  authProvider  AuthProvider @default(EMAIL)
+  googleId      String?      @unique
+  isVerified    Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Relations
+  addresses     Address[]
+  orders        Order[]       @relation("CustomerOrders")
+  cart          CartItem[]
+  wishlist      WishlistItem[]
+  reviews       Review[]
+  
+  // Salesman specific relations
+  products      Product[]     @relation("SalesmanProducts")
+  salesOrders   Order[]       @relation("SalesmanOrders")
+  store         Store?
+
+  @@index([email])
+  @@index([role])
+}
+
+// Store model for salesmen
+model Store {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  logo        String?
+  banner      String?
+  address     String?
+  phone       String?
+  rating      Float     @default(0)
+  isVerified  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  ownerId     String    @unique
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  products    Product[]
+
+  @@index([ownerId])
+}
+
+// Product model
+model Product {
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  price           Float
+  discountPrice   Float?
+  sku             String?   @unique
+  stock           Int       @default(0)
+  images          String[]
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  categoryId      String
+  category        Category  @relation(fields: [categoryId], references: [id])
+  
+  salesmanId      String
+  salesman        User      @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
+  
+  storeId         String?
+  store           Store?    @relation(fields: [storeId], references: [id])
+
+  cartItems       CartItem[]
+  wishlistItems   WishlistItem[]
+  orderItems      OrderItem[]
+  reviews         Review[]
+
+  // Vehicle compatibility
+  compatibleVehicles VehicleCompatibility[]
+
+  @@index([categoryId])
+  @@index([salesmanId])
+  @@index([storeId])
+  @@index([name])
+}
+
+// Category model
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  icon        String?
+  image       String?
+  parentId    String?
+  parent      Category? @relation("CategoryChildren", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryChildren")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  products    Product[]
+
+  @@index([parentId])
+}
+
+// Vehicle compatibility for parts
+model VehicleCompatibility {
+  id          String   @id @default(cuid())
+  make        String   // e.g., Toyota, Honda
+  model       String   // e.g., Camry, Civic
+  yearStart   Int      // Starting year
+  yearEnd     Int?     // Ending year (null means current)
+  engine      String?  // Engine type if specific
+  
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([make, model])
+  @@index([productId])
+}
+
+// Address model
+model Address {
+  id          String    @id @default(cuid())
+  label       String?   // e.g., "Home", "Office"
+  street      String
+  city        String
+  state       String
+  postalCode  String
+  country     String    @default("Sri Lanka")
+  isDefault   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders      Order[]
+
+  @@index([userId])
+}
+
+// Cart item model
+model CartItem {
+  id          String   @id @default(cuid())
+  quantity    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+// Wishlist item model
+model WishlistItem {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+// Order status enum
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+// Payment status enum
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+// Order model
+model Order {
+  id              String        @id @default(cuid())
+  orderNumber     String        @unique @default(cuid())
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+  paymentMethod   String?
+  subtotal        Float
+  deliveryFee     Float         @default(0)
+  discount        Float         @default(0)
+  total           Float
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  customerId      String
+  customer        User          @relation("CustomerOrders", fields: [customerId], references: [id])
+  
+  salesmanId      String?
+  salesman        User?         @relation("SalesmanOrders", fields: [salesmanId], references: [id])
+  
+  addressId       String
+  address         Address       @relation(fields: [addressId], references: [id])
+  
+  items           OrderItem[]
+  tracking        OrderTracking[]
+
+  @@index([customerId])
+  @@index([salesmanId])
+  @@index([status])
+  @@index([orderNumber])
+}
+
+// Order item model
+model OrderItem {
+  id          String   @id @default(cuid())
+  quantity    Int
+  price       Float    // Price at time of order
+  total       Float
+  createdAt   DateTime @default(now())
+
+  // Relations
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+}
+
+// Order tracking model
+model OrderTracking {
+  id          String      @id @default(cuid())
+  status      OrderStatus
+  description String?
+  location    String?
+  createdAt   DateTime    @default(now())
+
+  // Relations
+  orderId     String
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+// Review model
+model Review {
+  id          String   @id @default(cuid())
+  rating      Int      // 1-5
+  title       String?
+  comment     String?
+  images      String[]
+  isVerified  Boolean  @default(false) // Verified purchase
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([productId])
+  @@index([rating])
+}

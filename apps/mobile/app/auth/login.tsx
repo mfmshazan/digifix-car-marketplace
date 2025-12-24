@@ -9,7 +9,6 @@ import {
   Platform,
   ScrollView,
   Alert,
-  Modal,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,9 +21,7 @@ export default function LoginScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showRoleModal, setShowRoleModal] = useState(false);
   const [selectedRole, setSelectedRole] = useState<UserRole>("CUSTOMER");
-  const [pendingAuthType, setPendingAuthType] = useState<"email" | "google" | null>(null);
 
   const handleEmailAuth = () => {
     if (!email || !password) {
@@ -38,9 +35,8 @@ export default function LoginScreen() {
     }
 
     if (isSignUp) {
-      // Show role selection modal for sign up
-      setPendingAuthType("email");
-      setShowRoleModal(true);
+      // Use the selected role directly for sign up
+      performEmailAuth(selectedRole);
     } else {
       // Direct sign in - role comes from backend
       performEmailAuth();
@@ -72,9 +68,8 @@ export default function LoginScreen() {
 
   const handleGoogleAuth = () => {
     if (isSignUp) {
-      // Show role selection modal for Google sign up
-      setPendingAuthType("google");
-      setShowRoleModal(true);
+      // Use the selected role directly for Google sign up
+      performGoogleAuth(selectedRole);
     } else {
       // For sign in, attempt Google auth - role comes from backend
       performGoogleAuth();
@@ -99,137 +94,6 @@ export default function LoginScreen() {
       Alert.alert("Error", "Google authentication failed. Please try again.");
     }
   };
-
-  const handleRoleSelect = (role: UserRole) => {
-    setSelectedRole(role);
-  };
-
-  const handleRoleConfirm = () => {
-    setShowRoleModal(false);
-    
-    if (pendingAuthType === "email") {
-      performEmailAuth(selectedRole);
-    } else if (pendingAuthType === "google") {
-      performGoogleAuth(selectedRole);
-    }
-    
-    setPendingAuthType(null);
-  };
-
-  const RoleSelectionModal = () => (
-    <Modal
-      visible={showRoleModal}
-      transparent
-      animationType="slide"
-      onRequestClose={() => setShowRoleModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Join as</Text>
-          <Text style={styles.modalSubtitle}>
-            How would you like to use DigiFix?
-          </Text>
-
-          {/* Customer Option */}
-          <TouchableOpacity
-            style={[
-              styles.roleOption,
-              selectedRole === "CUSTOMER" && styles.roleOptionSelected,
-            ]}
-            onPress={() => handleRoleSelect("CUSTOMER")}
-          >
-            <View style={styles.roleIconContainer}>
-              <Ionicons
-                name="cart"
-                size={32}
-                color={selectedRole === "CUSTOMER" ? "#FF6B35" : "#666"}
-              />
-            </View>
-            <View style={styles.roleInfo}>
-              <Text
-                style={[
-                  styles.roleTitle,
-                  selectedRole === "CUSTOMER" && styles.roleTitleSelected,
-                ]}
-              >
-                Customer
-              </Text>
-              <Text style={styles.roleDescription}>
-                Browse and buy car parts from trusted sellers
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.roleRadio,
-                selectedRole === "CUSTOMER" && styles.roleRadioSelected,
-              ]}
-            >
-              {selectedRole === "CUSTOMER" && (
-                <View style={styles.roleRadioInner} />
-              )}
-            </View>
-          </TouchableOpacity>
-
-          {/* Salesman Option */}
-          <TouchableOpacity
-            style={[
-              styles.roleOption,
-              selectedRole === "SALESMAN" && styles.roleOptionSelected,
-            ]}
-            onPress={() => handleRoleSelect("SALESMAN")}
-          >
-            <View style={styles.roleIconContainer}>
-              <Ionicons
-                name="storefront"
-                size={32}
-                color={selectedRole === "SALESMAN" ? "#FF6B35" : "#666"}
-              />
-            </View>
-            <View style={styles.roleInfo}>
-              <Text
-                style={[
-                  styles.roleTitle,
-                  selectedRole === "SALESMAN" && styles.roleTitleSelected,
-                ]}
-              >
-                Salesman
-              </Text>
-              <Text style={styles.roleDescription}>
-                Sell car parts and manage your store
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.roleRadio,
-                selectedRole === "SALESMAN" && styles.roleRadioSelected,
-              ]}
-            >
-              {selectedRole === "SALESMAN" && (
-                <View style={styles.roleRadioInner} />
-              )}
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.modalConfirmButton}
-            onPress={handleRoleConfirm}
-          >
-            <Text style={styles.modalConfirmButtonText}>Continue</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.modalCancelButton}
-            onPress={() => {
-              setShowRoleModal(false);
-              setPendingAuthType(null);
-            }}
-          >
-            <Text style={styles.modalCancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
 
   return (
     <KeyboardAvoidingView
@@ -327,6 +191,60 @@ export default function LoginScreen() {
             </View>
           )}
 
+          {/* Role Selection (Sign Up only) */}
+          {isSignUp && (
+            <View style={styles.roleSelectionContainer}>
+              <Text style={styles.roleSelectionLabel}>I want to join as:</Text>
+              <View style={styles.roleButtonsContainer}>
+                {/* Customer Option */}
+                <TouchableOpacity
+                  style={[
+                    styles.roleButton,
+                    selectedRole === "CUSTOMER" && styles.roleButtonSelected,
+                  ]}
+                  onPress={() => setSelectedRole("CUSTOMER")}
+                >
+                  <Ionicons
+                    name="cart"
+                    size={24}
+                    color={selectedRole === "CUSTOMER" ? "#FFFFFF" : "#FF6B35"}
+                  />
+                  <Text
+                    style={[
+                      styles.roleButtonText,
+                      selectedRole === "CUSTOMER" && styles.roleButtonTextSelected,
+                    ]}
+                  >
+                    Customer
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Salesman Option */}
+                <TouchableOpacity
+                  style={[
+                    styles.roleButton,
+                    selectedRole === "SALESMAN" && styles.roleButtonSelected,
+                  ]}
+                  onPress={() => setSelectedRole("SALESMAN")}
+                >
+                  <Ionicons
+                    name="storefront"
+                    size={24}
+                    color={selectedRole === "SALESMAN" ? "#FFFFFF" : "#FF6B35"}
+                  />
+                  <Text
+                    style={[
+                      styles.roleButtonText,
+                      selectedRole === "SALESMAN" && styles.roleButtonTextSelected,
+                    ]}
+                  >
+                    Salesman
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* Forgot Password (Sign In only) */}
           {!isSignUp && (
             <TouchableOpacity style={styles.forgotPassword}>
@@ -377,9 +295,6 @@ export default function LoginScreen() {
           </View>
         </View>
       </ScrollView>
-
-      {/* Role Selection Modal */}
-      <RoleSelectionModal />
     </KeyboardAvoidingView>
   );
 }
@@ -536,112 +451,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
+  // Role Selection Styles (inline on form)
+  roleSelectionContainer: {
+    marginBottom: 20,
   },
-  modalContent: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#1A1A2E",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  modalSubtitle: {
+  roleSelectionLabel: {
     fontSize: 14,
-    color: "#666",
-    textAlign: "center",
-    marginBottom: 24,
+    fontWeight: "600",
+    color: "#1A1A2E",
+    marginBottom: 12,
   },
-  roleOption: {
+  roleButtonsContainer: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  roleButton: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F8F9FA",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  roleOptionSelected: {
-    borderColor: "#FF6B35",
-    backgroundColor: "#FFF8F5",
-  },
-  roleIconContainer: {
-    width: 56,
-    height: 56,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
     justifyContent: "center",
-    alignItems: "center",
-    marginRight: 16,
+    backgroundColor: "#FFF8F5",
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 2,
+    borderColor: "#FF6B35",
+    gap: 8,
   },
-  roleInfo: {
-    flex: 1,
+  roleButtonSelected: {
+    backgroundColor: "#FF6B35",
   },
-  roleTitle: {
-    fontSize: 18,
+  roleButtonText: {
+    fontSize: 14,
     fontWeight: "600",
-    color: "#1A1A2E",
-    marginBottom: 4,
-  },
-  roleTitleSelected: {
     color: "#FF6B35",
   },
-  roleDescription: {
-    fontSize: 13,
-    color: "#666",
-  },
-  roleRadio: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#CCC",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  roleRadioSelected: {
-    borderColor: "#FF6B35",
-  },
-  roleRadioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#FF6B35",
-  },
-  modalConfirmButton: {
-    backgroundColor: "#FF6B35",
-    borderRadius: 12,
-    height: 52,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 12,
-  },
-  modalConfirmButtonText: {
+  roleButtonTextSelected: {
     color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  modalCancelButton: {
-    borderRadius: 12,
-    height: 44,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  modalCancelButtonText: {
-    color: "#666",
-    fontSize: 14,
-    fontWeight: "500",
   },
 });

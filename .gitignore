@@ -1,7 +1,11 @@
 # Dependencies
+**/node_modules/
 node_modules/
 .pnp
 .pnp.js
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
 # Testing
 coverage/
@@ -36,8 +40,16 @@ Thumbs.db
 *~
 
 # Expo
+**/.expo/
 .expo/
 .expo-shared/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
 
 # Prisma
 .prisma/

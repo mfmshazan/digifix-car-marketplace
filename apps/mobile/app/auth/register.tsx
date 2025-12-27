@@ -14,16 +14,29 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-export default function LoginScreen() {
+export default function RegisterScreen() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const handleLogin = async () => {
-    if (!email || !password) {
+  const handleRegister = async () => {
+    if (!name || !email || !password || !confirmPassword) {
       setError("Please fill in all fields");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters");
       return;
     }
 
@@ -31,26 +44,25 @@ export default function LoginScreen() {
     setError("");
 
     try {
-      // TODO: Implement actual login logic with your backend
-      // const response = await authService.login(email, password);
+      // TODO: Implement actual registration logic with your backend
+      // const response = await authService.register(name, email, password);
       
       // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // TODO: Store auth token and user data
-      // After successful login, redirect based on user role
-      // For now, redirect to customer view
-      router.replace("/(customer)");
+      // After successful registration, redirect to login or home
+      router.replace("/auth/login");
     } catch {
-      setError("Invalid email or password");
+      setError("Registration failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    // TODO: Implement Google Sign-In
-    console.log("Google Sign-In pressed");
+  const handleGoogleSignUp = async () => {
+    // TODO: Implement Google Sign-Up
+    console.log("Google Sign-Up pressed");
   };
 
   return (
@@ -74,9 +86,21 @@ export default function LoginScreen() {
 
           {/* Form Card */}
           <View style={styles.formCard}>
-            <Text style={styles.title}>Welcome Back</Text>
+            <Text style={styles.title}>Create Account</Text>
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+            <View style={styles.inputContainer}>
+              <Ionicons name="person-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Full Name"
+                placeholderTextColor="#999"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+              />
+            </View>
 
             <View style={styles.inputContainer}>
               <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
@@ -114,19 +138,37 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.forgotPassword}>
-              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-            </TouchableOpacity>
+            <View style={styles.inputContainer}>
+              <Ionicons name="lock-closed-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Confirm Password"
+                placeholderTextColor="#999"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry={!showConfirmPassword}
+              />
+              <TouchableOpacity 
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                style={styles.eyeIcon}
+              >
+                <Ionicons 
+                  name={showConfirmPassword ? "eye-outline" : "eye-off-outline"} 
+                  size={20} 
+                  color="#999" 
+                />
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
-              style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
-              onPress={handleLogin}
+              style={[styles.registerButton, isLoading && styles.registerButtonDisabled]}
+              onPress={handleRegister}
               disabled={isLoading}
             >
               {isLoading ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.loginButtonText}>Sign In</Text>
+                <Text style={styles.registerButtonText}>Sign Up</Text>
               )}
             </TouchableOpacity>
 
@@ -138,18 +180,18 @@ export default function LoginScreen() {
 
             <TouchableOpacity
               style={styles.googleButton}
-              onPress={handleGoogleSignIn}
+              onPress={handleGoogleSignUp}
             >
               <View style={styles.googleIconContainer}>
                 <Text style={styles.googleIcon}>G</Text>
               </View>
-              <Text style={styles.googleButtonText}>Sign in with Google</Text>
+              <Text style={styles.googleButtonText}>Sign up with Google</Text>
             </TouchableOpacity>
 
             <View style={styles.footer}>
-              <Text style={styles.footerText}>{"Don't have an account? "}</Text>
-              <TouchableOpacity onPress={() => router.push("/auth/register")}>
-                <Text style={styles.signUpText}>Sign Up</Text>
+              <Text style={styles.footerText}>{"Already have an account? "}</Text>
+              <TouchableOpacity onPress={() => router.push("/auth/login")}>
+                <Text style={styles.signInText}>Sign In</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -173,26 +215,26 @@ const styles = StyleSheet.create({
   },
   logoSection: {
     alignItems: "center",
-    marginTop: 20,
-    marginBottom: 24,
+    marginTop: 10,
+    marginBottom: 16,
   },
   logoContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: "#FFF0EB",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 12,
   },
   brandName: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "700",
     color: "#1A1A1A",
     marginBottom: 4,
   },
   tagline: {
-    fontSize: 14,
+    fontSize: 12,
     color: "#666666",
   },
   formCard: {
@@ -210,7 +252,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#1A1A1A",
     textAlign: "center",
-    marginBottom: 24,
+    marginBottom: 20,
   },
   errorText: {
     color: "#FF3B30",
@@ -238,27 +280,19 @@ const styles = StyleSheet.create({
   eyeIcon: {
     padding: 4,
   },
-  forgotPassword: {
-    alignSelf: "flex-end",
-    marginBottom: 24,
-  },
-  forgotPasswordText: {
-    color: "#FF6B35",
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  loginButton: {
+  registerButton: {
     backgroundColor: "#FF6B35",
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
     justifyContent: "center",
     height: 56,
+    marginTop: 8,
   },
-  loginButtonDisabled: {
+  registerButtonDisabled: {
     backgroundColor: "#FFB299",
   },
-  loginButtonText: {
+  registerButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
@@ -266,7 +300,7 @@ const styles = StyleSheet.create({
   divider: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: 24,
+    marginVertical: 20,
   },
   dividerLine: {
     flex: 1,
@@ -312,13 +346,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 24,
+    marginTop: 20,
   },
   footerText: {
     color: "#666666",
     fontSize: 14,
   },
-  signUpText: {
+  signInText: {
     color: "#FF6B35",
     fontSize: 14,
     fontWeight: "600",

@@ -9,10 +9,13 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { loginUser } from "../../src/api/auth";
+import { saveToken, saveUser } from "../../src/api/storage";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -31,18 +34,30 @@ export default function LoginScreen() {
     setError("");
 
     try {
-      // TODO: Implement actual login logic with your backend
-      // const response = await authService.login(email, password);
-      
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Call backend API to login
+      const response = await loginUser({ email, password });
 
-      // TODO: Store auth token and user data
-      // After successful login, redirect based on user role
-      // For now, redirect to customer view
-      router.replace("/(customer)");
-    } catch {
-      setError("Invalid email or password");
+      if (response.success && response.data) {
+        // Save token and user data to AsyncStorage
+        await saveToken(response.data.token);
+        await saveUser(response.data.user);
+
+        // Show success message
+        Alert.alert("Success", "Login successful!");
+
+        // Redirect based on user role
+        if (response.data.user.role === "SALESMAN") {
+          router.replace("/(salesman)");
+        } else {
+          router.replace("/(customer)");
+        }
+      } else {
+        setError(response.message || "Login failed");
+      }
+    } catch (err: any) {
+      console.error("Login error:", err);
+      // This error means user hasn't signed up or credentials are wrong
+      setError(err.message || "Invalid email or password. Please check your credentials or sign up first.");
     } finally {
       setIsLoading(false);
     }

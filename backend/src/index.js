@@ -1,11 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import authRoutes from './routes/auth.routes';
-import userRoutes from './routes/user.routes';
-import productRoutes from './routes/product.routes';
-import categoryRoutes from './routes/category.routes';
-import orderRoutes from './routes/order.routes';
+import authRoutes from './routes/auth.routes.js';
+import userRoutes from './routes/user.routes.js';
+import productRoutes from './routes/product.routes.js';
+import categoryRoutes from './routes/category.routes.js';
+import orderRoutes from './routes/order.routes.js';
 
 dotenv.config();
 
@@ -33,7 +33,7 @@ app.get('/health', (req, res) => {
 });
 
 // Error handling middleware
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(err.status || 500).json({
     success: false,

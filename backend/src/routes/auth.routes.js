@@ -5,8 +5,8 @@ import {
   googleAuth,
   getProfile,
   updateProfile,
-} from '../controllers/auth.controller';
-import { authenticate } from '../middleware/auth.middleware';
+} from '../controllers/auth.controller.js';
+import { authenticate } from '../middleware/auth.middleware.js';
 
 const router = Router();
 

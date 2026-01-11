@@ -1,16 +1,9 @@
-import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { UserRole } from '@prisma/client';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
-interface JwtPayload {
-  userId: string;
-  role: UserRole;
-}
-
 // Authenticate user
-export const authenticate = (req: Request, res: Response, next: NextFunction) => {
+const authenticate = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -22,9 +15,9 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const decoded = jwt.verify(token, JWT_SECRET);
 
-    (req as any).user = decoded;
+    req.user = decoded;
     next();
   } catch (error) {
     return res.status(401).json({
@@ -35,9 +28,9 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
 };
 
 // Authorize by role
-export const authorize = (...roles: UserRole[]) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const userRole = (req as any).user?.role;
+const authorize = (...roles) => {
+  return (req, res, next) => {
+    const userRole = req.user?.role;
 
     if (!userRole || !roles.includes(userRole)) {
       return res.status(403).json({
@@ -49,3 +42,5 @@ export const authorize = (...roles: UserRole[]) => {
     next();
   };
 };
+
+export { authenticate, authorize };

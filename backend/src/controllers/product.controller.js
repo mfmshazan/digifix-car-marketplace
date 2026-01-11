@@ -1,8 +1,7 @@
-import { Request, Response } from 'express';
-import prisma from '../lib/prisma';
+import prisma from '../lib/prisma.js';
 
 // Get all products (with filters)
-export const getProducts = async (req: Request, res: Response) => {
+const getProducts = async (req, res) => {
   try {
     const {
       page = '1',
@@ -15,12 +14,12 @@ export const getProducts = async (req: Request, res: Response) => {
       sortOrder = 'desc',
     } = req.query;
 
-    const pageNum = parseInt(page as string);
-    const limitNum = parseInt(limit as string);
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
     // Build where clause
-    const where: any = {
+    const where = {
       isActive: true,
     };
 
@@ -30,15 +29,15 @@ export const getProducts = async (req: Request, res: Response) => {
 
     if (search) {
       where.OR = [
-        { name: { contains: search as string, mode: 'insensitive' } },
-        { description: { contains: search as string, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
       ];
     }
 
     if (minPrice || maxPrice) {
       where.price = {};
-      if (minPrice) where.price.gte = parseFloat(minPrice as string);
-      if (maxPrice) where.price.lte = parseFloat(maxPrice as string);
+      if (minPrice) where.price.gte = parseFloat(minPrice);
+      if (maxPrice) where.price.lte = parseFloat(maxPrice);
     }
 
     // Get products
@@ -47,7 +46,7 @@ export const getProducts = async (req: Request, res: Response) => {
         where,
         skip,
         take: limitNum,
-        orderBy: { [sortBy as string]: sortOrder },
+        orderBy: { [sortBy]: sortOrder },
         include: {
           category: {
             select: { id: true, name: true },
@@ -88,7 +87,7 @@ export const getProducts = async (req: Request, res: Response) => {
 };
 
 // Get product by ID
-export const getProductById = async (req: Request, res: Response) => {
+const getProductById = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -139,9 +138,9 @@ export const getProductById = async (req: Request, res: Response) => {
 };
 
 // Create product (Salesman only)
-export const createProduct = async (req: Request, res: Response) => {
+const createProduct = async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const userId = req.user.userId;
     const {
       name,
       description,
@@ -208,9 +207,9 @@ export const createProduct = async (req: Request, res: Response) => {
 };
 
 // Update product (Salesman only)
-export const updateProduct = async (req: Request, res: Response) => {
+const updateProduct = async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const userId = req.user.userId;
     const { id } = req.params;
     const updateData = req.body;
 
@@ -261,9 +260,9 @@ export const updateProduct = async (req: Request, res: Response) => {
 };
 
 // Delete product (Salesman only)
-export const deleteProduct = async (req: Request, res: Response) => {
+const deleteProduct = async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const userId = req.user.userId;
     const { id } = req.params;
 
     // Check if product belongs to salesman
@@ -297,13 +296,13 @@ export const deleteProduct = async (req: Request, res: Response) => {
 };
 
 // Get salesman's products
-export const getSalesmanProducts = async (req: Request, res: Response) => {
+const getSalesmanProducts = async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const userId = req.user.userId;
     const { page = '1', limit = '20' } = req.query;
 
-    const pageNum = parseInt(page as string);
-    const limitNum = parseInt(limit as string);
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
     const [products, total] = await Promise.all([
@@ -343,4 +342,13 @@ export const getSalesmanProducts = async (req: Request, res: Response) => {
       message: 'Failed to fetch products',
     });
   }
+};
+
+export {
+  getProducts,
+  getProductById,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  getSalesmanProducts,
 };

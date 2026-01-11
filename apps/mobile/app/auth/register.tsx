@@ -9,10 +9,13 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { registerUser } from "../../src/api/auth";
+import { saveToken, saveUser } from "../../src/api/storage";
 
 export default function RegisterScreen() {
   const [name, setName] = useState("");
@@ -44,17 +47,45 @@ export default function RegisterScreen() {
     setError("");
 
     try {
-      // TODO: Implement actual registration logic with your backend
-      // const response = await authService.register(name, email, password);
-      
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Call backend API to register
+      const response = await registerUser({
+        name,
+        email,
+        password,
+        role: "CUSTOMER", // Default role, you can add a picker if needed
+      });
 
-      // TODO: Store auth token and user data
-      // After successful registration, redirect to login or home
-      router.replace("/auth/login");
-    } catch {
-      setError("Registration failed. Please try again.");
+      if (response.success && response.data) {
+        // Save token and user data to AsyncStorage
+        await saveToken(response.data.token);
+        await saveUser(response.data.user);
+
+        const userRole = response.data.user.role;
+
+        // Show success message
+        Alert.alert(
+          "Success",
+          "Registration successful! Welcome to DigiFix!",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                // Redirect based on user role
+                if (userRole === "SALESMAN") {
+                  router.replace("/(salesman)");
+                } else {
+                  router.replace("/(customer)");
+                }
+              },
+            },
+          ]
+        );
+      } else {
+        setError(response.message || "Registration failed");
+      }
+    } catch (err: any) {
+      console.error("Registration error:", err);
+      setError(err.message || "Registration failed. Please try again.");
     } finally {
       setIsLoading(false);
     }

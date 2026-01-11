@@ -1,19 +1,17 @@
-import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import prisma from '../lib/prisma';
-import { UserRole } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 // Generate JWT token
-const generateToken = (userId: string, role: UserRole): string => {
-  return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
+const generateToken = (userId, role) => {
+  return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 };
 
 // Register new user
-export const register = async (req: Request, res: Response) => {
+const register = async (req, res) => {
   try {
     const { email, password, name, role = 'CUSTOMER' } = req.body;
 
@@ -46,7 +44,7 @@ export const register = async (req: Request, res: Response) => {
         email,
         password: hashedPassword,
         name,
-        role: role as UserRole,
+        role: role,
         authProvider: 'EMAIL',
       },
       select: {
@@ -89,7 +87,7 @@ export const register = async (req: Request, res: Response) => {
 };
 
 // Login user
-export const login = async (req: Request, res: Response) => {
+const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -125,7 +123,7 @@ export const login = async (req: Request, res: Response) => {
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password!);
+    const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
@@ -161,7 +159,7 @@ export const login = async (req: Request, res: Response) => {
 };
 
 // Google authentication
-export const googleAuth = async (req: Request, res: Response) => {
+const googleAuth = async (req, res) => {
   try {
     const { googleId, email, name, avatar, role = 'CUSTOMER' } = req.body;
 
@@ -199,7 +197,7 @@ export const googleAuth = async (req: Request, res: Response) => {
           googleId,
           name,
           avatar,
-          role: role as UserRole,
+          role: role,
           authProvider: 'GOOGLE',
           isVerified: true,
         },
@@ -221,24 +219,24 @@ export const googleAuth = async (req: Request, res: Response) => {
         user = await prisma.user.findUnique({
           where: { id: user.id },
           include: { store: true },
-        })!;
+        });
       }
     }
 
     // Generate token
-    const token = generateToken(user!.id, user!.role);
+    const token = generateToken(user.id, user.role);
 
     res.json({
       success: true,
       message: 'Google authentication successful',
       data: {
         user: {
-          id: user!.id,
-          email: user!.email,
-          name: user!.name,
-          role: user!.role,
-          avatar: user!.avatar,
-          store: user!.store,
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          avatar: user.avatar,
+          store: user.store,
         },
         token,
       },
@@ -253,9 +251,9 @@ export const googleAuth = async (req: Request, res: Response) => {
 };
 
 // Get user profile
-export const getProfile = async (req: Request, res: Response) => {
+const getProfile = async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const userId = req.user.userId;
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -300,9 +298,9 @@ export const getProfile = async (req: Request, res: Response) => {
 };
 
 // Update user profile
-export const updateProfile = async (req: Request, res: Response) => {
+const updateProfile = async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const userId = req.user.userId;
     const { name, phone, avatar } = req.body;
 
     const user = await prisma.user.update({
@@ -335,3 +333,5 @@ export const updateProfile = async (req: Request, res: Response) => {
     });
   }
 };
+
+export { register, login, googleAuth, getProfile, updateProfile };

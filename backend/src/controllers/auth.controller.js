@@ -158,98 +158,6 @@ const login = async (req, res) => {
   }
 };
 
-// Google authentication
-const googleAuth = async (req, res) => {
-  try {
-    const { googleId, email, name, avatar, role = 'CUSTOMER' } = req.body;
-
-    if (!googleId || !email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Google ID and email are required',
-      });
-    }
-
-    // Check if user exists
-    let user = await prisma.user.findFirst({
-      where: {
-        OR: [{ googleId }, { email }],
-      },
-      include: {
-        store: true,
-      },
-    });
-
-    if (user) {
-      // Update Google ID if not set
-      if (!user.googleId) {
-        user = await prisma.user.update({
-          where: { id: user.id },
-          data: { googleId },
-          include: { store: true },
-        });
-      }
-    } else {
-      // Create new user
-      user = await prisma.user.create({
-        data: {
-          email,
-          googleId,
-          name,
-          avatar,
-          role: role,
-          authProvider: 'GOOGLE',
-          isVerified: true,
-        },
-        include: {
-          store: true,
-        },
-      });
-
-      // If salesman, create a store
-      if (role === 'SALESMAN') {
-        await prisma.store.create({
-          data: {
-            name: name ? `${name}'s Store` : 'My Store',
-            ownerId: user.id,
-          },
-        });
-
-        // Fetch user again with store
-        user = await prisma.user.findUnique({
-          where: { id: user.id },
-          include: { store: true },
-        });
-      }
-    }
-
-    // Generate token
-    const token = generateToken(user.id, user.role);
-
-    res.json({
-      success: true,
-      message: 'Google authentication successful',
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          avatar: user.avatar,
-          store: user.store,
-        },
-        token,
-      },
-    });
-  } catch (error) {
-    console.error('Google auth error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to authenticate with Google',
-    });
-  }
-};
-
 // Get user profile
 const getProfile = async (req, res) => {
   try {
@@ -334,4 +242,4 @@ const updateProfile = async (req, res) => {
   }
 };
 
-export { register, login, googleAuth, getProfile, updateProfile };
+export { register, login, getProfile, updateProfile };

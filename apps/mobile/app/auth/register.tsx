@@ -22,6 +22,7 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [role, setRole] = useState<"CUSTOMER" | "SALESMAN">("CUSTOMER");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -52,7 +53,7 @@ export default function RegisterScreen() {
         name,
         email,
         password,
-        role: "CUSTOMER", // Default role, you can add a picker if needed
+        role: role,
       });
 
       if (response.success && response.data) {
@@ -89,11 +90,6 @@ export default function RegisterScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleGoogleSignUp = async () => {
-    // TODO: Implement Google Sign-Up
-    console.log("Google Sign-Up pressed");
   };
 
   return (
@@ -145,6 +141,56 @@ export default function RegisterScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
               />
+            </View>
+
+            {/* Role Selection */}
+            <View style={styles.roleContainer}>
+              <Text style={styles.roleLabel}>I want to register as:</Text>
+              <View style={styles.roleButtons}>
+                <TouchableOpacity
+                  style={[
+                    styles.roleButton,
+                    role === "CUSTOMER" && styles.roleButtonActive,
+                  ]}
+                  onPress={() => setRole("CUSTOMER")}
+                >
+                  <Ionicons
+                    name="person-outline"
+                    size={20}
+                    color={role === "CUSTOMER" ? "#FF6B35" : "#666"}
+                  />
+                  <Text
+                    style={[
+                      styles.roleButtonText,
+                      role === "CUSTOMER" && styles.roleButtonTextActive,
+                    ]}
+                  >
+                    Customer
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.roleButton,
+                    role === "SALESMAN" && styles.roleButtonActive,
+                  ]}
+                  onPress={() => setRole("SALESMAN")}
+                >
+                  <Ionicons
+                    name="storefront-outline"
+                    size={20}
+                    color={role === "SALESMAN" ? "#FF6B35" : "#666"}
+                  />
+                  <Text
+                    style={[
+                      styles.roleButtonText,
+                      role === "SALESMAN" && styles.roleButtonTextActive,
+                    ]}
+                  >
+                    Shop Owner
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.inputContainer}>
@@ -201,22 +247,6 @@ export default function RegisterScreen() {
               ) : (
                 <Text style={styles.registerButtonText}>Sign Up</Text>
               )}
-            </TouchableOpacity>
-
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or continue with</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <TouchableOpacity
-              style={styles.googleButton}
-              onPress={handleGoogleSignUp}
-            >
-              <View style={styles.googleIconContainer}>
-                <Text style={styles.googleIcon}>G</Text>
-              </View>
-              <Text style={styles.googleButtonText}>Sign up with Google</Text>
             </TouchableOpacity>
 
             <View style={styles.footer}>
@@ -328,50 +358,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 20,
+  roleContainer: {
+    marginBottom: 20,
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#E0E0E0",
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    color: "#999999",
+  roleLabel: {
     fontSize: 14,
+    fontWeight: "600",
+    color: "#1A1A1A",
+    marginBottom: 12,
   },
-  googleButton: {
+  roleButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  roleButton: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F5F5F5",
     borderRadius: 12,
     padding: 16,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    height: 56,
+    borderWidth: 2,
+    borderColor: "#F5F5F5",
+    gap: 8,
   },
-  googleIconContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#FFFFFF",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
+  roleButtonActive: {
+    backgroundColor: "#FFF0EB",
+    borderColor: "#FF6B35",
   },
-  googleIcon: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#EA4335",
+  roleButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#666",
   },
-  googleButtonText: {
-    color: "#1A1A1A",
-    fontSize: 16,
-    fontWeight: "500",
+  roleButtonTextActive: {
+    color: "#FF6B35",
   },
   footer: {
     flexDirection: "row",

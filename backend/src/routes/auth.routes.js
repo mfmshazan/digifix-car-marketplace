@@ -2,7 +2,6 @@ import { Router } from 'express';
 import {
   register,
   login,
-  googleAuth,
   getProfile,
   updateProfile,
 } from '../controllers/auth.controller.js';
@@ -13,7 +12,6 @@ const router = Router();
 // Public routes
 router.post('/register', register);
 router.post('/login', login);
-router.post('/google', googleAuth);
 
 // Protected routes
 router.get('/profile', authenticate, getProfile);

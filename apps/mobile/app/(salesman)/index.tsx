@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#666",
   },
-  },
+  
   section: {
     marginTop: 20,
     paddingHorizontal: 16,
@@ -465,4 +465,4 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-});
+

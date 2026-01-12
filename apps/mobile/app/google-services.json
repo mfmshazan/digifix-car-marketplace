@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "477521405069",
+    "project_id": "chatappwpf",
+    "storage_bucket": "chatappwpf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:477521405069:android:9364da14905312073beec4",
+        "android_client_info": {
+          "package_name": "com.isuru.myapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCiDG1vGmenMtEbcVNB_KN9ZmyAaSUlXUA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

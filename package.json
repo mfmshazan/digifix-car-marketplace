@@ -1,0 +1,14 @@
+{
+  "name": "digifix-car-marketplace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:mobile\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:mobile": "cd apps/mobile && npm run web",
+    "install:all": "npm install && cd backend && npm install && cd ../apps/mobile && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

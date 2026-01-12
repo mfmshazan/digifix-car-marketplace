@@ -1,291 +1,269 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import { signOut } from "firebase/auth";
+import { auth } from "../../config/firebase";
+import { useCartStore } from "../../store/cartStore";
 
-const menuItems = [
-  {
-    id: "1",
-    icon: "person-outline",
-    label: "Edit Profile",
-    color: "#FF6B35",
-  },
-  {
-    id: "2",
-    icon: "location-outline",
-    label: "Saved Addresses",
-    color: "#4ECDC4",
-  },
-  {
-    id: "3",
-    icon: "card-outline",
-    label: "Payment Methods",
-    color: "#45B7D1",
-  },
-  {
-    id: "4",
-    icon: "car-outline",
-    label: "My Vehicles",
-    color: "#96CEB4",
-  },
-  {
-    id: "5",
-    icon: "heart-outline",
-    label: "Wishlist",
-    color: "#DDA0DD",
-  },
-  {
-    id: "6",
-    icon: "notifications-outline",
-    label: "Notifications",
-    color: "#FFD700",
-  },
-  {
-    id: "7",
-    icon: "help-circle-outline",
-    label: "Help & Support",
-    color: "#87CEEB",
-  },
-  {
-    id: "8",
-    icon: "information-circle-outline",
-    label: "About Us",
-    color: "#F4A460",
-  },
-];
+// Web-compatible alert function
+const showAlert = (title: string, message: string) => {
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+};
+
+// Web-compatible confirm function
+const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+  if (Platform.OS === 'web') {
+    if (window.confirm(`${title}\n\n${message}`)) {
+      onConfirm();
+    }
+  } else {
+    Alert.alert(title, message, [
+      { text: "Cancel", style: "cancel" },
+      { text: "OK", onPress: onConfirm },
+    ]);
+  }
+};
 
 export default function ProfileScreen() {
-  const handleLogout = () => {
-    // TODO: Implement logout logic
-    router.replace("/auth/login");
-  };
+  const user = auth.currentUser;
+  const { clearCart } = useCartStore();
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Reload user data when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      setRefreshKey(prev => prev + 1);
+    }, [])
+  );
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Profile Header */}
-      <View style={styles.profileHeader}>
-        <View style={styles.avatarContainer}>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Profile</Text>
+      </View>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* User Info */}
+        <View style={styles.userCard}>
           <View style={styles.avatar}>
-            <Ionicons name="person" size={40} color="#FF6B35" />
+            <Ionicons name="person" size={40} color="#4285F4" />
           </View>
-          <TouchableOpacity style={styles.editAvatarButton}>
-            <Ionicons name="camera" size={16} color="#FFFFFF" />
+          <View style={styles.userInfo}>
+            <Text style={styles.userName}>{user?.displayName || "User"}</Text>
+            <Text style={styles.userEmail}>{user?.email}</Text>
+          </View>
+          <TouchableOpacity onPress={() => {
+            console.log("User info clicked");
+            showAlert("Edit Profile", "Profile editing coming soon!");
+          }}>
+            <Ionicons name="chevron-forward" size={24} color="#666" />
           </TouchableOpacity>
         </View>
-        <Text style={styles.userName}>John Doe</Text>
-        <Text style={styles.userEmail}>john.doe@example.com</Text>
-        <View style={styles.roleBadge}>
-          <Ionicons name="cart" size={14} color="#FF6B35" />
-          <Text style={styles.roleText}>Customer</Text>
-        </View>
-      </View>
 
-      {/* Stats */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>12</Text>
-          <Text style={styles.statLabel}>Orders</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>5</Text>
-          <Text style={styles.statLabel}>Wishlist</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>3</Text>
-          <Text style={styles.statLabel}>Vehicles</Text>
-        </View>
-      </View>
-
-      {/* Menu Items */}
-      <View style={styles.menuContainer}>
-        {menuItems.map((item) => (
-          <TouchableOpacity key={item.id} style={styles.menuItem}>
-            <View
-              style={[
-                styles.menuIconContainer,
-                { backgroundColor: item.color + "20" },
-              ]}
-            >
-              <Ionicons name={item.icon as any} size={22} color={item.color} />
+        {/* Menu Items */}
+        <View style={styles.menu}>
+          {/* Edit Profile */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/profile/edit" as any)}
+          >
+            <View style={styles.menuItemLeft}>
+              <Ionicons name="person-outline" size={24} color="#666" />
+              <Text style={styles.menuItemText}>Edit Profile</Text>
             </View>
-            <Text style={styles.menuLabel}>{item.label}</Text>
-            <Ionicons name="chevron-forward" size={20} color="#999" />
+            <Ionicons name="chevron-forward" size={20} color="#666" />
           </TouchableOpacity>
-        ))}
-      </View>
 
-      {/* Logout Button */}
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Ionicons name="log-out-outline" size={22} color="#FF4444" />
-        <Text style={styles.logoutText}>Logout</Text>
-      </TouchableOpacity>
+          {/* Addresses */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/profile/addresses" as any)}
+          >
+            <View style={styles.menuItemLeft}>
+              <Ionicons name="location-outline" size={24} color="#666" />
+              <Text style={styles.menuItemText}>Addresses</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#666" />
+          </TouchableOpacity>
 
-      <View style={styles.footer}>
-        <Text style={styles.versionText}>Version 1.0.0</Text>
-      </View>
-    </ScrollView>
+          {/* Payment Methods */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/profile/payment" as any)}
+          >
+            <View style={styles.menuItemLeft}>
+              <Ionicons name="card-outline" size={24} color="#666" />
+              <Text style={styles.menuItemText}>Payment Methods</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#666" />
+          </TouchableOpacity>
+
+          {/* Notifications */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/profile/notifications" as any)}
+          >
+            <View style={styles.menuItemLeft}>
+              <Ionicons name="notifications-outline" size={24} color="#666" />
+              <Text style={styles.menuItemText}>Notifications</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#666" />
+          </TouchableOpacity>
+
+          {/* Help & Support */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/profile/support" as any)}
+          >
+            <View style={styles.menuItemLeft}>
+              <Ionicons name="help-circle-outline" size={24} color="#666" />
+              <Text style={styles.menuItemText}>Help & Support</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#666" />
+          </TouchableOpacity>
+
+          {/* About */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => {
+              showAlert("About", "AutoParts Marketplace v1.0.0\n\nYour trusted source for quality auto parts.");
+            }}
+          >
+            <View style={styles.menuItemLeft}>
+              <Ionicons name="information-circle-outline" size={24} color="#666" />
+              <Text style={styles.menuItemText}>About</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#666" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Logout Button */}
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={() => {
+            console.log("Logout button clicked");
+            showConfirm("Logout", "Are you sure you want to logout?", async () => {
+              try {
+                console.log("Logging out...");
+                clearCart();
+                await signOut(auth);
+                if (Platform.OS === 'web') {
+                  window.location.replace('/auth/login');
+                } else {
+                  router.replace("/auth/login");
+                }
+              } catch (error: any) {
+                console.error("Logout error:", error);
+                showAlert("Error", error.message);
+              }
+            });
+          }}
+        >
+          <Ionicons name="log-out-outline" size={24} color="#F44336" />
+          <Text style={styles.logoutText}>Logout</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#F5F5F5",
   },
-  profileHeader: {
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 16,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#000",
+  },
+  content: {
+    flex: 1,
+  },
+  userCard: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 30,
-    backgroundColor: "#FFFFFF",
-  },
-  avatarContainer: {
-    position: "relative",
+    backgroundColor: "#fff",
+    padding: 20,
     marginBottom: 16,
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "#FFF3EE",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  editAvatarButton: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#FF6B35",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 3,
-    borderColor: "#FFFFFF",
-  },
-  userName: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#1A1A2E",
-    marginBottom: 4,
-  },
-  userEmail: {
-    fontSize: 14,
-    color: "#999",
-    marginBottom: 12,
-  },
-  roleBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFF3EE",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  roleText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#FF6B35",
-    marginLeft: 6,
-  },
-  statsContainer: {
-    flexDirection: "row",
-    backgroundColor: "#FFFFFF",
-    marginTop: 16,
-    marginHorizontal: 16,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: "center",
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#FF6B35",
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#999",
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: "#F0F0F0",
-  },
-  menuContainer: {
-    backgroundColor: "#FFFFFF",
-    marginTop: 16,
-    marginHorizontal: 16,
-    borderRadius: 16,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F5F5F5",
-  },
-  menuIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "#E8F0FE",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 16,
   },
-  menuLabel: {
+  userInfo: {
     flex: 1,
-    fontSize: 16,
-    color: "#1A1A2E",
+  },
+  userName: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#000",
+    marginBottom: 4,
+  },
+  userEmail: {
+    fontSize: 14,
+    color: "#666",
+  },
+  menu: {
+    backgroundColor: "#fff",
+    marginBottom: 16,
+  },
+  menuItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  menuItemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  menuItemText: {
+    fontSize: 15,
+    color: "#000",
   },
   logoutButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    marginTop: 16,
-    marginHorizontal: 16,
-    borderRadius: 16,
-    paddingVertical: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
+    backgroundColor: "#fff",
+    padding: 16,
+    gap: 12,
   },
   logoutText: {
     fontSize: 16,
-    color: "#FF4444",
+    color: "#F44336",
     fontWeight: "600",
-    marginLeft: 8,
-  },
-  footer: {
-    alignItems: "center",
-    paddingVertical: 24,
-  },
-  versionText: {
-    fontSize: 12,
-    color: "#999",
   },
 });

@@ -6,461 +6,377 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  FlatList,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import { useCartStore } from "../../store/cartStore";
 
-// Sample data for car parts
+const categories = [
+  { id: "1", name: "Engine", icon: "car-outline" },
+  { id: "2", name: "Brake", icon: "disc-outline" },
+  { id: "3", name: "Electrical", icon: "flash-outline" },
+  { id: "4", name: "Exterior", icon: "car-sport-outline" },
+];
+
 const featuredParts = [
   {
     id: "1",
-    name: "Brake Pads Set",
-    price: 45.99,
-    originalPrice: 59.99,
+    name: "Brake Pad Set - Front",
+    price: 89.99,
+    supplier: "AutoMax Parts",
+    stock: "In Stock",
+    image: null,
     rating: 4.8,
-    reviews: 124,
-    category: "Brakes",
   },
   {
     id: "2",
     name: "Oil Filter Premium",
-    price: 12.99,
-    originalPrice: 18.99,
+    price: 24.99,
+    supplier: "SpeedPro Supply",
+    stock: "In Stock",
+    image: null,
     rating: 4.6,
-    reviews: 89,
-    category: "Filters",
   },
   {
     id: "3",
-    name: "Spark Plugs (4 Pack)",
-    price: 24.99,
-    originalPrice: 32.99,
+    name: "Ceramic Brake Pad Set",
+    price: 129.99,
+    supplier: "BrakeMaster Pro",
+    stock: "In Stock",
+    image: null,
     rating: 4.9,
-    reviews: 256,
-    category: "Engine",
   },
   {
     id: "4",
-    name: "Air Filter",
-    price: 19.99,
-    originalPrice: 25.99,
+    name: "Air Filter High Flow",
+    price: 34.99,
+    supplier: "AirMax Parts",
+    stock: "Low Stock",
+    image: null,
     rating: 4.7,
-    reviews: 167,
-    category: "Filters",
-  },
-];
-
-const categories = [
-  { id: "1", name: "Engine", icon: "cog", color: "#FF6B35" },
-  { id: "2", name: "Brakes", icon: "disc", color: "#4ECDC4" },
-  { id: "3", name: "Filters", icon: "filter", color: "#45B7D1" },
-  { id: "4", name: "Electrical", icon: "flash", color: "#96CEB4" },
-  { id: "5", name: "Suspension", icon: "car-sport", color: "#DDA0DD" },
-  { id: "6", name: "More", icon: "ellipsis-horizontal", color: "#999" },
-];
-
-const promotions = [
-  {
-    id: "1",
-    title: "Summer Sale",
-    description: "Up to 40% off on brake systems",
-    backgroundColor: "#FF6B35",
-  },
-  {
-    id: "2",
-    title: "Free Delivery",
-    description: "On orders over $50",
-    backgroundColor: "#4ECDC4",
   },
 ];
 
 export default function CustomerHomeScreen() {
   const [searchQuery, setSearchQuery] = useState("");
+  const { addItem, getTotalItems } = useCartStore();
+  const cartItemCount = getTotalItems();
 
-  const renderCategoryItem = ({ item }: { item: (typeof categories)[0] }) => (
-    <TouchableOpacity style={styles.categoryItem}>
-      <View style={[styles.categoryIcon, { backgroundColor: item.color + "20" }]}>
-        <Ionicons name={item.icon as any} size={24} color={item.color} />
-      </View>
-      <Text style={styles.categoryName}>{item.name}</Text>
-    </TouchableOpacity>
-  );
+  const handleAddToCart = (product: typeof featuredParts[0]) => {
+    addItem({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      supplier: product.supplier,
+    });
+    Alert.alert("Success", `${product.name} added to cart!`);
+  };
 
-  const renderProductItem = ({ item }: { item: (typeof featuredParts)[0] }) => (
-    <TouchableOpacity style={styles.productCard}>
-      <View style={styles.productImageContainer}>
-        <View style={styles.productImagePlaceholder}>
-          <Ionicons name="car-sport" size={40} color="#FF6B35" />
-        </View>
-        <View style={styles.discountBadge}>
-          <Text style={styles.discountText}>
-            -{Math.round(((item.originalPrice - item.price) / item.originalPrice) * 100)}%
-          </Text>
-        </View>
-      </View>
-      <View style={styles.productInfo}>
-        <Text style={styles.productCategory}>{item.category}</Text>
-        <Text style={styles.productName} numberOfLines={2}>
-          {item.name}
-        </Text>
-        <View style={styles.ratingContainer}>
-          <Ionicons name="star" size={14} color="#FFD700" />
-          <Text style={styles.ratingText}>{item.rating}</Text>
-          <Text style={styles.reviewsText}>({item.reviews})</Text>
-        </View>
-        <View style={styles.priceContainer}>
-          <Text style={styles.price}>${item.price.toFixed(2)}</Text>
-          <Text style={styles.originalPrice}>${item.originalPrice.toFixed(2)}</Text>
-        </View>
-      </View>
-      <TouchableOpacity style={styles.addToCartButton}>
-        <Ionicons name="add" size={20} color="#FFFFFF" />
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
-
-  const renderPromotionItem = ({ item }: { item: (typeof promotions)[0] }) => (
-    <TouchableOpacity
-      style={[styles.promotionCard, { backgroundColor: item.backgroundColor }]}
-    >
-      <Text style={styles.promotionTitle}>{item.title}</Text>
-      <Text style={styles.promotionDescription}>{item.description}</Text>
-      <TouchableOpacity style={styles.promotionButton}>
-        <Text style={styles.promotionButtonText}>Shop Now</Text>
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      router.push(`/(customer)/categories?search=${searchQuery}`);
+    }
+  };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={20} color="#999" />
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.logo}>AutoParts</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.cartButton} onPress={() => router.push("/(customer)/cart")}>
+            <Ionicons name="cart-outline" size={24} color="#000" />
+            {cartItemCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{cartItemCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search-outline" size={20} color="#999" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search car parts..."
-            placeholderTextColor="#999"
+            placeholder="Search for parts..."
             value={searchQuery}
             onChangeText={setSearchQuery}
+            placeholderTextColor="#999"
+            onSubmitEditing={handleSearch}
+            returnKeyType="search"
           />
-          <TouchableOpacity>
-            <Ionicons name="options" size={20} color="#FF6B35" />
-          </TouchableOpacity>
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <Ionicons name="close-circle" size={20} color="#999" />
+            </TouchableOpacity>
+          )}
         </View>
-      </View>
 
-      {/* Promotions Carousel */}
-      <View style={styles.section}>
-        <FlatList
-          data={promotions}
-          renderItem={renderPromotionItem}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.promotionsList}
-        />
-      </View>
+        {/* Select Vehicle Button */}
+        <TouchableOpacity
+          style={styles.vehicleButton}
+          onPress={() => router.push("/vehicle/" as any)}
+        >
+          <Ionicons name="car-outline" size={20} color="#fff" />
+          <Text style={styles.vehicleButtonText}>Select Your Vehicle</Text>
+          <Ionicons name="chevron-down-outline" size={20} color="#fff" />
+        </TouchableOpacity>
 
-      {/* Categories */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Categories</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAllText}>See All</Text>
-          </TouchableOpacity>
+        {/* Browse Categories */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Browse Categories</Text>
+          <View style={styles.categoriesGrid}>
+            {categories.map((category) => (
+              <TouchableOpacity
+                key={category.id}
+                style={styles.categoryCard}
+                onPress={() => router.push(`/(customer)/categories?category=${category.name}`)}
+              >
+                <View style={styles.categoryIcon}>
+                  <Ionicons name={category.icon as any} size={28} color="#4285F4" />
+                </View>
+                <Text style={styles.categoryName}>{category.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
-        <FlatList
-          data={categories}
-          renderItem={renderCategoryItem}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoriesList}
-        />
-      </View>
 
-      {/* Featured Products */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Featured Parts</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAllText}>See All</Text>
-          </TouchableOpacity>
-        </View>
-        <FlatList
-          data={featuredParts}
-          renderItem={renderProductItem}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.productsList}
-        />
-      </View>
+        {/* Featured Parts */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Featured Parts</Text>
+            <TouchableOpacity onPress={() => router.push("/(customer)/categories")}>
+              <Text style={styles.viewAllText}>View All</Text>
+            </TouchableOpacity>
+          </View>
 
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#FFF3EE" }]}>
-              <Ionicons name="car" size={24} color="#FF6B35" />
-            </View>
-            <Text style={styles.quickActionText}>Find by Vehicle</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#E8F8F5" }]}>
-              <Ionicons name="barcode" size={24} color="#4ECDC4" />
-            </View>
-            <Text style={styles.quickActionText}>Scan Part Code</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#EBF5FB" }]}>
-              <Ionicons name="location" size={24} color="#45B7D1" />
-            </View>
-            <Text style={styles.quickActionText}>Track Order</Text>
-          </TouchableOpacity>
+          {featuredParts.map((part) => (
+            <TouchableOpacity
+              key={part.id}
+              style={styles.productCard}
+              onPress={() => router.push(`/product/${part.id}` as any)}
+            >
+              <View style={styles.productImage}>
+                <Ionicons name="car-outline" size={40} color="#ccc" />
+              </View>
+              <View style={styles.productInfo}>
+                <Text style={styles.productName}>{part.name}</Text>
+                <View style={styles.ratingContainer}>
+                  <Ionicons name="star" size={14} color="#FFA000" />
+                  <Text style={styles.rating}>{part.rating}</Text>
+                </View>
+                <Text style={styles.productSupplier}>by {part.supplier}</Text>
+                <View style={styles.productFooter}>
+                  <Text style={styles.productPrice}>${part.price}</Text>
+                  <TouchableOpacity
+                    style={styles.addButton}
+                    onPress={() => handleAddToCart(part)}
+                  >
+                    <Ionicons name="cart-outline" size={18} color="#fff" />
+                    <Text style={styles.addButtonText}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
         </View>
-      </View>
-
-      {/* Best Sellers */}
-      <View style={[styles.section, styles.lastSection]}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Best Sellers</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAllText}>See All</Text>
-          </TouchableOpacity>
-        </View>
-        <FlatList
-          data={featuredParts.slice().reverse()}
-          renderItem={renderProductItem}
-          keyExtractor={(item) => `best-${item.id}`}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.productsList}
-        />
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#fff",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 16,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  logo: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#4285F4",
+  },
+  headerRight: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  cartButton: {
+    position: "relative",
+  },
+  badge: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    backgroundColor: "#F44336",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "bold",
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
   },
   searchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#FF6B35",
-  },
-  searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 48,
+    backgroundColor: "#F5F5F5",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 45,
+    marginTop: 16,
+    marginBottom: 16,
   },
   searchInput: {
     flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    color: "#1A1A2E",
+    marginLeft: 8,
+    fontSize: 14,
+    color: "#000",
+  },
+  vehicleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#4285F4",
+    borderRadius: 8,
+    paddingVertical: 14,
+    marginBottom: 24,
+    gap: 8,
+  },
+  vehicleButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
   },
   section: {
-    marginTop: 20,
-  },
-  lastSection: {
-    marginBottom: 20,
+    marginBottom: 24,
   },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "600",
-    color: "#1A1A2E",
-  },
-  seeAllText: {
-    fontSize: 14,
-    color: "#FF6B35",
-    fontWeight: "500",
-  },
-  promotionsList: {
-    paddingHorizontal: 16,
-  },
-  promotionCard: {
-    width: 280,
-    height: 140,
-    borderRadius: 16,
-    padding: 20,
-    marginRight: 12,
-    justifyContent: "space-between",
-  },
-  promotionTitle: {
-    fontSize: 22,
     fontWeight: "bold",
-    color: "#FFFFFF",
+    color: "#000",
   },
-  promotionDescription: {
+  viewAllText: {
+    color: "#4285F4",
     fontSize: 14,
-    color: "#FFFFFF",
-    opacity: 0.9,
-  },
-  promotionButton: {
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    alignSelf: "flex-start",
-  },
-  promotionButtonText: {
-    color: "#1A1A2E",
     fontWeight: "600",
-    fontSize: 12,
   },
-  categoriesList: {
-    paddingHorizontal: 16,
+  categoriesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
   },
-  categoryItem: {
+  categoryCard: {
+    width: "23%",
     alignItems: "center",
-    marginRight: 20,
+    gap: 8,
   },
   categoryIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    backgroundColor: "#E8F0FE",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 8,
   },
   categoryName: {
     fontSize: 12,
-    color: "#666",
-    fontWeight: "500",
-  },
-  productsList: {
-    paddingHorizontal: 16,
+    color: "#333",
+    textAlign: "center",
   },
   productCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    width: 160,
-    marginRight: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
   },
-  productImageContainer: {
-    position: "relative",
-  },
-  productImagePlaceholder: {
-    height: 120,
-    backgroundColor: "#FFF3EE",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+  productImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: "#F5F5F5",
     justifyContent: "center",
     alignItems: "center",
-  },
-  discountBadge: {
-    position: "absolute",
-    top: 8,
-    left: 8,
-    backgroundColor: "#FF6B35",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  discountText: {
-    color: "#FFFFFF",
-    fontSize: 10,
-    fontWeight: "bold",
+    marginRight: 12,
   },
   productInfo: {
-    padding: 12,
-  },
-  productCategory: {
-    fontSize: 10,
-    color: "#999",
-    textTransform: "uppercase",
-    marginBottom: 4,
+    flex: 1,
+    justifyContent: "space-between",
   },
   productName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
-    color: "#1A1A2E",
-    marginBottom: 6,
+    color: "#000",
+    marginBottom: 4,
   },
   ratingContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    gap: 4,
+    marginBottom: 4,
   },
-  ratingText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#1A1A2E",
-    marginLeft: 4,
-  },
-  reviewsText: {
-    fontSize: 12,
-    color: "#999",
-    marginLeft: 2,
-  },
-  priceContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  price: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#FF6B35",
-  },
-  originalPrice: {
-    fontSize: 12,
-    color: "#999",
-    textDecorationLine: "line-through",
-    marginLeft: 8,
-  },
-  addToCartButton: {
-    position: "absolute",
-    bottom: 12,
-    right: 12,
-    backgroundColor: "#FF6B35",
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  quickActions: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    paddingHorizontal: 16,
-    marginTop: 12,
-  },
-  quickActionItem: {
-    alignItems: "center",
-  },
-  quickActionIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  quickActionText: {
-    fontSize: 12,
+  rating: {
+    fontSize: 13,
     color: "#666",
     fontWeight: "500",
-    textAlign: "center",
+  },
+  productSupplier: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 8,
+  },
+  productFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  productPrice: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#4285F4",
+  },
+  addButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#4285F4",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    gap: 4,
+  },
+  addButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

@@ -1,101 +1,169 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-
-// Sample dashboard data
-const dashboardStats = [
-  {
-    id: "1",
-    title: "Total Sales",
-    value: "$12,458",
-    change: "+12.5%",
-    isPositive: true,
-    icon: "trending-up",
-    color: "#4CAF50",
-  },
-  {
-    id: "2",
-    title: "Orders",
-    value: "156",
-    change: "+8.2%",
-    isPositive: true,
-    icon: "receipt",
-    color: "#2196F3",
-  },
-  {
-    id: "3",
-    title: "Products",
-    value: "48",
-    change: "+3",
-    isPositive: true,
-    icon: "cube",
-    color: "#FF6B35",
-  },
-  {
-    id: "4",
-    title: "Customers",
-    value: "892",
-    change: "+24",
-    isPositive: true,
-    icon: "people",
-    color: "#9C27B0",
-  },
-];
-
-const recentOrders = [
-  {
-    id: "ORD-001",
-    customer: "John Doe",
-    product: "Brake Pads Set",
-    total: 91.98,
-    status: "Pending",
-    statusColor: "#FF9800",
-  },
-  {
-    id: "ORD-002",
-    customer: "Jane Smith",
-    product: "Oil Filter Premium",
-    total: 25.98,
-    status: "Shipped",
-    statusColor: "#2196F3",
-  },
-  {
-    id: "ORD-003",
-    customer: "Mike Johnson",
-    product: "Spark Plugs (4 Pack)",
-    total: 49.98,
-    status: "Delivered",
-    statusColor: "#4CAF50",
-  },
-];
+import { router, useFocusEffect } from "expo-router";
+import { auth } from "../../config/firebase";
+import { getSellerOrders, getSellerProducts, type Order } from "../../utils/orderManager";
 
 const quickActions = [
-  { id: "1", title: "Add Product", icon: "add-circle", color: "#FF6B35" },
-  { id: "2", title: "View Orders", icon: "list", color: "#4ECDC4" },
-  { id: "3", title: "Analytics", icon: "bar-chart", color: "#45B7D1" },
-  { id: "4", title: "Promotions", icon: "pricetag", color: "#96CEB4" },
+  { id: "1", title: "Add Product", icon: "add-circle", color: "#FF6B35", route: "/(salesman)/add-product" },
+  { id: "2", title: "View Orders", icon: "list", color: "#4ECDC4", route: "/(salesman)/orders" },
+  { id: "3", title: "Products", icon: "cube", color: "#45B7D1", route: "/(salesman)/products" },
+  { id: "4", title: "Profile", icon: "person", color: "#96CEB4", route: "/(salesman)/profile" },
 ];
 
 export default function SalesmanDashboard() {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [stats, setStats] = useState({
+    totalSales: 0,
+    ordersCount: 0,
+    productsCount: 0,
+    customersCount: 0,
+    pendingOrders: 0,
+    shippedOrders: 0,
+    deliveredOrders: 0,
+  });
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadDashboardData();
+    }, [])
+  );
+
+  const loadDashboardData = async () => {
+    try {
+      if (!auth.currentUser?.email) {
+        setLoading(false);
+        return;
+      }
+
+      const [sellerOrders, sellerProducts] = await Promise.all([
+        getSellerOrders(auth.currentUser.email),
+        getSellerProducts(auth.currentUser.email),
+      ]);
+
+      setOrders(sellerOrders);
+      setProducts(sellerProducts);
+
+      // Calculate statistics
+      const totalSales = sellerOrders
+        .filter(o => o.status === "delivered")
+        .reduce((sum, order) => sum + order.total, 0);
+
+      const uniqueCustomers = new Set(sellerOrders.map(o => o.userId));
+
+      setStats({
+        totalSales,
+        ordersCount: sellerOrders.length,
+        productsCount: sellerProducts.length,
+        customersCount: uniqueCustomers.size,
+        pendingOrders: sellerOrders.filter(o => o.status === "pending").length,
+        shippedOrders: sellerOrders.filter(o => o.status === "shipped").length,
+        deliveredOrders: sellerOrders.filter(o => o.status === "delivered").length,
+      });
+    } catch (error) {
+      console.error("Error loading dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadDashboardData();
+    setRefreshing(false);
+  };
+
+  const dashboardStats = [
+    {
+      id: "1",
+      title: "Total Sales",
+      value: `$${stats.totalSales.toFixed(2)}`,
+      subValue: `${stats.deliveredOrders} delivered`,
+      icon: "trending-up",
+      color: "#4CAF50",
+    },
+    {
+      id: "2",
+      title: "Orders",
+      value: stats.ordersCount.toString(),
+      subValue: `${stats.pendingOrders} pending`,
+      icon: "receipt",
+      color: "#2196F3",
+    },
+    {
+      id: "3",
+      title: "Products",
+      value: stats.productsCount.toString(),
+      subValue: "Active listings",
+      icon: "cube",
+      color: "#FF6B35",
+    },
+    {
+      id: "4",
+      title: "Customers",
+      value: stats.customersCount.toString(),
+      subValue: "Unique buyers",
+      icon: "people",
+      color: "#9C27B0",
+    },
+  ];
+
+  const recentOrders = orders.slice(0, 5);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4285F4" />
+      </View>
+    );
+  }
+  const getStatusColor = (status: Order["status"]) => {
+    switch (status) {
+      case "pending": return "#FF9800";
+      case "confirmed": return "#4285F4";
+      case "processing": return "#2196F3";
+      case "shipped": return "#9C27B0";
+      case "delivered": return "#4CAF50";
+      case "cancelled": return "#EA4335";
+      default: return "#999";
+    }
+  };
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView 
+      style={styles.container} 
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
       {/* Welcome Section */}
       <View style={styles.welcomeSection}>
         <View style={styles.welcomeContent}>
           <Text style={styles.welcomeText}>Welcome back,</Text>
-          <Text style={styles.userName}>Auto Parts Store</Text>
+          <Text style={styles.userName}>{auth.currentUser?.email || "Seller"}</Text>
         </View>
         <TouchableOpacity style={styles.notificationButton}>
           <Ionicons name="notifications" size={24} color="#FFFFFF" />
-          <View style={styles.notificationBadge}>
-            <Text style={styles.notificationBadgeText}>3</Text>
-          </View>
+          {stats.pendingOrders > 0 && (
+            <View style={styles.notificationBadge}>
+              <Text style={styles.notificationBadgeText}>{stats.pendingOrders}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -108,21 +176,7 @@ export default function SalesmanDashboard() {
             </View>
             <Text style={styles.statValue}>{stat.value}</Text>
             <Text style={styles.statTitle}>{stat.title}</Text>
-            <View style={styles.statChange}>
-              <Ionicons
-                name={stat.isPositive ? "arrow-up" : "arrow-down"}
-                size={12}
-                color={stat.isPositive ? "#4CAF50" : "#F44336"}
-              />
-              <Text
-                style={[
-                  styles.statChangeText,
-                  { color: stat.isPositive ? "#4CAF50" : "#F44336" },
-                ]}
-              >
-                {stat.change}
-              </Text>
-            </View>
+            <Text style={styles.statSubValue}>{stat.subValue}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -132,7 +186,11 @@ export default function SalesmanDashboard() {
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.quickActionsGrid}>
           {quickActions.map((action) => (
-            <TouchableOpacity key={action.id} style={styles.quickActionItem}>
+            <TouchableOpacity 
+              key={action.id} 
+              style={styles.quickActionItem}
+              onPress={() => router.push(action.route as any)}
+            >
               <View
                 style={[
                   styles.quickActionIcon,
@@ -151,34 +209,47 @@ export default function SalesmanDashboard() {
       <View style={[styles.section, styles.lastSection]}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Orders</Text>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push("/(salesman)/orders")}>
             <Text style={styles.seeAllText}>See All</Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.ordersContainer}>
-          {recentOrders.map((order) => (
-            <TouchableOpacity key={order.id} style={styles.orderCard}>
-              <View style={styles.orderInfo}>
-                <Text style={styles.orderId}>{order.id}</Text>
-                <Text style={styles.orderCustomer}>{order.customer}</Text>
-                <Text style={styles.orderProduct}>{order.product}</Text>
-              </View>
-              <View style={styles.orderRight}>
-                <Text style={styles.orderTotal}>${order.total.toFixed(2)}</Text>
-                <View
-                  style={[
-                    styles.orderStatus,
-                    { backgroundColor: order.statusColor + "20" },
-                  ]}
-                >
-                  <Text style={[styles.orderStatusText, { color: order.statusColor }]}>
-                    {order.status}
+        {recentOrders.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="receipt-outline" size={48} color="#ccc" />
+            <Text style={styles.emptyText}>No orders yet</Text>
+          </View>
+        ) : (
+          <View style={styles.ordersContainer}>
+            {recentOrders.map((order) => (
+              <TouchableOpacity 
+                key={order.id} 
+                style={styles.orderCard}
+                onPress={() => router.push(`/order/${order.id}`)}
+              >
+                <View style={styles.orderInfo}>
+                  <Text style={styles.orderId}>{order.id}</Text>
+                  <Text style={styles.orderCustomer}>{order.userName}</Text>
+                  <Text style={styles.orderProduct}>
+                    {order.items.length} item{order.items.length > 1 ? 's' : ''}
                   </Text>
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
+                <View style={styles.orderRight}>
+                  <Text style={styles.orderTotal}>${order.total.toFixed(2)}</Text>
+                  <View
+                    style={[
+                      styles.orderStatus,
+                      { backgroundColor: getStatusColor(order.status) + "20" },
+                    ]}
+                  >
+                    <Text style={[styles.orderStatusText, { color: getStatusColor(order.status) }]}>
+                      {order.status}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -189,6 +260,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F8F9FA",
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F8F9FA",
+  },
   welcomeSection: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -196,7 +273,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FF6B35",
     paddingHorizontal: 20,
     paddingVertical: 20,
-    paddingTop: 10,
+    paddingTop: 50,
   },
   welcomeContent: {
     flex: 1,
@@ -207,7 +284,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   userName: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "bold",
     color: "#FFFFFF",
     marginTop: 4,
@@ -259,7 +336,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "bold",
     color: "#1A1A2E",
     marginBottom: 4,
@@ -267,16 +344,12 @@ const styles = StyleSheet.create({
   statTitle: {
     fontSize: 13,
     color: "#999",
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  statChange: {
-    flexDirection: "row",
-    alignItems: "center",
+  statSubValue: {
+    fontSize: 11,
+    color: "#666",
   },
-  statChangeText: {
-    fontSize: 12,
-    fontWeight: "600",
-    marginLeft: 4,
   },
   section: {
     marginTop: 20,
@@ -334,6 +407,19 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 40,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: "#999",
+    marginTop: 12,
+  },
   orderCard: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -378,4 +464,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
   },
+});
 });

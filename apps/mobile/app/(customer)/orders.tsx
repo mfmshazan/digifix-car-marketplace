@@ -1,90 +1,293 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
+  RefreshControl,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { router, useFocusEffect } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { auth } from "../../config/firebase";
+import { getBuyerOrders, type Order, type OrderItem } from "../../utils/orderManager";
 
-const orders = [
+const showAlert = (title: string, message: string) => {
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    alert(`${title}\n\n${message}`);
+  }
+};
+
+const mockOrders: Order[] = [
   {
-    id: "ORD-001",
-    date: "Dec 20, 2025",
-    status: "Delivered",
-    total: 104.97,
-    items: 3,
-    statusColor: "#4CAF50",
+    id: "ORD-2024-001",
+    userId: "mock-user",
+    userEmail: "user@example.com",
+    userName: "Mock User",
+    sellerEmail: "seller@example.com",
+    items: [
+      { id: "1", name: "Brake Pads Set", price: 45.99, quantity: 2, supplier: "AutoParts Pro" },
+      { id: "2", name: "LED Headlight Bulbs", price: 29.99, quantity: 1, supplier: "LightTech" },
+    ],
+    subtotal: 121.97,
+    shipping: 15.00,
+    tax: 9.76,
+    total: 146.73,
+    status: "delivered",
+    createdAt: "2024-01-15T10:30:00Z",
+    updatedAt: "2024-01-15T10:30:00Z",
+    confirmedByBuyer: true,
   },
   {
-    id: "ORD-002",
-    date: "Dec 18, 2025",
-    status: "In Transit",
-    total: 58.98,
-    items: 2,
-    statusColor: "#FF9800",
-  },
-  {
-    id: "ORD-003",
-    date: "Dec 15, 2025",
-    status: "Processing",
-    total: 32.99,
-    items: 1,
-    statusColor: "#2196F3",
+    id: "ORD-2024-002",
+    userId: "mock-user",
+    userEmail: "user@example.com",
+    userName: "Mock User",
+    sellerEmail: "seller@example.com",
+    items: [
+      { id: "3", name: "Oil Filter Premium", price: 24.99, quantity: 3, supplier: "FilterMax" },
+    ],
+    subtotal: 74.97,
+    shipping: 15.00,
+    tax: 6.00,
+    total: 95.97,
+    status: "shipped",
+    createdAt: "2024-01-18T14:20:00Z",
+    updatedAt: "2024-01-18T14:20:00Z",
+    confirmedByBuyer: false,
   },
 ];
 
 export default function OrdersScreen() {
-  const renderOrder = ({ item }: { item: (typeof orders)[0] }) => (
-    <TouchableOpacity style={styles.orderCard}>
-      <View style={styles.orderHeader}>
-        <View>
-          <Text style={styles.orderId}>{item.id}</Text>
-          <Text style={styles.orderDate}>{item.date}</Text>
-        </View>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: item.statusColor + "20" },
-          ]}
-        >
-          <Text style={[styles.statusText, { color: item.statusColor }]}>
-            {item.status}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.orderDivider} />
-      <View style={styles.orderFooter}>
-        <Text style={styles.orderItems}>{item.items} item(s)</Text>
-        <Text style={styles.orderTotal}>${item.total.toFixed(2)}</Text>
-      </View>
-      <TouchableOpacity style={styles.trackButton}>
-        <Ionicons name="location" size={16} color="#FF6B35" />
-        <Text style={styles.trackButtonText}>Track Order</Text>
-      </TouchableOpacity>
-    </TouchableOpacity>
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<"all" | "active" | "completed">("all");
+
+  useEffect(() => {
+    loadOrders();
+  }, []);
+
+  // Reload orders when screen is focused (e.g., after editing/cancelling order)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadOrders();
+    }, [])
   );
+
+  const loadOrders = async () => {
+    try {
+      if (!auth.currentUser?.uid) {
+        setOrders(mockOrders);
+        return;
+      }
+      
+      const userOrders = await getBuyerOrders(auth.currentUser.uid);
+      if (userOrders.length > 0) {
+        setOrders(userOrders);
+      } else {
+        setOrders(mockOrders);
+      }
+    } catch (error) {
+      console.error("Error loading orders:", error);
+      setOrders(mockOrders);
+    }
+  };
+
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => {
+      loadOrders();
+      setRefreshing(false);
+    }, 1000);
+  }, []);
+
+  const handleViewOrder = (order: Order) => {
+    router.push(`/order/${order.id}` as any);
+  };
+
+  const getStatusColor = (status: Order["status"]) => {
+    switch (status) {
+      case "pending":
+        return "#FFA000";
+      case "processing":
+        return "#2196F3";
+      case "shipped":
+        return "#673AB7";
+      case "delivered":
+        return "#4CAF50";
+      case "cancelled":
+        return "#F44336";
+      default:
+        return "#999";
+    }
+  };
+
+  const getStatusIcon = (status: Order["status"]) => {
+    switch (status) {
+      case "pending":
+        return "time-outline";
+      case "processing":
+        return "construct-outline";
+      case "shipped":
+        return "car-outline";
+      case "delivered":
+        return "checkmark-circle-outline";
+      case "cancelled":
+        return "close-circle-outline";
+      default:
+        return "ellipse-outline";
+    }
+  };
+
+  const filteredOrders = orders.filter((order) => {
+    if (filter === "all") return true;
+    if (filter === "active") return ["pending", "confirmed", "processing", "shipped"].includes(order.status);
+    if (filter === "completed") return ["delivered", "cancelled"].includes(order.status);
+    return true;
+  });
+
+  if (orders.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>My Orders</Text>
+        </View>
+        <View style={styles.emptyContainer}>
+          <Ionicons name="receipt-outline" size={80} color="#ccc" />
+          <Text style={styles.emptyTitle}>No orders yet</Text>
+          <Text style={styles.emptyText}>Your order history will appear here</Text>
+          <TouchableOpacity
+            style={styles.shopButton}
+            onPress={() => router.push("/(customer)/categories")}
+          >
+            <Text style={styles.shopButtonText}>Start Shopping</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      {orders.length > 0 ? (
-        <FlatList
-          data={orders}
-          renderItem={renderOrder}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-        />
-      ) : (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="receipt-outline" size={80} color="#CCC" />
-          <Text style={styles.emptyTitle}>No orders yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Your order history will appear here
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>My Orders</Text>
+        <TouchableOpacity onPress={onRefresh}>
+          <Ionicons name="refresh-outline" size={24} color="#4285F4" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Filter Tabs */}
+      <View style={styles.filterTabs}>
+        <TouchableOpacity
+          style={[styles.filterTab, filter === "all" && styles.filterTabActive]}
+          onPress={() => setFilter("all")}
+        >
+          <Text
+            style={[
+              styles.filterTabText,
+              filter === "all" && styles.filterTabTextActive,
+            ]}
+          >
+            All
           </Text>
-        </View>
-      )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterTab, filter === "active" && styles.filterTabActive]}
+          onPress={() => setFilter("active")}
+        >
+          <Text
+            style={[
+              styles.filterTabText,
+              filter === "active" && styles.filterTabTextActive,
+            ]}
+          >
+            Active
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterTab, filter === "completed" && styles.filterTabActive]}
+          onPress={() => setFilter("completed")}
+        >
+          <Text
+            style={[
+              styles.filterTabText,
+              filter === "completed" && styles.filterTabTextActive,
+            ]}
+          >
+            Completed
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Orders List */}
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {filteredOrders.map((order) => (
+          <TouchableOpacity
+            key={order.id}
+            style={styles.orderCard}
+            onPress={() => handleViewOrder(order)}
+          >
+            <View style={styles.orderHeader}>
+              <View>
+                <Text style={styles.orderId}>{order.id}</Text>
+                <Text style={styles.orderDate}>
+                  {new Date(order.createdAt).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.statusBadge,
+                  { backgroundColor: getStatusColor(order.status) + "20" },
+                ]}
+              >
+                <Ionicons
+                  name={getStatusIcon(order.status) as any}
+                  size={16}
+                  color={getStatusColor(order.status)}
+                />
+                <Text
+                  style={[styles.statusText, { color: getStatusColor(order.status) }]}
+                >
+                  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.orderDetails}>
+              <View style={styles.orderDetailItem}>
+                <Ionicons name="cube-outline" size={18} color="#666" />
+                <Text style={styles.orderDetailText}>{order.items.length} items</Text>
+              </View>
+              <View style={styles.orderDetailItem}>
+                <Ionicons name="cash-outline" size={18} color="#666" />
+                <Text style={styles.orderDetailText}>${order.total.toFixed(2)}</Text>
+              </View>
+              <Ionicons name="chevron-forward-outline" size={20} color="#ccc" />
+            </View>
+          </TouchableOpacity>
+        ))}
+
+        {filteredOrders.length === 0 && (
+          <View style={styles.noResults}>
+            <Text style={styles.noResultsText}>No orders found</Text>
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -92,94 +295,142 @@ export default function OrdersScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#fff",
   },
-  list: {
-    padding: 16,
-  },
-  orderCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  orderHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  orderId: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1A1A2E",
-    marginBottom: 4,
-  },
-  orderDate: {
-    fontSize: 12,
-    color: "#999",
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  orderDivider: {
-    height: 1,
-    backgroundColor: "#F0F0F0",
-    marginVertical: 16,
-  },
-  orderFooter: {
+  header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 16,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
   },
-  orderItems: {
-    fontSize: 14,
-    color: "#666",
-  },
-  orderTotal: {
-    fontSize: 18,
+  headerTitle: {
+    fontSize: 20,
     fontWeight: "bold",
-    color: "#FF6B35",
-  },
-  trackButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFF3EE",
-    borderRadius: 12,
-    height: 44,
-  },
-  trackButtonText: {
-    color: "#FF6B35",
-    fontSize: 14,
-    fontWeight: "600",
-    marginLeft: 8,
+    color: "#000",
   },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 40,
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: "600",
-    color: "#1A1A2E",
+    fontWeight: "bold",
+    color: "#000",
     marginTop: 16,
+    marginBottom: 8,
   },
-  emptySubtitle: {
+  emptyText: {
     fontSize: 14,
-    color: "#999",
-    marginTop: 8,
+    color: "#666",
+    marginBottom: 24,
+    textAlign: "center",
+  },
+  shopButton: {
+    backgroundColor: "#4285F4",
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  shopButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  filterTabs: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  filterTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: "center",
+    borderRadius: 8,
+    backgroundColor: "#F5F5F5",
+  },
+  filterTabActive: {
+    backgroundColor: "#E8F0FE",
+  },
+  filterTabText: {
+    fontSize: 14,
+    color: "#666",
+    fontWeight: "500",
+  },
+  filterTabTextActive: {
+    color: "#4285F4",
+    fontWeight: "600",
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  orderCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  orderHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
+  orderId: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#000",
+    marginBottom: 4,
+  },
+  orderDate: {
+    fontSize: 13,
+    color: "#666",
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  orderDetails: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  orderDetailItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  orderDetailText: {
+    fontSize: 14,
+    color: "#666",
+  },
+  noResults: {
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  noResultsText: {
+    fontSize: 14,
+    color: "#666",
   },
 });

@@ -1,10 +1,4 @@
-// API base URL - Using Android emulator IP
-const API_URL = 'http://10.0.2.2:3000/api';
-
-// For testing on physical device, use your computer's local IP:
-// const API_URL = 'http://192.168.1.XXX:3000/api'; // Replace XXX with your IP
-// For iOS Simulator or Web:
-// const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config/api.config';
 
 export interface RegisterData {
   email: string;

@@ -1,0 +1,70 @@
+# Docker Compose for DigiFix Car Marketplace
+# Usage:
+#   Development: docker-compose up -d
+#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  # ================================
+  # PostgreSQL Database
+  # ================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: digifix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-digifix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-digifix123}
+      POSTGRES_DB: ${POSTGRES_DB:-digifix_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-digifix} -d ${POSTGRES_DB:-digifix_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - digifix-network
+
+  # ================================
+  # Backend API Server
+  # ================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: digifix-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-digifix}:${POSTGRES_PASSWORD:-digifix123}@postgres:5432/${POSTGRES_DB:-digifix_db}?schema=public
+      DIRECT_URL: postgresql://${POSTGRES_USER:-digifix}:${POSTGRES_PASSWORD:-digifix123}@postgres:5432/${POSTGRES_DB:-digifix_db}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      FRONTEND_URL: ${FRONTEND_URL:-*}
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - digifix-network
+    # For development - mount source code
+    # volumes:
+    #   - ./backend:/app
+    #   - /app/node_modules
+
+# ================================
+# Volumes
+# ================================
+volumes:
+  postgres_data:
+    driver: local
+
+# ================================
+# Networks
+# ================================
+networks:
+  digifix-network:
+    driver: bridge

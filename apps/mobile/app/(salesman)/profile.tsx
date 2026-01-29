@@ -62,7 +62,7 @@ const menuItems = [
 
 export default function SalesmanProfileScreen() {
   const handleLogout = () => {
-    router.replace("/auth/login");
+    router.replace("/(auth)/login");
   };
 
   return (

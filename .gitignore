@@ -65,3 +65,7 @@ out/
 # Misc
 *.pem
 .cache/
+
+# Docker
+.docker/
+docker-compose.override.yml

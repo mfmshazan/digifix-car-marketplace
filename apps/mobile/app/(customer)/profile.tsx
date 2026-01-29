@@ -63,7 +63,7 @@ const menuItems = [
 export default function ProfileScreen() {
   const handleLogout = () => {
     // TODO: Implement logout logic
-    router.replace("/auth/login");
+    router.replace("/(auth)/login");
   };
 
   return (

@@ -5,9 +5,11 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { clearAuthData } from "../../src/api/storage";
 
 const menuItems = [
   {
@@ -62,7 +64,29 @@ const menuItems = [
 
 export default function SalesmanProfileScreen() {
   const handleLogout = () => {
-    router.replace("/auth/login");
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to logout?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await clearAuthData();
+              router.replace("/(auth)/login");
+            } catch (error) {
+              console.error("Logout error:", error);
+              router.replace("/(auth)/login");
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (

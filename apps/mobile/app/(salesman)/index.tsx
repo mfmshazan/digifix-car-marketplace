@@ -5,8 +5,11 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import { clearAuthData } from "../../src/api/storage";
 
 // Sample dashboard data
 const dashboardStats = [
@@ -83,6 +86,32 @@ const quickActions = [
 ];
 
 export default function SalesmanDashboard() {
+  const handleLogout = () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to logout?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await clearAuthData();
+              router.replace("/(auth)/login");
+            } catch (error) {
+              console.error("Logout error:", error);
+              router.replace("/(auth)/login");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Welcome Section */}
@@ -91,12 +120,17 @@ export default function SalesmanDashboard() {
           <Text style={styles.welcomeText}>Welcome back,</Text>
           <Text style={styles.userName}>Auto Parts Store</Text>
         </View>
-        <TouchableOpacity style={styles.notificationButton}>
-          <Ionicons name="notifications" size={24} color="#FFFFFF" />
-          <View style={styles.notificationBadge}>
-            <Text style={styles.notificationBadgeText}>3</Text>
-          </View>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity style={styles.notificationButton}>
+            <Ionicons name="notifications" size={24} color="#FFFFFF" />
+            <View style={styles.notificationBadge}>
+              <Text style={styles.notificationBadgeText}>3</Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Stats Grid */}
@@ -215,6 +249,14 @@ const styles = StyleSheet.create({
   notificationButton: {
     position: "relative",
     padding: 8,
+  },
+  logoutButton: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  headerButtons: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   notificationBadge: {
     position: "absolute",

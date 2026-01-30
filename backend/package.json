@@ -1,11 +1,11 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "main": "dist/index.js",
+  "type": "module",
+  "main": "src/index.js",
   "scripts": {
-    "dev": "nodemon --exec ts-node src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",

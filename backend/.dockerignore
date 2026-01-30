@@ -1,0 +1,49 @@
+# Dependencies
+node_modules
+npm-debug.log*
+
+# Environment files (we'll use docker-compose for env vars)
+.env
+.env.*
+!.env.example
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Logs
+logs
+*.log
+
+# Test files
+coverage
+.nyc_output
+*.test.js
+*.spec.js
+__tests__
+
+# Prisma migrations history (we copy prisma folder separately)
+# prisma/migrations/**/migration_lock.toml
+
+# Build artifacts
+dist
+build
+
+# Docker files (no need to copy into container)
+Dockerfile*
+docker-compose*
+.dockerignore

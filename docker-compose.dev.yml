@@ -1,0 +1,19 @@
+# Docker Compose Override for Development
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# This enables hot-reloading by mounting source code
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    environment:
+      NODE_ENV: development
+    volumes:
+      # Mount source code for hot-reloading
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+      # Don't mount node_modules (use container's version)
+      - /app/node_modules
+    command: npm run dev

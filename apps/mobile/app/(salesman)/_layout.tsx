@@ -48,13 +48,24 @@ export default function SalesmanTabLayout() {
         }}
       />
       <Tabs.Screen
-        name="add-product"
+        name="add-car-part"
         options={{
-          title: "Add",
+          title: "Add Part",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="add-circle" size={size} color={color} />
           ),
+          headerTitle: "Add Car Part",
+        }}
+      />
+      <Tabs.Screen
+        name="add-product"
+        options={{
+          title: "Add Product",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cube-outline" size={size} color={color} />
+          ),
           headerTitle: "Add New Product",
+          href: null, // Hide from tab bar
         }}
       />
       <Tabs.Screen

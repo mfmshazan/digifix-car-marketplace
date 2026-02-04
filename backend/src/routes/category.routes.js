@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma.js';
+import { authenticate, authorize } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
@@ -20,6 +21,28 @@ router.get('/', async (req, res) => {
     res.json({ success: true, data: categories });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch categories' });
+  }
+});
+
+// Create category (Admin/Salesman)
+router.post('/', authenticate, async (req, res) => {
+  try {
+    const { name, description, icon, image, parentId } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ success: false, message: 'Category name is required' });
+    }
+
+    const category = await prisma.category.create({
+      data: { name, description, icon, image, parentId },
+    });
+
+    res.status(201).json({ success: true, data: category });
+  } catch (error) {
+    if (error.code === 'P2002') {
+      return res.status(400).json({ success: false, message: 'Category already exists' });
+    }
+    res.status(500).json({ success: false, message: 'Failed to create category' });
   }
 });
 

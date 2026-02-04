@@ -49,6 +49,7 @@ model User {
   products      Product[]     @relation("SalesmanProducts")
   salesOrders   Order[]       @relation("SalesmanOrders")
   store         Store?
+  carParts      CarPart[]     @relation("SellerCarParts")
 
   @@index([email])
   @@index([role])
@@ -129,6 +130,7 @@ model Category {
 
   // Relations
   products    Product[]
+  carParts    CarPart[]
 
   @@index([parentId])
 }
@@ -307,4 +309,63 @@ model Review {
   @@unique([userId, productId])
   @@index([productId])
   @@index([rating])
+}
+
+// ================================
+// Car and Car Parts Models
+// ================================
+
+// Car model - represents a vehicle by number plate
+model Car {
+  id            String    @id @default(cuid())
+  numberPlate   String    @unique  // e.g., "CAB-1234", "WP-AB-5678"
+  make          String               // e.g., Toyota, Honda, Nissan
+  model         String               // e.g., Corolla, Civic, Sunny
+  year          Int                  // e.g., 2020
+  engineType    String?              // e.g., "1.8L Petrol", "2.0L Diesel"
+  color         String?
+  vinNumber     String?   @unique    // Vehicle Identification Number
+  description   String?
+  images        String[]             // Car images
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  parts         CarPart[]
+
+  @@index([numberPlate])
+  @@index([make, model])
+  @@index([year])
+}
+
+// Car Part model - parts available for specific cars
+model CarPart {
+  id              String    @id @default(cuid())
+  name            String               // e.g., "Front Brake Pad Set"
+  description     String?
+  partNumber      String?              // Manufacturer part number
+  price           Float
+  discountPrice   Float?
+  stock           Int       @default(0)
+  condition       String    @default("NEW")  // NEW, USED, REFURBISHED
+  images          String[]
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  carId           String
+  car             Car       @relation(fields: [carId], references: [id], onDelete: Cascade)
+  
+  categoryId      String
+  category        Category  @relation(fields: [categoryId], references: [id])
+  
+  sellerId        String
+  seller          User      @relation("SellerCarParts", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([carId])
+  @@index([categoryId])
+  @@index([sellerId])
+  @@index([name])
+  @@index([partNumber])
 }

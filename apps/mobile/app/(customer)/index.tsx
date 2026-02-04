@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,46 +7,27 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
+  Image,
+  ActivityIndicator,
+  Alert,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { searchPartsByNumberPlate, getAllCarParts, CarPart, Car } from "../../src/api/carParts";
 
-// Sample data for car parts
-const featuredParts = [
+// Sample data for promotions
+const promotions = [
   {
     id: "1",
-    name: "Brake Pads Set",
-    price: 45.99,
-    originalPrice: 59.99,
-    rating: 4.8,
-    reviews: 124,
-    category: "Brakes",
+    title: "Find Parts Fast",
+    description: "Search by your car number plate",
+    backgroundColor: "#FF6B35",
   },
   {
     id: "2",
-    name: "Oil Filter Premium",
-    price: 12.99,
-    originalPrice: 18.99,
-    rating: 4.6,
-    reviews: 89,
-    category: "Filters",
-  },
-  {
-    id: "3",
-    name: "Spark Plugs (4 Pack)",
-    price: 24.99,
-    originalPrice: 32.99,
-    rating: 4.9,
-    reviews: 256,
-    category: "Engine",
-  },
-  {
-    id: "4",
-    name: "Air Filter",
-    price: 19.99,
-    originalPrice: 25.99,
-    rating: 4.7,
-    reviews: 167,
-    category: "Filters",
+    title: "Free Delivery",
+    description: "On orders over Rs. 5000",
+    backgroundColor: "#4ECDC4",
   },
 ];
 
@@ -59,23 +40,63 @@ const categories = [
   { id: "6", name: "More", icon: "ellipsis-horizontal", color: "#999" },
 ];
 
-const promotions = [
-  {
-    id: "1",
-    title: "Summer Sale",
-    description: "Up to 40% off on brake systems",
-    backgroundColor: "#FF6B35",
-  },
-  {
-    id: "2",
-    title: "Free Delivery",
-    description: "On orders over $50",
-    backgroundColor: "#4ECDC4",
-  },
-];
-
 export default function CustomerHomeScreen() {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [numberPlateQuery, setNumberPlateQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<{ car: Car; parts: CarPart[] } | null>(null);
+  const [showResults, setShowResults] = useState(false);
+  const [featuredParts, setFeaturedParts] = useState<CarPart[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load featured parts on mount
+  useEffect(() => {
+    loadFeaturedParts();
+  }, []);
+
+  const loadFeaturedParts = async () => {
+    try {
+      setIsLoading(true);
+      const response = await getAllCarParts({ limit: 10 });
+      if (response.success) {
+        setFeaturedParts(response.data.parts);
+      }
+    } catch (error) {
+      console.error("Failed to load featured parts:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle number plate search
+  const handleSearchByNumberPlate = async () => {
+    if (!numberPlateQuery.trim()) {
+      Alert.alert("Enter Number Plate", "Please enter a car number plate to search");
+      return;
+    }
+
+    try {
+      setIsSearching(true);
+      const response = await searchPartsByNumberPlate(numberPlateQuery.trim());
+      
+      if (response.success && response.data) {
+        setSearchResults({
+          car: response.data.car,
+          parts: response.data.parts,
+        });
+        setShowResults(true);
+      } else {
+        Alert.alert(
+          "No Results",
+          `No car found with number plate "${numberPlateQuery.toUpperCase()}". Please check the number plate and try again.`
+        );
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+      Alert.alert("Search Failed", "Could not search for parts. Please try again.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   const renderCategoryItem = ({ item }: { item: (typeof categories)[0] }) => (
     <TouchableOpacity style={styles.categoryItem}>
@@ -86,31 +107,46 @@ export default function CustomerHomeScreen() {
     </TouchableOpacity>
   );
 
-  const renderProductItem = ({ item }: { item: (typeof featuredParts)[0] }) => (
+  const renderPartItem = ({ item }: { item: CarPart }) => (
     <TouchableOpacity style={styles.productCard}>
       <View style={styles.productImageContainer}>
-        <View style={styles.productImagePlaceholder}>
-          <Ionicons name="car-sport" size={40} color="#FF6B35" />
-        </View>
-        <View style={styles.discountBadge}>
-          <Text style={styles.discountText}>
-            -{Math.round(((item.originalPrice - item.price) / item.originalPrice) * 100)}%
-          </Text>
+        {item.images && item.images.length > 0 ? (
+          <Image 
+            source={{ uri: item.images[0] }} 
+            style={styles.productImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.productImagePlaceholder}>
+            <Ionicons name="car-sport" size={40} color="#FF6B35" />
+          </View>
+        )}
+        {item.discountPrice && (
+          <View style={styles.discountBadge}>
+            <Text style={styles.discountText}>
+              -{Math.round(((item.price - item.discountPrice) / item.price) * 100)}%
+            </Text>
+          </View>
+        )}
+        <View style={[styles.conditionBadge, { 
+          backgroundColor: item.condition === 'NEW' ? '#4ECDC4' : item.condition === 'USED' ? '#FF6B35' : '#9B59B6' 
+        }]}>
+          <Text style={styles.conditionText}>{item.condition}</Text>
         </View>
       </View>
       <View style={styles.productInfo}>
-        <Text style={styles.productCategory}>{item.category}</Text>
+        <Text style={styles.productCategory}>{item.category.name}</Text>
         <Text style={styles.productName} numberOfLines={2}>
           {item.name}
         </Text>
-        <View style={styles.ratingContainer}>
-          <Ionicons name="star" size={14} color="#FFD700" />
-          <Text style={styles.ratingText}>{item.rating}</Text>
-          <Text style={styles.reviewsText}>({item.reviews})</Text>
-        </View>
+        <Text style={styles.carInfo} numberOfLines={1}>
+          {item.car.make} {item.car.model} ({item.car.year})
+        </Text>
         <View style={styles.priceContainer}>
-          <Text style={styles.price}>${item.price.toFixed(2)}</Text>
-          <Text style={styles.originalPrice}>${item.originalPrice.toFixed(2)}</Text>
+          <Text style={styles.price}>Rs. {(item.discountPrice || item.price).toLocaleString()}</Text>
+          {item.discountPrice && (
+            <Text style={styles.originalPrice}>Rs. {item.price.toLocaleString()}</Text>
+          )}
         </View>
       </View>
       <TouchableOpacity style={styles.addToCartButton}>
@@ -131,82 +167,213 @@ export default function CustomerHomeScreen() {
     </TouchableOpacity>
   );
 
+  // Search Results Modal
+  const renderSearchResultsModal = () => (
+    <Modal
+      visible={showResults}
+      animationType="slide"
+      onRequestClose={() => setShowResults(false)}
+    >
+      <View style={styles.modalContainer}>
+        {/* Header */}
+        <View style={styles.modalHeader}>
+          <TouchableOpacity onPress={() => setShowResults(false)}>
+            <Ionicons name="arrow-back" size={24} color="#1A1A2E" />
+          </TouchableOpacity>
+          <Text style={styles.modalTitle}>Search Results</Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        {searchResults && (
+          <>
+            {/* Car Info Card */}
+            <View style={styles.carInfoCard}>
+              <View style={styles.carInfoHeader}>
+                <Ionicons name="car" size={32} color="#FF6B35" />
+                <View style={styles.carInfoText}>
+                  <Text style={styles.numberPlateText}>{searchResults.car.numberPlate}</Text>
+                  <Text style={styles.carModelText}>
+                    {searchResults.car.make} {searchResults.car.model} ({searchResults.car.year})
+                  </Text>
+                  {searchResults.car.engineType && (
+                    <Text style={styles.carEngineText}>{searchResults.car.engineType}</Text>
+                  )}
+                </View>
+              </View>
+              {searchResults.car.images && searchResults.car.images.length > 0 && (
+                <Image 
+                  source={{ uri: searchResults.car.images[0] }} 
+                  style={styles.carImage}
+                  resizeMode="cover"
+                />
+              )}
+            </View>
+
+            {/* Parts Count */}
+            <View style={styles.partsCountContainer}>
+              <Text style={styles.partsCountText}>
+                {searchResults.parts.length} parts available
+              </Text>
+            </View>
+
+            {/* Parts List */}
+            <FlatList
+              data={searchResults.parts}
+              renderItem={({ item }) => (
+                <TouchableOpacity style={styles.partListItem}>
+                  <View style={styles.partImageContainer}>
+                    {item.images && item.images.length > 0 ? (
+                      <Image 
+                        source={{ uri: item.images[0] }} 
+                        style={styles.partListImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.partListImagePlaceholder}>
+                        <Ionicons name="construct" size={24} color="#FF6B35" />
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.partListInfo}>
+                    <View style={styles.partListHeader}>
+                      <Text style={styles.partListCategory}>{item.category.name}</Text>
+                      <View style={[styles.conditionBadgeSmall, { 
+                        backgroundColor: item.condition === 'NEW' ? '#4ECDC4' : item.condition === 'USED' ? '#FF6B35' : '#9B59B6' 
+                      }]}>
+                        <Text style={styles.conditionTextSmall}>{item.condition}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.partListName} numberOfLines={2}>{item.name}</Text>
+                    {item.partNumber && (
+                      <Text style={styles.partNumber}>Part #: {item.partNumber}</Text>
+                    )}
+                    <View style={styles.partListPriceRow}>
+                      <Text style={styles.partListPrice}>
+                        Rs. {(item.discountPrice || item.price).toLocaleString()}
+                      </Text>
+                      {item.discountPrice && (
+                        <Text style={styles.partListOriginalPrice}>
+                          Rs. {item.price.toLocaleString()}
+                        </Text>
+                      )}
+                      <Text style={styles.stockText}>
+                        {item.stock > 0 ? `${item.stock} in stock` : 'Out of stock'}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity style={styles.addButton}>
+                    <Ionicons name="add-circle" size={32} color="#FF6B35" />
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              )}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.partsList}
+              showsVerticalScrollIndicator={false}
+            />
+          </>
+        )}
+      </View>
+    </Modal>
+  );
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={20} color="#999" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search car parts..."
-            placeholderTextColor="#999"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+    <View style={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Number Plate Search Bar */}
+        <View style={styles.searchContainer}>
+          <Text style={styles.searchTitle}>Find Parts by Number Plate</Text>
+          <View style={styles.searchBar}>
+            <Ionicons name="car" size={20} color="#999" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Enter number plate (e.g., CAB-1234)"
+              placeholderTextColor="#999"
+              value={numberPlateQuery}
+              onChangeText={setNumberPlateQuery}
+              autoCapitalize="characters"
+              onSubmitEditing={handleSearchByNumberPlate}
+            />
+            <TouchableOpacity 
+              onPress={handleSearchByNumberPlate}
+              style={styles.searchButton}
+              disabled={isSearching}
+            >
+              {isSearching ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Ionicons name="search" size={20} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.searchHint}>
+            Try: CAB-1234, WP-KA-5678, CAA-9012, WP-CAD-3456, CAC-7890
+          </Text>
+        </View>
+
+        {/* Promotions Carousel */}
+        <View style={styles.section}>
+          <FlatList
+            data={promotions}
+            renderItem={renderPromotionItem}
+            keyExtractor={(item) => item.id}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.promotionsList}
           />
-          <TouchableOpacity>
-            <Ionicons name="options" size={20} color="#FF6B35" />
-          </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Promotions Carousel */}
-      <View style={styles.section}>
-        <FlatList
-          data={promotions}
-          renderItem={renderPromotionItem}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.promotionsList}
-        />
-      </View>
-
-      {/* Categories */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Categories</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAllText}>See All</Text>
-          </TouchableOpacity>
+        {/* Categories */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Categories</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={categories}
+            renderItem={renderCategoryItem}
+            keyExtractor={(item) => item.id}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoriesList}
+          />
         </View>
-        <FlatList
-          data={categories}
-          renderItem={renderCategoryItem}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoriesList}
-        />
-      </View>
 
-      {/* Featured Products */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Featured Parts</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAllText}>See All</Text>
-          </TouchableOpacity>
+        {/* Featured Products */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Featured Parts</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#FF6B35" style={{ marginVertical: 20 }} />
+          ) : (
+            <FlatList
+              data={featuredParts}
+              renderItem={renderPartItem}
+              keyExtractor={(item) => item.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.productsList}
+            />
+          )}
         </View>
-        <FlatList
-          data={featuredParts}
-          renderItem={renderProductItem}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.productsList}
-        />
-      </View>
 
       {/* Quick Actions */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.quickActionItem}>
+          <TouchableOpacity style={styles.quickActionItem} onPress={() => {
+            // Focus on number plate search
+            Alert.alert("Search by Number Plate", "Enter your car number plate above to find compatible parts!");
+          }}>
             <View style={[styles.quickActionIcon, { backgroundColor: "#FFF3EE" }]}>
               <Ionicons name="car" size={24} color="#FF6B35" />
             </View>
-            <Text style={styles.quickActionText}>Find by Vehicle</Text>
+            <Text style={styles.quickActionText}>Find by Plate</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickActionItem}>
             <View style={[styles.quickActionIcon, { backgroundColor: "#E8F8F5" }]}>
@@ -231,16 +398,24 @@ export default function CustomerHomeScreen() {
             <Text style={styles.seeAllText}>See All</Text>
           </TouchableOpacity>
         </View>
-        <FlatList
-          data={featuredParts.slice().reverse()}
-          renderItem={renderProductItem}
-          keyExtractor={(item) => `best-${item.id}`}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.productsList}
-        />
+        {isLoading ? (
+          <ActivityIndicator size="large" color="#FF6B35" style={{ marginVertical: 20 }} />
+        ) : (
+          <FlatList
+            data={featuredParts.slice().reverse()}
+            renderItem={renderPartItem}
+            keyExtractor={(item) => `best-${item.id}`}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.productsList}
+          />
+        )}
       </View>
     </ScrollView>
+
+    {/* Search Results Modal */}
+    {renderSearchResultsModal()}
+  </View>
   );
 }
 
@@ -251,15 +426,21 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     backgroundColor: "#FF6B35",
+  },
+  searchTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    marginBottom: 12,
   },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
-    paddingHorizontal: 16,
+    paddingLeft: 16,
     height: 48,
   },
   searchInput: {
@@ -267,6 +448,21 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontSize: 16,
     color: "#1A1A2E",
+  },
+  searchButton: {
+    backgroundColor: "#FF6B35",
+    height: 48,
+    width: 48,
+    justifyContent: "center",
+    alignItems: "center",
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
+  },
+  searchHint: {
+    fontSize: 11,
+    color: "#FFFFFF",
+    opacity: 0.8,
+    marginTop: 8,
   },
   section: {
     marginTop: 20,
@@ -285,6 +481,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: "#1A1A2E",
+    paddingHorizontal: 16,
   },
   seeAllText: {
     fontSize: 14,
@@ -350,7 +547,7 @@ const styles = StyleSheet.create({
   productCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    width: 160,
+    width: 180,
     marginRight: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -360,6 +557,12 @@ const styles = StyleSheet.create({
   },
   productImageContainer: {
     position: "relative",
+  },
+  productImage: {
+    height: 120,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    width: "100%",
   },
   productImagePlaceholder: {
     height: 120,
@@ -383,6 +586,19 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "bold",
   },
+  conditionBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  conditionText: {
+    color: "#FFFFFF",
+    fontSize: 9,
+    fontWeight: "bold",
+  },
   productInfo: {
     padding: 12,
   },
@@ -396,35 +612,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#1A1A2E",
+    marginBottom: 4,
+  },
+  carInfo: {
+    fontSize: 11,
+    color: "#666",
     marginBottom: 6,
-  },
-  ratingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  ratingText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#1A1A2E",
-    marginLeft: 4,
-  },
-  reviewsText: {
-    fontSize: 12,
-    color: "#999",
-    marginLeft: 2,
   },
   priceContainer: {
     flexDirection: "row",
     alignItems: "center",
   },
   price: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "bold",
     color: "#FF6B35",
   },
   originalPrice: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#999",
     textDecorationLine: "line-through",
     marginLeft: 8,
@@ -462,5 +667,167 @@ const styles = StyleSheet.create({
     color: "#666",
     fontWeight: "500",
     textAlign: "center",
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "#F8F9FA",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1A1A2E",
+  },
+  carInfoCard: {
+    backgroundColor: "#FFFFFF",
+    margin: 16,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  carInfoHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  carInfoText: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  numberPlateText: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#FF6B35",
+    marginBottom: 4,
+  },
+  carModelText: {
+    fontSize: 16,
+    color: "#1A1A2E",
+    fontWeight: "500",
+  },
+  carEngineText: {
+    fontSize: 14,
+    color: "#666",
+    marginTop: 2,
+  },
+  carImage: {
+    height: 150,
+    borderRadius: 12,
+    marginTop: 16,
+    width: "100%",
+  },
+  partsCountContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  partsCountText: {
+    fontSize: 14,
+    color: "#666",
+    fontWeight: "500",
+  },
+  partsList: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+  partListItem: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  partImageContainer: {
+    marginRight: 12,
+  },
+  partListImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  partListImagePlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: "#FFF3EE",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  partListInfo: {
+    flex: 1,
+  },
+  partListHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  partListCategory: {
+    fontSize: 11,
+    color: "#999",
+    textTransform: "uppercase",
+    marginRight: 8,
+  },
+  conditionBadgeSmall: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  conditionTextSmall: {
+    color: "#FFFFFF",
+    fontSize: 8,
+    fontWeight: "bold",
+  },
+  partListName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1A1A2E",
+    marginBottom: 4,
+  },
+  partNumber: {
+    fontSize: 11,
+    color: "#999",
+    marginBottom: 4,
+  },
+  partListPriceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  partListPrice: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: "#FF6B35",
+  },
+  partListOriginalPrice: {
+    fontSize: 11,
+    color: "#999",
+    textDecorationLine: "line-through",
+    marginLeft: 8,
+  },
+  stockText: {
+    fontSize: 11,
+    color: "#4ECDC4",
+    marginLeft: "auto",
+  },
+  addButton: {
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 8,
   },
 });

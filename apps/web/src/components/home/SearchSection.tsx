@@ -53,7 +53,7 @@ export default function SearchSection() {
   };
 
   return (
-    <section id="search" className="py-16 px-4 sm:px-6 lg:px-8 bg-dark-900/50">
+    <section id="search" className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-50">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-10">
           <h2 className="section-title mb-2">Find Parts for Your Car</h2>
@@ -64,7 +64,7 @@ export default function SearchSection() {
         <form onSubmit={handleSearch} className="max-w-2xl mx-auto mb-8">
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <Car className="w-5 h-5 text-dark-400" />
+              <Car className="w-5 h-5 text-gray-400" />
             </div>
             <input
               type="text"
@@ -78,7 +78,7 @@ export default function SearchSection() {
                 <button
                   type="button"
                   onClick={clearSearch}
-                  className="p-2 text-dark-400 hover:text-white mr-1"
+                  className="p-2 text-gray-400 hover:text-gray-700 mr-1"
                   aria-label="Clear search"
                 >
                   <X className="w-5 h-5" />
@@ -103,9 +103,9 @@ export default function SearchSection() {
         {/* Error Message */}
         {error && (
           <div className="max-w-2xl mx-auto mb-8">
-            <div className="bg-primary-500/10 border border-primary-500/30 rounded-xl p-4 text-center">
-              <p className="text-primary-400">{error}</p>
-              <p className="text-dark-400 text-sm mt-2">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+              <p className="text-red-600">{error}</p>
+              <p className="text-gray-600 text-sm mt-2">
                 Please check the number plate and try again, or browse our catalog manually.
               </p>
             </div>
@@ -116,17 +116,17 @@ export default function SearchSection() {
         {searchResult && (
           <div className="max-w-7xl mx-auto">
             {/* Car Info Card */}
-            <div className="bg-gradient-to-r from-primary-500/10 to-dark-800/50 border border-primary-500/30 rounded-2xl p-6 mb-8">
+            <div className="bg-gradient-to-r from-primary-500 to-primary-600 rounded-2xl p-6 mb-8 shadow-lg">
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-primary-500/20 rounded-xl flex items-center justify-center">
-                  <Car className="w-8 h-8 text-primary-500" />
+                <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center">
+                  <Car className="w-8 h-8 text-white" />
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-white">
                     {searchResult.car.make} {searchResult.car.model} ({searchResult.car.year})
                   </h3>
-                  <p className="text-dark-400">
-                    Number Plate: <span className="text-primary-500 font-semibold">{searchResult.car.numberPlate}</span>
+                  <p className="text-white/80">
+                    Number Plate: <span className="text-white font-semibold">{searchResult.car.numberPlate}</span>
                     {searchResult.car.engineType && (
                       <span className="ml-4">Engine: {searchResult.car.engineType}</span>
                     )}
@@ -137,7 +137,7 @@ export default function SearchSection() {
 
             {/* Parts Grid */}
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold text-white">
+              <h3 className="text-xl font-semibold text-gray-900">
                 Available Parts ({searchResult.parts.length})
               </h3>
             </div>
@@ -149,8 +149,8 @@ export default function SearchSection() {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12 bg-dark-800/30 rounded-2xl border border-dark-700">
-                <p className="text-dark-400">No parts available for this vehicle at the moment.</p>
+              <div className="text-center py-12 bg-white rounded-2xl border border-gray-200 shadow-sm">
+                <p className="text-gray-600">No parts available for this vehicle at the moment.</p>
               </div>
             )}
           </div>
@@ -160,17 +160,17 @@ export default function SearchSection() {
         {!searchResult && !error && (
           <div className="max-w-2xl mx-auto">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-dark-800/30 border border-dark-700 rounded-xl p-4 text-center">
+              <div className="bg-white border border-gray-200 rounded-xl p-4 text-center shadow-sm">
                 <div className="text-2xl mb-2">🚗</div>
-                <div className="text-sm text-dark-400">Works with all vehicle types</div>
+                <div className="text-sm text-gray-600">Works with all vehicle types</div>
               </div>
-              <div className="bg-dark-800/30 border border-dark-700 rounded-xl p-4 text-center">
+              <div className="bg-white border border-gray-200 rounded-xl p-4 text-center shadow-sm">
                 <div className="text-2xl mb-2">⚡</div>
-                <div className="text-sm text-dark-400">Instant compatible part search</div>
+                <div className="text-sm text-gray-600">Instant compatible part search</div>
               </div>
-              <div className="bg-dark-800/30 border border-dark-700 rounded-xl p-4 text-center">
+              <div className="bg-white border border-gray-200 rounded-xl p-4 text-center shadow-sm">
                 <div className="text-2xl mb-2">✓</div>
-                <div className="text-sm text-dark-400">100% accurate matching</div>
+                <div className="text-sm text-gray-600">100% accurate matching</div>
               </div>
             </div>
           </div>

@@ -37,10 +37,10 @@ export default function FeaturesSection() {
               <div className="w-14 h-14 mx-auto mb-4 bg-primary-500/10 rounded-xl flex items-center justify-center">
                 <Icon className="w-7 h-7 text-primary-500" />
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 {feature.title}
               </h3>
-              <p className="text-dark-400 text-sm">
+              <p className="text-gray-600 text-sm">
                 {feature.description}
               </p>
             </div>

@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { searchPartsByNumberPlate, getAllCarParts, CarPart, Car } from "../../src/api/carParts";
+import { useCart } from "../../src/store/cartStore";
 
 // Sample data for promotions - Blue, Black & White Theme
 const promotions = [
@@ -48,6 +49,25 @@ export default function CustomerHomeScreen() {
   const [showResults, setShowResults] = useState(false);
   const [featuredParts, setFeaturedParts] = useState<CarPart[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { addItem } = useCart();
+
+  // Handle adding item to cart
+  const handleAddToCart = (part: CarPart) => {
+    addItem({
+      id: part.id,
+      name: part.name,
+      price: part.price,
+      discountPrice: part.discountPrice,
+      image: part.images?.[0],
+      carInfo: `${part.car.make} ${part.car.model} (${part.car.year})`,
+      categoryName: part.category.name,
+    });
+    Alert.alert(
+      "Added to Cart",
+      `${part.name} has been added to your cart.`,
+      [{ text: "OK" }]
+    );
+  };
 
   // Load featured parts on mount
   useEffect(() => {
@@ -143,7 +163,10 @@ export default function CustomerHomeScreen() {
           )}
         </View>
       </View>
-      <TouchableOpacity style={styles.addToCartButton}>
+      <TouchableOpacity 
+        style={styles.addToCartButton}
+        onPress={() => handleAddToCart(item)}
+      >
         <Ionicons name="add" size={20} color="#FFFFFF" />
       </TouchableOpacity>
     </TouchableOpacity>
@@ -255,8 +278,17 @@ export default function CustomerHomeScreen() {
                       </Text>
                     </View>
                   </View>
-                  <TouchableOpacity style={styles.addButton}>
-                    <Ionicons name="add-circle" size={32} color="#FF6B35" />
+                  <TouchableOpacity 
+                    style={styles.addButton}
+                    onPress={() => handleAddToCart(item)}
+                    disabled={item.stock <= 0}
+                  >
+                    <Ionicons 
+                      name="add-circle" 
+                      size={32} 
+                      color={item.stock > 0 ? "#00002E" : "#CCC"} 
+                    />
+                  </TouchableOpacity>
                   </TouchableOpacity>
                 </TouchableOpacity>
               )}

@@ -4,22 +4,33 @@ import { authenticate, authorize } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
-// Get all categories
+// Get all categories with products and car parts count
 router.get('/', async (req, res) => {
   try {
     const categories = await prisma.category.findMany({
       include: {
         children: true,
         _count: {
-          select: { products: true },
+          select: { 
+            products: true,
+            carParts: true 
+          },
         },
       },
       where: {
         parentId: null, // Only top-level categories
       },
     });
-    res.json({ success: true, data: categories });
+    
+    // Add total count (products + carParts)
+    const categoriesWithTotalCount = categories.map(cat => ({
+      ...cat,
+      totalPartsCount: cat._count.products + cat._count.carParts,
+    }));
+    
+    res.json({ success: true, data: categoriesWithTotalCount });
   } catch (error) {
+    console.error('Category fetch error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch categories' });
   }
 });
@@ -46,16 +57,38 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// Get category by ID
+// Get category by ID with its products and car parts
 router.get('/:id', async (req, res) => {
   try {
+    const { page = 1, limit = 20 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
     const category = await prisma.category.findUnique({
       where: { id: req.params.id },
       include: {
         children: true,
         products: {
           where: { isActive: true },
-          take: 20,
+          take: parseInt(limit),
+          skip,
+          include: {
+            salesman: {
+              select: { id: true, name: true }
+            }
+          }
+        },
+        carParts: {
+          where: { isActive: true },
+          take: parseInt(limit),
+          skip,
+          include: {
+            seller: {
+              select: { id: true, name: true }
+            },
+            car: {
+              select: { id: true, numberPlate: true, make: true, model: true, year: true }
+            }
+          }
         },
       },
     });
@@ -64,9 +97,97 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Category not found' });
     }
     
-    res.json({ success: true, data: category });
+    // Get total counts for pagination
+    const [productsCount, carPartsCount] = await Promise.all([
+      prisma.product.count({ where: { categoryId: req.params.id, isActive: true } }),
+      prisma.carPart.count({ where: { categoryId: req.params.id, isActive: true } })
+    ]);
+    
+    res.json({ 
+      success: true, 
+      data: {
+        ...category,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalProducts: productsCount,
+          totalCarParts: carPartsCount,
+          total: productsCount + carPartsCount
+        }
+      }
+    });
   } catch (error) {
+    console.error('Category fetch error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch category' });
+  }
+});
+
+// Get parts by category name (for search by category name like "Brakes")
+router.get('/name/:name/parts', async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const categoryName = req.params.name;
+    
+    // Find category by name (case-insensitive)
+    const category = await prisma.category.findFirst({
+      where: { 
+        name: { 
+          equals: categoryName,
+          mode: 'insensitive'
+        } 
+      }
+    });
+    
+    if (!category) {
+      return res.status(404).json({ success: false, message: 'Category not found' });
+    }
+    
+    // Get car parts in this category
+    const [carParts, products, carPartsCount, productsCount] = await Promise.all([
+      prisma.carPart.findMany({
+        where: { categoryId: category.id, isActive: true },
+        take: parseInt(limit),
+        skip,
+        include: {
+          seller: { select: { id: true, name: true } },
+          car: { select: { id: true, numberPlate: true, make: true, model: true, year: true } },
+          category: { select: { id: true, name: true, icon: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.product.findMany({
+        where: { categoryId: category.id, isActive: true },
+        take: parseInt(limit),
+        skip,
+        include: {
+          salesman: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true, icon: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.carPart.count({ where: { categoryId: category.id, isActive: true } }),
+      prisma.product.count({ where: { categoryId: category.id, isActive: true } })
+    ]);
+    
+    res.json({ 
+      success: true, 
+      data: {
+        category,
+        carParts,
+        products,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalCarParts: carPartsCount,
+          totalProducts: productsCount,
+          total: carPartsCount + productsCount
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Category parts fetch error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch category parts' });
   }
 });
 

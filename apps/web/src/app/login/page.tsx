@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, Eye, EyeOff, Car, Loader2 } from 'lucide-react';
 import { authApi } from '@/lib/api';
+import { useAuthStore } from '@/store/authStore';
 
 export default function LoginPage() {
   const router = useRouter();
+  const login = useAuthStore((state) => state.login);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -24,8 +26,15 @@ export default function LoginPage() {
       const response = await authApi.login(email, password);
       
       if (response.success) {
-        localStorage.setItem('digifix_token', response.data.token);
-        router.push('/');
+        const { user, token } = response.data;
+        login(user, token);
+        
+        // Redirect based on user role
+        if (user.role === 'SALESMAN') {
+          router.push('/dashboard/salesman');
+        } else {
+          router.push('/dashboard/customer');
+        }
       } else {
         setError(response.message || 'Login failed');
       }
@@ -50,7 +59,7 @@ export default function LoginPage() {
             </span>
           </Link>
           <h1 className="text-2xl font-bold text-white mb-2">Welcome Back</h1>
-          <p className="text-dark-400">Sign in to your account to continue</p>
+          <p className="text-gray-500">Sign in to your account to continue</p>
         </div>
 
         {/* Form */}
@@ -63,9 +72,9 @@ export default function LoginPage() {
             )}
 
             <div>
-              <label className="block text-sm text-dark-400 mb-2">Email Address</label>
+              <label className="block text-sm text-gray-600 mb-2">Email Address</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="email"
                   value={email}
@@ -78,9 +87,9 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm text-dark-400 mb-2">Password</label>
+              <label className="block text-sm text-gray-600 mb-2">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
@@ -92,7 +101,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-white"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -101,8 +110,8 @@ export default function LoginPage() {
 
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500" />
-                <span className="text-sm text-dark-400">Remember me</span>
+                <input type="checkbox" className="w-4 h-4 rounded border-gray-300 bg-white text-primary-500 focus:ring-primary-500" />
+                <span className="text-sm text-gray-600">Remember me</span>
               </label>
               <Link href="/forgot-password" className="text-sm text-primary-500 hover:text-primary-400">
                 Forgot password?
@@ -123,7 +132,7 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6 text-center">
-            <p className="text-dark-400 text-sm">
+            <p className="text-gray-600 text-sm">
               Don't have an account?{' '}
               <Link href="/register" className="text-primary-500 hover:text-primary-400 font-medium">
                 Sign up

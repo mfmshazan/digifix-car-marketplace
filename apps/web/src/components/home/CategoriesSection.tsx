@@ -44,10 +44,10 @@ export default function CategoriesSection() {
                 <div className={`w-14 h-14 mx-auto mb-3 rounded-xl ${category.color}/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
                   <Icon className={`w-7 h-7 text-${category.color.split('-')[1]}-500`} style={{ color: category.color === 'bg-primary-500' ? '#2563EB' : undefined }} />
                 </div>
-                <h3 className="text-sm font-semibold text-white mb-1">
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">
                   {category.name}
                 </h3>
-                <p className="text-xs text-dark-400">
+                <p className="text-xs text-gray-500">
                   {category.count}+ items
                 </p>
               </div>

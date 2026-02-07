@@ -7,6 +7,7 @@ import { Search, ArrowRight, Star, ShoppingCart, ChevronRight, Zap, Shield, Truc
 import { carPartsApi, CarPart } from '@/lib/api';
 import { useCartStore } from '@/store/cartStore';
 import ProductCard from '@/components/products/ProductCard';
+import ProductDetailModal from '@/components/products/ProductDetailModal';
 import HeroSection from '@/components/home/HeroSection';
 import SearchSection from '@/components/home/SearchSection';
 import CategoriesSection from '@/components/home/CategoriesSection';
@@ -15,6 +16,8 @@ import FeaturesSection from '@/components/home/FeaturesSection';
 export default function HomePage() {
   const [featuredParts, setFeaturedParts] = useState<CarPart[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedPart, setSelectedPart] = useState<CarPart | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     loadFeaturedParts();
@@ -32,6 +35,16 @@ export default function HomePage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleViewDetails = (part: CarPart) => {
+    setSelectedPart(part);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedPart(null);
   };
 
   return (
@@ -56,11 +69,11 @@ export default function HomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="card animate-pulse">
-                <div className="h-48 bg-dark-700"></div>
-                <div className="p-4 space-y-3">
-                  <div className="h-4 bg-dark-700 rounded w-1/2"></div>
-                  <div className="h-6 bg-dark-700 rounded"></div>
-                  <div className="h-4 bg-dark-700 rounded w-3/4"></div>
+                <div className="h-48 bg-gray-200"></div>
+                <div className="p-4 space-y-2">
+                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                  <div className="h-6 bg-gray-200 rounded"></div>
+                  <div className="h-4 bg-gray-200 rounded w-3/4"></div>
                 </div>
               </div>
             ))}
@@ -68,12 +81,12 @@ export default function HomePage() {
         ) : featuredParts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {featuredParts.map((part) => (
-              <ProductCard key={part.id} part={part} />
+              <ProductCard key={part.id} part={part} onViewDetails={handleViewDetails} />
             ))}
           </div>
         ) : (
           <div className="text-center py-12">
-            <p className="text-dark-400">No featured parts available at the moment.</p>
+            <p className="text-gray-500">No featured parts available at the moment.</p>
           </div>
         )}
 
@@ -99,7 +112,7 @@ export default function HomePage() {
                   Upgrade your driving experience with premium steering components
                 </p>
               </div>
-              <Link href="/parts?category=steering" className="bg-white text-primary-600 font-semibold py-4 px-8 rounded-xl hover:bg-dark-100 transition-all duration-300 transform hover:scale-105 whitespace-nowrap">
+              <Link href="/parts?category=steering" className="bg-white text-primary-600 font-semibold py-4 px-8 rounded-xl hover:bg-gray-100 transition-all duration-300 transform hover:scale-105 whitespace-nowrap">
                 Shop Now
               </Link>
             </div>
@@ -113,24 +126,31 @@ export default function HomePage() {
       <FeaturesSection />
 
       {/* Newsletter Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-dark-900/50">
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-primary-500 to-primary-600">
         <div className="max-w-3xl mx-auto text-center">
-          <h2 className="section-title mb-4">Stay Updated</h2>
-          <p className="section-subtitle mb-8">
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Stay Updated</h2>
+          <p className="text-white/80 text-lg mb-8">
             Subscribe to our newsletter for exclusive deals and new arrivals
           </p>
           <form className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
             <input
               type="email"
               placeholder="Enter your email"
-              className="input-field flex-1"
+              className="flex-1 px-4 py-3 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white/30"
             />
-            <button type="submit" className="btn-primary whitespace-nowrap">
+            <button type="submit" className="bg-white text-primary-600 font-semibold py-3 px-6 rounded-xl hover:bg-gray-100 transition-colors whitespace-nowrap">
               Subscribe
             </button>
           </form>
         </div>
       </section>
+
+      {/* Product Detail Modal */}
+      <ProductDetailModal
+        part={selectedPart}
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+      />
     </div>
   );
 }

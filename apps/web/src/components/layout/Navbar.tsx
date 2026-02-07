@@ -2,13 +2,16 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Menu, X, ShoppingCart, User, Search, Car } from 'lucide-react';
+import { Menu, X, ShoppingCart, User, Search, Car, LogOut, LayoutDashboard } from 'lucide-react';
 import { useCartStore } from '@/store/cartStore';
+import { useAuthStore } from '@/store/authStore';
 
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const cartItems = useCartStore((state) => state.items);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const { user, isAuthenticated, logout } = useAuthStore();
 
   const navLinks = [
     { href: '/', label: 'Home' },
@@ -17,6 +20,13 @@ export default function Navbar() {
     { href: '/about', label: 'About' },
     { href: '/contact', label: 'Contact' },
   ];
+
+  const dashboardLink = user?.role === 'SALESMAN' ? '/dashboard/salesman' : '/dashboard/customer';
+
+  const handleLogout = () => {
+    logout();
+    setShowUserMenu(false);
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
@@ -63,9 +73,41 @@ export default function Navbar() {
               )}
             </Link>
 
-            <Link href="/login" className="btn-secondary text-sm py-2 px-4">
-              Sign In
-            </Link>
+            {isAuthenticated ? (
+              <div className="relative">
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center gap-2 p-2 text-gray-600 hover:text-primary-500 transition-colors"
+                >
+                  <User className="w-5 h-5" />
+                  <span className="text-sm font-medium">{user?.name || 'User'}</span>
+                </button>
+                
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 z-50 border border-gray-200">
+                    <Link
+                      href={dashboardLink}
+                      className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors"
+                      onClick={() => setShowUserMenu(false)}
+                    >
+                      <LayoutDashboard className="w-4 h-4" />
+                      Dashboard
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      className="flex items-center gap-2 w-full px-4 py-2 text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Sign Out
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link href="/login" className="btn-secondary text-sm py-2 px-4">
+                Sign In
+              </Link>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -96,9 +138,29 @@ export default function Navbar() {
                   <ShoppingCart className="w-5 h-5" />
                   Cart ({cartCount})
                 </Link>
-                <Link href="/login" className="btn-primary text-sm py-2 px-4">
-                  Sign In
-                </Link>
+                {isAuthenticated ? (
+                  <>
+                    <Link 
+                      href={dashboardLink} 
+                      className="flex items-center gap-2 text-gray-600 hover:text-primary-500"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <LayoutDashboard className="w-5 h-5" />
+                      Dashboard
+                    </Link>
+                    <button 
+                      onClick={() => { handleLogout(); setIsMenuOpen(false); }}
+                      className="flex items-center gap-2 text-red-600 hover:text-red-700"
+                    >
+                      <LogOut className="w-5 h-5" />
+                      Sign Out
+                    </button>
+                  </>
+                ) : (
+                  <Link href="/login" className="btn-primary text-sm py-2 px-4">
+                    Sign In
+                  </Link>
+                )}
               </div>
             </div>
           </div>

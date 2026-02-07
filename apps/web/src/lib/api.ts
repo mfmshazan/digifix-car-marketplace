@@ -108,6 +108,26 @@ export const categoriesApi = {
     const response = await api.get('/categories');
     return response.data;
   },
+  
+  // Get category by ID with parts
+  getById: async (categoryId: string, options?: { page?: number; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    const queryString = params.toString();
+    const response = await api.get(`/categories/${categoryId}${queryString ? `?${queryString}` : ''}`);
+    return response.data;
+  },
+  
+  // Get parts by category name (e.g., "Brakes", "Filters")
+  getPartsByName: async (categoryName: string, options?: { page?: number; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    const queryString = params.toString();
+    const response = await api.get(`/categories/name/${encodeURIComponent(categoryName)}/parts${queryString ? `?${queryString}` : ''}`);
+    return response.data;
+  },
 };
 
 export const authApi = {

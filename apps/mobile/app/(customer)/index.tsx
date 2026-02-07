@@ -289,7 +289,6 @@ export default function CustomerHomeScreen() {
                       color={item.stock > 0 ? "#00002E" : "#CCC"} 
                     />
                   </TouchableOpacity>
-                  </TouchableOpacity>
                 </TouchableOpacity>
               )}
               keyExtractor={(item) => item.id}

@@ -55,6 +55,25 @@ services:
     #   - ./backend:/app
     #   - /app/node_modules
 
+  # ================================
+  # Web Frontend (Next.js) - Optional
+  # ================================
+  # web:
+  #   build:
+  #     context: ./apps/web
+  #     dockerfile: Dockerfile
+  #   container_name: digifix-web
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: production
+  #     NEXT_PUBLIC_API_URL: http://backend:3000/api
+  #   ports:
+  #     - "${WEB_PORT:-3001}:3001"
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - digifix-network
+
 # ================================
 # Volumes
 # ================================

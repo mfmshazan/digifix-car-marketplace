@@ -76,7 +76,7 @@ export default function LoginScreen() {
           {/* Logo Section */}
           <View style={styles.logoSection}>
             <View style={styles.logoContainer}>
-              <Ionicons name="car-sport" size={64} color="#FF6B35" />
+              <Ionicons name="car-sport" size={64} color="#00002E" />
             </View>
             <Text style={styles.brandName}>DigiFix Auto Parts</Text>
             <Text style={styles.tagline}>Your trusted car parts delivery partner</Text>
@@ -152,7 +152,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F5F5",
+    backgroundColor: "#FFFFFF",
   },
   keyboardView: {
     flex: 1,
@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "#FFF0EB",
+    backgroundColor: "#FEE2E2",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
@@ -233,12 +233,12 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   forgotPasswordText: {
-    color: "#FF6B35",
+    color: "#00002E",
     fontSize: 14,
     fontWeight: "500",
   },
   loginButton: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     height: 56,
   },
   loginButtonDisabled: {
-    backgroundColor: "#FFB299",
+    backgroundColor: "#FCA5A5",
   },
   loginButtonText: {
     color: "#FFFFFF",
@@ -264,8 +264,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   signUpText: {
-    color: "#FF6B35",
+    color: "#00002E",
     fontSize: 14,
     fontWeight: "600",
   },
 });
+
+
+

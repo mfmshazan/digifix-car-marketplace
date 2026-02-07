@@ -9,18 +9,18 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 const categories = [
-  { id: "1", name: "Engine Parts", icon: "cog", count: 245, color: "#FF6B35" },
-  { id: "2", name: "Brake System", icon: "disc", count: 128, color: "#4ECDC4" },
-  { id: "3", name: "Filters", icon: "filter", count: 89, color: "#45B7D1" },
-  { id: "4", name: "Electrical", icon: "flash", count: 156, color: "#96CEB4" },
-  { id: "5", name: "Suspension", icon: "car-sport", count: 112, color: "#DDA0DD" },
-  { id: "6", name: "Cooling System", icon: "water", count: 67, color: "#87CEEB" },
-  { id: "7", name: "Exhaust System", icon: "cloud", count: 54, color: "#F4A460" },
-  { id: "8", name: "Transmission", icon: "settings", count: 98, color: "#9370DB" },
-  { id: "9", name: "Body Parts", icon: "car", count: 321, color: "#20B2AA" },
-  { id: "10", name: "Lighting", icon: "bulb", count: 143, color: "#FFD700" },
-  { id: "11", name: "Interior", icon: "tablet-portrait", count: 87, color: "#FF69B4" },
-  { id: "12", name: "Accessories", icon: "diamond", count: 234, color: "#00CED1" },
+  { id: "1", name: "Engine Parts", icon: "cog", count: 245, color: "#00002E" },
+  { id: "2", name: "Brake System", icon: "disc", count: 128, color: "#1A1A1A" },
+  { id: "3", name: "Filters", icon: "filter", count: 89, color: "#00002E" },
+  { id: "4", name: "Electrical", icon: "flash", count: 156, color: "#6B7280" },
+  { id: "5", name: "Suspension", icon: "car-sport", count: 112, color: "#6B7280" },
+  { id: "6", name: "Cooling System", icon: "water", count: 67, color: "#6B7280" },
+  { id: "7", name: "Exhaust System", icon: "cloud", count: 54, color: "#6B7280" },
+  { id: "8", name: "Transmission", icon: "settings", count: 98, color: "#6B7280" },
+  { id: "9", name: "Body Parts", icon: "car", count: 321, color: "#1A1A1A" },
+  { id: "10", name: "Lighting", icon: "bulb", count: 143, color: "#00002E" },
+  { id: "11", name: "Interior", icon: "tablet-portrait", count: 87, color: "#6B7280" },
+  { id: "12", name: "Accessories", icon: "diamond", count: 234, color: "#1A1A1A" },
 ];
 
 export default function CategoriesScreen() {
@@ -53,7 +53,7 @@ export default function CategoriesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   list: {
     padding: 16,
@@ -93,3 +93,6 @@ const styles = StyleSheet.create({
     color: "#999",
   },
 });
+
+
+

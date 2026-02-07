@@ -36,7 +36,7 @@ export default function CartScreen() {
   const renderCartItem = ({ item }: { item: (typeof cartItems)[0] }) => (
     <View style={styles.cartItem}>
       <View style={styles.itemImage}>
-        <Ionicons name="car-sport" size={32} color="#FF6B35" />
+        <Ionicons name="car-sport" size={32} color="#00002E" />
       </View>
       <View style={styles.itemInfo}>
         <Text style={styles.itemCategory}>{item.category}</Text>
@@ -45,11 +45,11 @@ export default function CartScreen() {
       </View>
       <View style={styles.quantityContainer}>
         <TouchableOpacity style={styles.quantityButton}>
-          <Ionicons name="remove" size={16} color="#FF6B35" />
+          <Ionicons name="remove" size={16} color="#00002E" />
         </TouchableOpacity>
         <Text style={styles.quantityText}>{item.quantity}</Text>
         <TouchableOpacity style={styles.quantityButton}>
-          <Ionicons name="add" size={16} color="#FF6B35" />
+          <Ionicons name="add" size={16} color="#00002E" />
         </TouchableOpacity>
       </View>
     </View>
@@ -102,7 +102,7 @@ export default function CartScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   list: {
     padding: 16,
@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   itemImage: {
     width: 64,
     height: 64,
-    backgroundColor: "#FFF3EE",
+    backgroundColor: "#FEE2E2",
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   itemPrice: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#FF6B35",
+    color: "#00002E",
   },
   quantityContainer: {
     flexDirection: "row",
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   quantityButton: {
     width: 32,
     height: 32,
-    backgroundColor: "#FFF3EE",
+    backgroundColor: "#FEE2E2",
     borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
@@ -207,10 +207,10 @@ const styles = StyleSheet.create({
   totalValue: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#FF6B35",
+    color: "#00002E",
   },
   checkoutButton: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     borderRadius: 12,
     height: 52,
     justifyContent: "center",
@@ -238,3 +238,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 });
+
+
+

@@ -16,49 +16,49 @@ const menuItems = [
     id: "1",
     icon: "person-outline",
     label: "Edit Profile",
-    color: "#FF6B35",
+    color: "#00002E",
   },
   {
     id: "2",
     icon: "location-outline",
     label: "Saved Addresses",
-    color: "#4ECDC4",
+    color: "#1A1A1A",
   },
   {
     id: "3",
     icon: "card-outline",
     label: "Payment Methods",
-    color: "#45B7D1",
+    color: "#00002E",
   },
   {
     id: "4",
     icon: "car-outline",
     label: "My Vehicles",
-    color: "#96CEB4",
+    color: "#00002E",
   },
   {
     id: "5",
     icon: "heart-outline",
     label: "Wishlist",
-    color: "#DDA0DD",
+    color: "#00002E",
   },
   {
     id: "6",
     icon: "notifications-outline",
     label: "Notifications",
-    color: "#FFD700",
+    color: "#1A1A1A",
   },
   {
     id: "7",
     icon: "help-circle-outline",
     label: "Help & Support",
-    color: "#87CEEB",
+    color: "#6B7280",
   },
   {
     id: "8",
     icon: "information-circle-outline",
     label: "About Us",
-    color: "#F4A460",
+    color: "#00002E",
   },
 ];
 
@@ -95,7 +95,7 @@ export default function ProfileScreen() {
       <View style={styles.profileHeader}>
         <View style={styles.avatarContainer}>
           <View style={styles.avatar}>
-            <Ionicons name="person" size={40} color="#FF6B35" />
+            <Ionicons name="person" size={40} color="#00002E" />
           </View>
           <TouchableOpacity style={styles.editAvatarButton}>
             <Ionicons name="camera" size={16} color="#FFFFFF" />
@@ -104,7 +104,7 @@ export default function ProfileScreen() {
         <Text style={styles.userName}>John Doe</Text>
         <Text style={styles.userEmail}>john.doe@example.com</Text>
         <View style={styles.roleBadge}>
-          <Ionicons name="cart" size={14} color="#FF6B35" />
+          <Ionicons name="cart" size={14} color="#00002E" />
           <Text style={styles.roleText}>Customer</Text>
         </View>
       </View>
@@ -161,7 +161,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   profileHeader: {
     alignItems: "center",
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "#FFF3EE",
+    backgroundColor: "#FEE2E2",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 3,
@@ -207,7 +207,7 @@ const styles = StyleSheet.create({
   roleBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF3EE",
+    backgroundColor: "#FEE2E2",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
   roleText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#FF6B35",
+    color: "#00002E",
     marginLeft: 6,
   },
   statsContainer: {
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#FF6B35",
+    color: "#00002E",
     marginBottom: 4,
   },
   statLabel: {
@@ -312,3 +312,6 @@ const styles = StyleSheet.create({
     color: "#999",
   },
 });
+
+
+

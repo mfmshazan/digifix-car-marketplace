@@ -29,7 +29,7 @@ const dashboardStats = [
     change: "+8.2%",
     isPositive: true,
     icon: "receipt",
-    color: "#2196F3",
+    color: "#6B7280",
   },
   {
     id: "3",
@@ -38,7 +38,7 @@ const dashboardStats = [
     change: "+3",
     isPositive: true,
     icon: "cube",
-    color: "#FF6B35",
+    color: "#00002E",
   },
   {
     id: "4",
@@ -47,7 +47,7 @@ const dashboardStats = [
     change: "+24",
     isPositive: true,
     icon: "people",
-    color: "#9C27B0",
+    color: "#1A1A1A",
   },
 ];
 
@@ -79,10 +79,10 @@ const recentOrders = [
 ];
 
 const quickActions = [
-  { id: "1", title: "Add Product", icon: "add-circle", color: "#FF6B35" },
-  { id: "2", title: "View Orders", icon: "list", color: "#4ECDC4" },
-  { id: "3", title: "Analytics", icon: "bar-chart", color: "#45B7D1" },
-  { id: "4", title: "Promotions", icon: "pricetag", color: "#96CEB4" },
+  { id: "1", title: "Add Product", icon: "add-circle", color: "#00002E" },
+  { id: "2", title: "View Orders", icon: "list", color: "#1A1A1A" },
+  { id: "3", title: "Analytics", icon: "bar-chart", color: "#00002E" },
+  { id: "4", title: "Promotions", icon: "pricetag", color: "#6B7280" },
 ];
 
 export default function SalesmanDashboard() {
@@ -221,13 +221,13 @@ export default function SalesmanDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   welcomeSection: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     paddingHorizontal: 20,
     paddingVertical: 20,
     paddingTop: 10,
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
   },
   seeAllText: {
     fontSize: 14,
-    color: "#FF6B35",
+    color: "#00002E",
     fontWeight: "500",
   },
   quickActionsGrid: {
@@ -408,7 +408,7 @@ const styles = StyleSheet.create({
   orderTotal: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#FF6B35",
+    color: "#00002E",
     marginBottom: 8,
   },
   orderStatus: {
@@ -421,3 +421,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
+
+
+

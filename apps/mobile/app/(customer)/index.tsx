@@ -15,29 +15,30 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { searchPartsByNumberPlate, getAllCarParts, CarPart, Car } from "../../src/api/carParts";
 
-// Sample data for promotions
+// Sample data for promotions - Blue, Black & White Theme
 const promotions = [
   {
     id: "1",
     title: "Find Parts Fast",
     description: "Search by your car number plate",
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
   },
   {
     id: "2",
     title: "Free Delivery",
     description: "On orders over Rs. 5000",
-    backgroundColor: "#4ECDC4",
+    backgroundColor: "#1A1A1A",
   },
 ];
 
+// Categories with blue, black, and white accent theme
 const categories = [
-  { id: "1", name: "Engine", icon: "cog", color: "#FF6B35" },
-  { id: "2", name: "Brakes", icon: "disc", color: "#4ECDC4" },
-  { id: "3", name: "Filters", icon: "filter", color: "#45B7D1" },
-  { id: "4", name: "Electrical", icon: "flash", color: "#96CEB4" },
-  { id: "5", name: "Suspension", icon: "car-sport", color: "#DDA0DD" },
-  { id: "6", name: "More", icon: "ellipsis-horizontal", color: "#999" },
+  { id: "1", name: "Engine", icon: "cog", color: "#00002E" },
+  { id: "2", name: "Brakes", icon: "disc", color: "#00002E" },
+  { id: "3", name: "Filters", icon: "filter", color: "#00002E" },
+  { id: "4", name: "Electrical", icon: "flash", color: "#1A1A1A" },
+  { id: "5", name: "Suspension", icon: "car-sport", color: "#00002E" },
+  { id: "6", name: "More", icon: "ellipsis-horizontal", color: "#6B7280" },
 ];
 
 export default function CustomerHomeScreen() {
@@ -118,18 +119,11 @@ export default function CustomerHomeScreen() {
           />
         ) : (
           <View style={styles.productImagePlaceholder}>
-            <Ionicons name="car-sport" size={40} color="#FF6B35" />
-          </View>
-        )}
-        {item.discountPrice && (
-          <View style={styles.discountBadge}>
-            <Text style={styles.discountText}>
-              -{Math.round(((item.price - item.discountPrice) / item.price) * 100)}%
-            </Text>
+            <Ionicons name="car-sport" size={40} color="#00002E" />
           </View>
         )}
         <View style={[styles.conditionBadge, { 
-          backgroundColor: item.condition === 'NEW' ? '#4ECDC4' : item.condition === 'USED' ? '#FF6B35' : '#9B59B6' 
+          backgroundColor: item.condition === 'NEW' ? '#16A34A' : item.condition === 'USED' ? '#00002E' : '#1A1A1A' 
         }]}>
           <Text style={styles.conditionText}>{item.condition}</Text>
         </View>
@@ -349,7 +343,7 @@ export default function CustomerHomeScreen() {
             </TouchableOpacity>
           </View>
           {isLoading ? (
-            <ActivityIndicator size="large" color="#FF6B35" style={{ marginVertical: 20 }} />
+            <ActivityIndicator size="large" color="#00002E" style={{ marginVertical: 20 }} />
           ) : (
             <FlatList
               data={featuredParts}
@@ -370,20 +364,20 @@ export default function CustomerHomeScreen() {
             // Focus on number plate search
             Alert.alert("Search by Number Plate", "Enter your car number plate above to find compatible parts!");
           }}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#FFF3EE" }]}>
-              <Ionicons name="car" size={24} color="#FF6B35" />
+            <View style={[styles.quickActionIcon, { backgroundColor: "#FEE2E2" }]}>
+              <Ionicons name="car" size={24} color="#00002E" />
             </View>
             <Text style={styles.quickActionText}>Find by Plate</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#E8F8F5" }]}>
-              <Ionicons name="barcode" size={24} color="#4ECDC4" />
+            <View style={[styles.quickActionIcon, { backgroundColor: "#F3F4F6" }]}>
+              <Ionicons name="barcode" size={24} color="#1A1A1A" />
             </View>
             <Text style={styles.quickActionText}>Scan Part Code</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#EBF5FB" }]}>
-              <Ionicons name="location" size={24} color="#45B7D1" />
+            <View style={[styles.quickActionIcon, { backgroundColor: "#FEE2E2" }]}>
+              <Ionicons name="location" size={24} color="#00002E" />
             </View>
             <Text style={styles.quickActionText}>Track Order</Text>
           </TouchableOpacity>
@@ -399,7 +393,7 @@ export default function CustomerHomeScreen() {
           </TouchableOpacity>
         </View>
         {isLoading ? (
-          <ActivityIndicator size="large" color="#FF6B35" style={{ marginVertical: 20 }} />
+          <ActivityIndicator size="large" color="#00002E" style={{ marginVertical: 20 }} />
         ) : (
           <FlatList
             data={featuredParts.slice().reverse()}
@@ -422,12 +416,12 @@ export default function CustomerHomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   searchContainer: {
     paddingHorizontal: 16,
     paddingVertical: 16,
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
   },
   searchTitle: {
     fontSize: 16,
@@ -450,7 +444,7 @@ const styles = StyleSheet.create({
     color: "#1A1A2E",
   },
   searchButton: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     height: 48,
     width: 48,
     justifyContent: "center",
@@ -485,7 +479,7 @@ const styles = StyleSheet.create({
   },
   seeAllText: {
     fontSize: 14,
-    color: "#FF6B35",
+    color: "#00002E",
     fontWeight: "500",
   },
   promotionsList: {
@@ -566,7 +560,7 @@ const styles = StyleSheet.create({
   },
   productImagePlaceholder: {
     height: 120,
-    backgroundColor: "#FFF3EE",
+    backgroundColor: "#FEE2E2",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     justifyContent: "center",
@@ -576,10 +570,32 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 8,
     left: 8,
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+  },
+  discountBadgeOuter: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    backgroundColor: "#00002E",
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  discountTextOuter: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "bold",
   },
   discountText: {
     color: "#FFFFFF",
@@ -626,7 +642,7 @@ const styles = StyleSheet.create({
   price: {
     fontSize: 15,
     fontWeight: "bold",
-    color: "#FF6B35",
+    color: "#00002E",
   },
   originalPrice: {
     fontSize: 11,
@@ -638,7 +654,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 12,
     right: 12,
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -671,7 +687,7 @@ const styles = StyleSheet.create({
   // Modal styles
   modalContainer: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   modalHeader: {
     flexDirection: "row",
@@ -710,7 +726,7 @@ const styles = StyleSheet.create({
   numberPlateText: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#FF6B35",
+    color: "#00002E",
     marginBottom: 4,
   },
   carModelText: {
@@ -766,7 +782,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 8,
-    backgroundColor: "#FFF3EE",
+    backgroundColor: "#FEE2E2",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -812,7 +828,7 @@ const styles = StyleSheet.create({
   partListPrice: {
     fontSize: 15,
     fontWeight: "bold",
-    color: "#FF6B35",
+    color: "#00002E",
   },
   partListOriginalPrice: {
     fontSize: 11,
@@ -831,3 +847,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+
+
+

@@ -155,7 +155,7 @@ export default function AddCarPartScreen() {
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header Info */}
       <View style={styles.infoCard}>
-        <Ionicons name="information-circle" size={24} color="#FF6B35" />
+        <Ionicons name="information-circle" size={24} color="#00002E" />
         <Text style={styles.infoText}>
           Add car parts that customers can find by searching their cars number plate
         </Text>
@@ -192,7 +192,7 @@ export default function AddCarPartScreen() {
               Select Car <Text style={styles.required}>*</Text>
             </Text>
             {isLoadingCars ? (
-              <ActivityIndicator size="small" color="#FF6B35" />
+              <ActivityIndicator size="small" color="#00002E" />
             ) : (
               <>
                 <TouchableOpacity
@@ -232,7 +232,7 @@ export default function AddCarPartScreen() {
                             </Text>
                           </View>
                           {selectedCar?.id === car.id && (
-                            <Ionicons name="checkmark" size={18} color="#FF6B35" />
+                            <Ionicons name="checkmark" size={18} color="#00002E" />
                           )}
                         </TouchableOpacity>
                       ))}
@@ -402,7 +402,7 @@ export default function AddCarPartScreen() {
                 >
                   <Text style={styles.pickerOptionText}>{category.name}</Text>
                   {selectedCategory === category.id && (
-                    <Ionicons name="checkmark" size={18} color="#FF6B35" />
+                    <Ionicons name="checkmark" size={18} color="#00002E" />
                   )}
                 </TouchableOpacity>
               ))}
@@ -511,17 +511,17 @@ export default function AddCarPartScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   infoCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF8F5",
+    backgroundColor: "#FEE2E2",
     margin: 16,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#FFE0D3",
+    borderColor: "#FECACA",
   },
   infoText: {
     flex: 1,
@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   modeButtonActive: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
   },
   modeButtonText: {
     fontSize: 14,
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F5F5F5",
   },
   pickerOptionSelected: {
-    backgroundColor: "#FFF8F5",
+    backgroundColor: "#FEE2E2",
   },
   pickerOptionText: {
     fontSize: 14,
@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
   carPlateText: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#FF6B35",
+    color: "#00002E",
   },
   carDetailsText: {
     fontSize: 13,
@@ -664,7 +664,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   conditionButtonActive: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
   },
   conditionButtonText: {
     fontSize: 13,
@@ -700,11 +700,11 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   submitButton: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: "center",
-    shadowColor: "#FF6B35",
+    shadowColor: "#00002E",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -719,3 +719,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
 });
+
+
+

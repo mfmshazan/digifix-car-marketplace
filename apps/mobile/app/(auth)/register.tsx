@@ -105,7 +105,7 @@ export default function RegisterScreen() {
           {/* Logo Section */}
           <View style={styles.logoSection}>
             <View style={styles.logoContainer}>
-              <Ionicons name="car-sport" size={64} color="#FF6B35" />
+              <Ionicons name="car-sport" size={64} color="#00002E" />
             </View>
             <Text style={styles.brandName}>DigiFix Auto Parts</Text>
             <Text style={styles.tagline}>Your trusted car parts delivery partner</Text>
@@ -157,7 +157,7 @@ export default function RegisterScreen() {
                   <Ionicons
                     name="person-outline"
                     size={20}
-                    color={role === "CUSTOMER" ? "#FF6B35" : "#666"}
+                    color={role === "CUSTOMER" ? "#00002E" : "#666"}
                   />
                   <Text
                     style={[
@@ -179,7 +179,7 @@ export default function RegisterScreen() {
                   <Ionicons
                     name="storefront-outline"
                     size={20}
-                    color={role === "SALESMAN" ? "#FF6B35" : "#666"}
+                    color={role === "SALESMAN" ? "#00002E" : "#666"}
                   />
                   <Text
                     style={[
@@ -265,7 +265,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F5F5",
+    backgroundColor: "#FFFFFF",
   },
   keyboardView: {
     flex: 1,
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "#FFF0EB",
+    backgroundColor: "#FEE2E2",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F5F5F5",
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     marginBottom: 16,
     paddingHorizontal: 16,
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   registerButton: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   registerButtonDisabled: {
-    backgroundColor: "#FFB299",
+    backgroundColor: "#FCA5A5",
   },
   registerButtonText: {
     color: "#FFFFFF",
@@ -376,16 +376,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F5F5F5",
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
     borderWidth: 2,
-    borderColor: "#F5F5F5",
+    borderColor: "#E0E0E0",
     gap: 8,
   },
   roleButtonActive: {
-    backgroundColor: "#FFF0EB",
-    borderColor: "#FF6B35",
+    backgroundColor: "#FEE2E2",
+    borderColor: "#00002E",
   },
   roleButtonText: {
     fontSize: 14,
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
     color: "#666",
   },
   roleButtonTextActive: {
-    color: "#FF6B35",
+    color: "#00002E",
   },
   footer: {
     flexDirection: "row",
@@ -406,8 +406,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   signInText: {
-    color: "#FF6B35",
+    color: "#00002E",
     fontSize: 14,
     fontWeight: "600",
   },
 });
+
+
+

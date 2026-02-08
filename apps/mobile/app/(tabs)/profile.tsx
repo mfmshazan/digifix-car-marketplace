@@ -16,7 +16,7 @@ const menuItems = [
     id: "1",
     icon: "person-outline",
     label: "Edit Profile",
-    color: "#FF6B35",
+    color: "#00002E",
   },
   {
     id: "2",
@@ -95,7 +95,7 @@ export default function ProfileScreen() {
       <View style={styles.profileHeader}>
         <View style={styles.avatarContainer}>
           <View style={styles.avatar}>
-            <Ionicons name="person" size={40} color="#FF6B35" />
+            <Ionicons name="person" size={40} color="#00002E" />
           </View>
           <TouchableOpacity style={styles.editAvatarButton}>
             <Ionicons name="camera" size={16} color="#FFFFFF" />
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "#FFF3EE",
+    backgroundColor: "#E6E6F0",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 3,
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#FF6B35",
+    color: "#00002E",
     marginBottom: 4,
   },
   statLabel: {

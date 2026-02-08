@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Filter, Grid, List, ChevronDown, Search, X } from 'lucide-react';
 import { carPartsApi, CarPart } from '@/lib/api';
-import ProductCard from '@/components/products/ProductCard';
+import ProductCardNew from '@/components/products/ProductCardNew';
 import ProductDetailModal from '@/components/products/ProductDetailModal';
+import NavbarNew from '@/components/layout/NavbarNew';
+import FooterNew from '@/components/layout/FooterNew';
 
 const conditions = ['ALL', 'NEW', 'USED', 'RECONDITIONED'];
 
@@ -62,14 +64,15 @@ export default function PartsPage() {
   };
 
   return (
-    <div className="pt-20 pb-16 min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50">
+      <NavbarNew />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Car Parts</h1>
           <p className="text-gray-600">
             Browse our collection of premium car parts
-            {categoryFilter && <span className="text-primary-500"> in {categoryFilter}</span>}
+            {categoryFilter && <span className="text-orange-500"> in {categoryFilter}</span>}
           </p>
         </div>
 
@@ -84,7 +87,7 @@ export default function PartsPage() {
                 placeholder="Search parts..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="input-field pl-10"
+                className="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
               />
               {searchQuery && (
                 <button
@@ -108,7 +111,7 @@ export default function PartsPage() {
                       onClick={() => setSelectedCondition(condition)}
                       className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                         selectedCondition === condition
-                          ? 'bg-primary-500 text-white'
+                          ? 'bg-orange-500 text-white'
                           : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
@@ -124,7 +127,7 @@ export default function PartsPage() {
                   onClick={() => setViewMode('grid')}
                   className={`p-2 rounded-md transition-colors ${
                     viewMode === 'grid'
-                      ? 'bg-primary-500 text-white'
+                      ? 'bg-orange-500 text-white'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                   aria-label="Grid view"
@@ -135,7 +138,7 @@ export default function PartsPage() {
                   onClick={() => setViewMode('list')}
                   className={`p-2 rounded-md transition-colors ${
                     viewMode === 'list'
-                      ? 'bg-primary-500 text-white'
+                      ? 'bg-orange-500 text-white'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                   aria-label="List view"
@@ -156,7 +159,7 @@ export default function PartsPage() {
 
         {/* Products Grid */}
         {isLoading ? (
-          <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1'}`}>
+          <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4' : 'grid-cols-1'}`}>
             {[...Array(8)].map((_, i) => (
               <div key={i} className="bg-white rounded-xl shadow-sm animate-pulse">
                 <div className="h-48 bg-gray-200 rounded-t-xl"></div>
@@ -169,9 +172,9 @@ export default function PartsPage() {
             ))}
           </div>
         ) : filteredParts.length > 0 ? (
-          <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1'}`}>
+          <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4' : 'grid-cols-1'}`}>
             {filteredParts.map((part) => (
-              <ProductCard key={part.id} part={part} onViewDetails={handleViewDetails} />
+              <ProductCardNew key={part.id} part={part} onViewDetails={handleViewDetails} />
             ))}
           </div>
         ) : (
@@ -193,6 +196,8 @@ export default function PartsPage() {
         isOpen={isModalOpen}
         onClose={handleCloseModal}
       />
+
+      <FooterNew />
     </div>
   );
 }

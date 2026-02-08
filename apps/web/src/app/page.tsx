@@ -1,37 +1,43 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
-import { Search, ArrowRight, Star, ShoppingCart, ChevronRight, Zap, Shield, Truck, Headphones } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import { carPartsApi, CarPart } from '@/lib/api';
-import { useCartStore } from '@/store/cartStore';
-import ProductCard from '@/components/products/ProductCard';
+import ProductCardNew from '@/components/products/ProductCardNew';
 import ProductDetailModal from '@/components/products/ProductDetailModal';
-import HeroSection from '@/components/home/HeroSection';
-import SearchSection from '@/components/home/SearchSection';
-import CategoriesSection from '@/components/home/CategoriesSection';
-import FeaturesSection from '@/components/home/FeaturesSection';
+import HeroBanner from '@/components/home/HeroBanner';
+import PopularCategories from '@/components/home/PopularCategories';
+import PromoBanners from '@/components/home/PromoBanners';
+import FeaturesBar from '@/components/home/FeaturesBar';
+import NavbarNew from '@/components/layout/NavbarNew';
+import FooterNew from '@/components/layout/FooterNew';
+
+// Filter tabs for products section
+const productFilters = ['All', 'Brake', 'Wheel', 'Fuel', 'Lights', 'Filter', 'Key', 'Battery'];
 
 export default function HomePage() {
   const [featuredParts, setFeaturedParts] = useState<CarPart[]>([]);
+  const [allParts, setAllParts] = useState<CarPart[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPart, setSelectedPart] = useState<CarPart | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeFilter, setActiveFilter] = useState('All');
 
   useEffect(() => {
-    loadFeaturedParts();
+    loadParts();
   }, []);
 
-  const loadFeaturedParts = async () => {
+  const loadParts = async () => {
     try {
       setIsLoading(true);
-      const response = await carPartsApi.getAll({ limit: 8 });
+      const response = await carPartsApi.getAll({ limit: 16 });
       if (response.success) {
-        setFeaturedParts(response.data.parts);
+        setAllParts(response.data.parts);
+        setFeaturedParts(response.data.parts.slice(0, 8));
       }
     } catch (error) {
-      console.error('Failed to load featured parts:', error);
+      console.error('Failed to load parts:', error);
     } finally {
       setIsLoading(false);
     }
@@ -47,103 +53,177 @@ export default function HomePage() {
     setSelectedPart(null);
   };
 
+  const filteredParts = activeFilter === 'All' 
+    ? featuredParts 
+    : featuredParts.filter(part => 
+        part.category.name.toLowerCase().includes(activeFilter.toLowerCase()) ||
+        part.name.toLowerCase().includes(activeFilter.toLowerCase())
+      );
+
   return (
-    <div className="pt-16">
-      <HeroSection />
-      <SearchSection />
-      <CategoriesSection />
+    <div className="min-h-screen bg-gray-50">
+      <NavbarNew />
       
-      {/* Featured Products Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="section-title">Featured Parts</h2>
-            <p className="section-subtitle">Premium quality car parts for your vehicle</p>
+      {/* Hero Banner Section */}
+      <HeroBanner />
+      
+      {/* Popular Categories */}
+      <PopularCategories />
+      
+      {/* Highest Sold Products Section */}
+      <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+          <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
+            Highest Sold Products
+          </h2>
+          
+          {/* Filter Tabs */}
+          <div className="flex flex-wrap gap-2">
+            {productFilters.map((filter) => (
+              <button
+                key={filter}
+                onClick={() => setActiveFilter(filter)}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  activeFilter === filter
+                    ? 'text-orange-600 bg-orange-50 border border-orange-200'
+                    : 'text-gray-600 hover:text-orange-500 border border-transparent'
+                }`}
+              >
+                {filter}
+              </button>
+            ))}
           </div>
-          <Link href="/parts" className="hidden md:flex items-center gap-2 text-primary-500 hover:text-primary-400 font-medium transition-colors">
-            View All <ArrowRight className="w-4 h-4" />
-          </Link>
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="card animate-pulse">
-                <div className="h-48 bg-gray-200"></div>
-                <div className="p-4 space-y-2">
-                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                  <div className="h-6 bg-gray-200 rounded"></div>
-                  <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                </div>
-              </div>
-            ))}
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
           </div>
-        ) : featuredParts.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {featuredParts.map((part) => (
-              <ProductCard key={part.id} part={part} onViewDetails={handleViewDetails} />
+        ) : filteredParts.length > 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {filteredParts.slice(0, 6).map((part) => (
+              <ProductCardNew key={part.id} part={part} onViewDetails={handleViewDetails} />
             ))}
           </div>
         ) : (
           <div className="text-center py-12">
-            <p className="text-gray-500">No featured parts available at the moment.</p>
+            <p className="text-gray-500">No products found for this filter.</p>
           </div>
         )}
+      </section>
 
-        <div className="mt-8 text-center md:hidden">
-          <Link href="/parts" className="btn-primary inline-flex items-center gap-2">
-            View All Parts <ArrowRight className="w-4 h-4" />
+      {/* Promotional Banners */}
+      <PromoBanners />
+
+      {/* Featured Products Section */}
+      <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
+            Featured Products
+          </h2>
+          <Link
+            href="/parts"
+            className="text-sm font-medium text-gray-600 hover:text-orange-600 transition-colors flex items-center gap-1"
+          >
+            View All Products
+            <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
+
+        {isLoading ? (
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+          </div>
+        ) : allParts.length > 0 ? (
+          <>
+            {/* Side Banner + Products Grid Layout */}
+            <div className="grid lg:grid-cols-5 gap-6">
+              {/* Side Banner */}
+              <div className="hidden lg:block relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-100 to-amber-50 min-h-[400px]">
+                <div className="p-6 h-full flex flex-col justify-center">
+                  <span className="text-xs font-semibold text-gray-600 tracking-wider mb-2">CAR STEERING</span>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-4">Premium Steerings</h3>
+                  <Link
+                    href="/categories/Steering"
+                    className="inline-flex items-center justify-center px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-semibold rounded-lg transition-colors w-fit"
+                  >
+                    View All
+                  </Link>
+                </div>
+              </div>
+              
+              {/* Products Grid */}
+              <div className="lg:col-span-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {allParts.slice(0, 8).map((part) => (
+                  <ProductCardNew key={part.id} part={part} onViewDetails={handleViewDetails} />
+                ))}
+              </div>
+            </div>
+
+            {/* Second Row with Side Banner */}
+            <div className="grid lg:grid-cols-5 gap-6 mt-6">
+              {/* Products Grid */}
+              <div className="lg:col-span-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {allParts.slice(8, 16).map((part) => (
+                  <ProductCardNew key={part.id} part={part} onViewDetails={handleViewDetails} />
+                ))}
+              </div>
+              
+              {/* Side Banner */}
+              <div className="hidden lg:block relative overflow-hidden rounded-2xl bg-gradient-to-br from-yellow-100 to-yellow-50 min-h-[400px]">
+                <div className="p-6 h-full flex flex-col justify-center">
+                  <span className="text-xs font-semibold text-gray-600 tracking-wider mb-2">BRAKE PLATES</span>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-4">Hydraulic Brakes</h3>
+                  <Link
+                    href="/categories/Brakes"
+                    className="inline-flex items-center justify-center px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-semibold rounded-lg transition-colors w-fit"
+                  >
+                    View All
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-gray-500">No products available at the moment.</p>
+          </div>
+        )}
       </section>
 
       {/* Special Offer Banner */}
       <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-primary-600 via-primary-500 to-primary-600 p-8 md:p-12">
-            <div className="absolute inset-0 bg-[url('/pattern.svg')] opacity-10"></div>
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 p-8 md:p-12">
+            <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1200&auto=format&fit=crop&q=60')] bg-cover bg-center opacity-20"></div>
             <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
               <div className="text-center md:text-left">
-                <span className="badge-blue mb-4">Limited Time Offer</span>
-                <h2 className="text-3xl md:text-4xl font-bold text-white mt-4 mb-2">
-                  30% OFF on All Steering Parts
+                <span className="inline-flex items-center px-3 py-1 rounded-md bg-orange-400 text-white text-xs font-semibold mb-4">
+                  TRENDING
+                </span>
+                <h2 className="text-3xl md:text-5xl font-bold text-white mb-2">
+                  Save 50% Off
                 </h2>
                 <p className="text-white/80 text-lg">
-                  Upgrade your driving experience with premium steering components
+                  On All Premium Car Parts This Weekend
                 </p>
               </div>
-              <Link href="/parts?category=steering" className="bg-white text-primary-600 font-semibold py-4 px-8 rounded-xl hover:bg-gray-100 transition-all duration-300 transform hover:scale-105 whitespace-nowrap">
+              <Link 
+                href="/parts" 
+                className="bg-orange-400 hover:bg-orange-500 text-white font-semibold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-105 whitespace-nowrap shadow-lg"
+              >
                 Shop Now
               </Link>
             </div>
-            {/* Decorative Elements */}
-            <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
-            <div className="absolute -left-10 -top-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
           </div>
         </div>
       </section>
 
-      <FeaturesSection />
+      {/* Features Bar */}
+      <FeaturesBar />
 
-      {/* Newsletter Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-primary-500 to-primary-600">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Stay Updated</h2>
-          <p className="text-white/80 text-lg mb-8">
-            Subscribe to our newsletter for exclusive deals and new arrivals
-          </p>
-          <form className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
-            <input
-              type="email"
-              placeholder="Enter your email"
-              className="flex-1 px-4 py-3 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white/30"
-            />
-            <button type="submit" className="bg-white text-primary-600 font-semibold py-3 px-6 rounded-xl hover:bg-gray-100 transition-colors whitespace-nowrap">
-              Subscribe
-            </button>
-          </form>
-        </div>
-      </section>
+      {/* Footer */}
+      <FooterNew />
 
       {/* Product Detail Modal */}
       <ProductDetailModal

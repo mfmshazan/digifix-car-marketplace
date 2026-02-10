@@ -159,30 +159,6 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
-
-            {/* Second Row with Side Banner */}
-            <div className="grid lg:grid-cols-5 gap-6 mt-6">
-              {/* Products Grid */}
-              <div className="lg:col-span-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {allParts.slice(8, 16).map((part) => (
-                  <ProductCardNew key={part.id} part={part} onViewDetails={handleViewDetails} />
-                ))}
-              </div>
-              
-              {/* Side Banner */}
-              <div className="hidden lg:block relative overflow-hidden rounded-2xl bg-gradient-to-br from-yellow-100 to-yellow-50 min-h-[400px]">
-                <div className="p-6 h-full flex flex-col justify-center">
-                  <span className="text-xs font-semibold text-gray-600 tracking-wider mb-2">BRAKE PLATES</span>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-4">Hydraulic Brakes</h3>
-                  <Link
-                    href="/categories/Brakes"
-                    className="inline-flex items-center justify-center px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-semibold rounded-lg transition-colors w-fit"
-                  >
-                    View All
-                  </Link>
-                </div>
-              </div>
-            </div>
           </>
         ) : (
           <div className="text-center py-12">

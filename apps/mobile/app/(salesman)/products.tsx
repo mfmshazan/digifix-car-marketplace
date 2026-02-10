@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
   productImage: {
     width: 64,
     height: 64,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#E5E7EB",
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",

@@ -516,12 +516,12 @@ const styles = StyleSheet.create({
   infoCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#E5E7EB",
     margin: 16,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: "#D1D5DB",
   },
   infoText: {
     flex: 1,
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F5F5F5",
   },
   pickerOptionSelected: {
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#E5E7EB",
   },
   pickerOptionText: {
     fontSize: 14,

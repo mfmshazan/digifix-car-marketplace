@@ -311,7 +311,7 @@ export default function CustomerHomeScreen() {
             <Ionicons name="car" size={20} color="#999" />
             <TextInput
               style={styles.searchInput}
-              placeholder="Enter number plate (e.g., CAB-1234)"
+              placeholder="Enter number plate"
               placeholderTextColor="#999"
               value={numberPlateQuery}
               onChangeText={setNumberPlateQuery}
@@ -395,7 +395,7 @@ export default function CustomerHomeScreen() {
             // Focus on number plate search
             Alert.alert("Search by Number Plate", "Enter your car number plate above to find compatible parts!");
           }}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#FEE2E2" }]}>
+            <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
               <Ionicons name="car" size={24} color="#00002E" />
             </View>
             <Text style={styles.quickActionText}>Find by Plate</Text>
@@ -407,7 +407,7 @@ export default function CustomerHomeScreen() {
             <Text style={styles.quickActionText}>Scan Part Code</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#FEE2E2" }]}>
+            <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
               <Ionicons name="location" size={24} color="#00002E" />
             </View>
             <Text style={styles.quickActionText}>Track Order</Text>
@@ -591,7 +591,7 @@ const styles = StyleSheet.create({
   },
   productImagePlaceholder: {
     height: 120,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#E5E7EB",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     justifyContent: "center",
@@ -813,7 +813,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 8,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#E5E7EB",
     justifyContent: "center",
     alignItems: "center",
   },

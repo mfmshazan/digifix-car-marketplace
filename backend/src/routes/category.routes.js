@@ -7,28 +7,38 @@ const router = Router();
 // Get all categories with products and car parts count
 router.get('/', async (req, res) => {
   try {
+    // Get all top-level categories
     const categories = await prisma.category.findMany({
+      where: {
+        parentId: null,
+      },
       include: {
         children: true,
-        _count: {
-          select: { 
-            products: true,
-            carParts: true 
-          },
-        },
-      },
-      where: {
-        parentId: null, // Only top-level categories
       },
     });
     
-    // Add total count (products + carParts)
-    const categoriesWithTotalCount = categories.map(cat => ({
-      ...cat,
-      totalPartsCount: cat._count.products + cat._count.carParts,
-    }));
+    // Get counts for each category using raw count queries
+    const categoriesWithCounts = await Promise.all(
+      categories.map(async (cat) => {
+        const productsCount = await prisma.product.count({
+          where: { categoryId: cat.id }
+        });
+        const carPartsCount = await prisma.carPart.count({
+          where: { categoryId: cat.id }
+        });
+        
+        return {
+          ...cat,
+          _count: {
+            products: productsCount,
+            carParts: carPartsCount
+          },
+          totalPartsCount: productsCount + carPartsCount,
+        };
+      })
+    );
     
-    res.json({ success: true, data: categoriesWithTotalCount });
+    res.json({ success: true, data: categoriesWithCounts });
   } catch (error) {
     console.error('Category fetch error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch categories' });

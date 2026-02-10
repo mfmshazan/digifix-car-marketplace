@@ -22,21 +22,21 @@ export default function HeroBanner() {
         
         {/* Content */}
         <div className="relative z-10 p-8 md:p-12 flex flex-col justify-center h-full max-w-2xl">
-          <span className="inline-flex items-center px-3 py-1 rounded-md bg-orange-400 text-white text-xs font-semibold w-fit mb-4">
+          <span className="inline-flex items-center px-3 py-1 rounded-md bg-[#00002E] text-white text-xs font-semibold w-fit mb-4">
             NEW RELEASE
           </span>
-          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-3 leading-tight">
-            Get All Original Parts
+          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight">
+            Get All Original
           </h2>
-          <p className="text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-orange-300 to-orange-400 bg-clip-text text-transparent mb-4">
-            for Your Car
-          </p>
+          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-3 leading-tight">
+            Parts <span className="bg-gradient-to-r from-sky-300 to-blue-400 bg-clip-text text-transparent">for Your Car</span>
+          </h2>
           <p className="text-gray-300 text-lg mb-6">
-            Starting From <span className="text-orange-300 font-bold text-2xl">Rs. 8,399</span>
+            Starting From <span className="text-sky-300 font-bold text-2xl">Rs. 8,399</span>
           </p>
           <Link
             href="/parts"
-            className="inline-flex items-center justify-center px-8 py-4 bg-orange-400 hover:bg-orange-500 text-white font-semibold rounded-lg transition-all duration-300 w-fit group-hover:translate-x-1 shadow-lg"
+            className="inline-flex items-center justify-center px-8 py-4 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-full transition-all duration-300 w-fit group-hover:translate-x-1 shadow-lg"
           >
             Shop Now
           </Link>

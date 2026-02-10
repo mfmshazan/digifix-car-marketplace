@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   itemImage: {
     width: 64,
     height: 64,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#E5E7EB",
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   quantityButton: {
     width: 32,
     height: 32,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#E5E7EB",
     borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",

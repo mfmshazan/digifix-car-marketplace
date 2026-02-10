@@ -4,17 +4,18 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import { carPartsApi, CarPart } from '@/lib/api';
-import ProductCardNew from '@/components/products/ProductCardNew';
+import ProductCardModern from '@/components/products/ProductCardModern';
 import ProductDetailModal from '@/components/products/ProductDetailModal';
-import HeroBanner from '@/components/home/HeroBanner';
+import HeroSectionNew from '@/components/home/HeroSectionNew';
+import VehicleTypesSection from '@/components/home/VehicleTypesSection';
 import PopularCategories from '@/components/home/PopularCategories';
-import PromoBanners from '@/components/home/PromoBanners';
-import FeaturesBar from '@/components/home/FeaturesBar';
-import NavbarNew from '@/components/layout/NavbarNew';
-import FooterNew from '@/components/layout/FooterNew';
+import FeaturesBarModern from '@/components/home/FeaturesBarModern';
+import PromoBannersModern from '@/components/home/PromoBannersModern';
+import NavbarModern from '@/components/layout/NavbarModern';
+import FooterModern from '@/components/layout/FooterModern';
 
 // Filter tabs for products section
-const productFilters = ['All', 'Brake', 'Wheel', 'Fuel', 'Lights', 'Filter', 'Key', 'Battery'];
+const productFilters = ['All', 'Brakes', 'Engine', 'Filters', 'Electrical', 'Suspension', 'Interior'];
 
 export default function HomePage() {
   const [featuredParts, setFeaturedParts] = useState<CarPart[]>([]);
@@ -56,150 +57,156 @@ export default function HomePage() {
   const filteredParts = activeFilter === 'All' 
     ? featuredParts 
     : featuredParts.filter(part => 
-        part.category.name.toLowerCase().includes(activeFilter.toLowerCase()) ||
+        part.category?.name?.toLowerCase().includes(activeFilter.toLowerCase()) ||
         part.name.toLowerCase().includes(activeFilter.toLowerCase())
       );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <NavbarNew />
+    <div className="min-h-screen bg-white">
+      <NavbarModern />
       
-      {/* Hero Banner Section */}
-      <HeroBanner />
+      {/* Hero Section */}
+      <HeroSectionNew />
+
+      {/* Vehicle Types */}
+      <VehicleTypesSection />
+
+      {/* Features Bar */}
+      <FeaturesBarModern />
       
       {/* Popular Categories */}
       <PopularCategories />
       
-      {/* Highest Sold Products Section */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-            Highest Sold Products
-          </h2>
+      {/* Featured Products Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-50">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+            <div>
+              <h2 className="text-3xl md:text-4xl font-bold text-[#00002E]">
+                Featured Products
+              </h2>
+              <p className="text-gray-500 mt-2">Discover our most popular car parts</p>
+            </div>
           
-          {/* Filter Tabs */}
-          <div className="flex flex-wrap gap-2">
-            {productFilters.map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setActiveFilter(filter)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  activeFilter === filter
-                    ? 'text-orange-600 bg-orange-50 border border-orange-200'
-                    : 'text-gray-600 hover:text-orange-500 border border-transparent'
-                }`}
-              >
-                {filter}
-              </button>
-            ))}
+            {/* Filter Tabs */}
+            <div className="flex flex-wrap gap-2">
+              {productFilters.map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setActiveFilter(filter)}
+                  className={`px-4 py-2 text-sm font-medium rounded-full transition-all duration-300 ${
+                    activeFilter === filter
+                      ? 'bg-[#00002E] text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64">
+              <Loader2 className="w-10 h-10 animate-spin text-[#00002E]" />
+            </div>
+          ) : filteredParts.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {filteredParts.map((part) => (
+                <ProductCardModern key={part.id} part={part} onViewDetails={handleViewDetails} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-white rounded-2xl">
+              <p className="text-gray-500">No products found for this filter.</p>
+            </div>
+          )}
+
+          {/* View All Button */}
+          <div className="text-center mt-10">
+            <Link
+              href="/parts"
+              className="inline-flex items-center gap-2 px-8 py-4 bg-[#00002E] text-white font-semibold rounded-full hover:bg-[#000050] transition-all duration-300 shadow-lg hover:shadow-xl"
+            >
+              View All Products
+              <ArrowRight className="w-5 h-5" />
+            </Link>
           </div>
         </div>
-
-        {isLoading ? (
-          <div className="flex justify-center items-center h-64">
-            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
-          </div>
-        ) : filteredParts.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-            {filteredParts.slice(0, 6).map((part) => (
-              <ProductCardNew key={part.id} part={part} onViewDetails={handleViewDetails} />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No products found for this filter.</p>
-          </div>
-        )}
       </section>
 
       {/* Promotional Banners */}
-      <PromoBanners />
+      <PromoBannersModern />
 
-      {/* Featured Products Section */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-            Featured Products
-          </h2>
-          <Link
-            href="/parts"
-            className="text-sm font-medium text-gray-600 hover:text-orange-600 transition-colors flex items-center gap-1"
-          >
-            View All Products
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-
-        {isLoading ? (
-          <div className="flex justify-center items-center h-64">
-            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
-          </div>
-        ) : allParts.length > 0 ? (
-          <>
-            {/* Side Banner + Products Grid Layout */}
-            <div className="grid lg:grid-cols-5 gap-6">
-              {/* Side Banner */}
-              <div className="hidden lg:block relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-100 to-amber-50 min-h-[400px]">
-                <div className="p-6 h-full flex flex-col justify-center">
-                  <span className="text-xs font-semibold text-gray-600 tracking-wider mb-2">CAR STEERING</span>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-4">Premium Steerings</h3>
-                  <Link
-                    href="/categories/Steering"
-                    className="inline-flex items-center justify-center px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-semibold rounded-lg transition-colors w-fit"
-                  >
-                    View All
-                  </Link>
-                </div>
-              </div>
-              
-              {/* Products Grid */}
-              <div className="lg:col-span-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {allParts.slice(0, 8).map((part) => (
-                  <ProductCardNew key={part.id} part={part} onViewDetails={handleViewDetails} />
-                ))}
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No products available at the moment.</p>
-          </div>
-        )}
-      </section>
-
-      {/* Special Offer Banner */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
+      {/* Latest Arrivals Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 p-8 md:p-12">
-            <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1200&auto=format&fit=crop&q=60')] bg-cover bg-center opacity-20"></div>
-            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-              <div className="text-center md:text-left">
-                <span className="inline-flex items-center px-3 py-1 rounded-md bg-orange-400 text-white text-xs font-semibold mb-4">
-                  TRENDING
-                </span>
-                <h2 className="text-3xl md:text-5xl font-bold text-white mb-2">
-                  Save 50% Off
-                </h2>
-                <p className="text-white/80 text-lg">
-                  On All Premium Car Parts This Weekend
-                </p>
-              </div>
-              <Link 
-                href="/parts" 
-                className="bg-orange-400 hover:bg-orange-500 text-white font-semibold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-105 whitespace-nowrap shadow-lg"
-              >
-                Shop Now
-              </Link>
+          <div className="flex items-center justify-between mb-10">
+            <div>
+              <h2 className="text-3xl md:text-4xl font-bold text-[#00002E]">
+                Latest Arrivals
+              </h2>
+              <p className="text-gray-500 mt-2">New parts added to our catalog</p>
             </div>
+            <Link
+              href="/parts"
+              className="text-sm font-medium text-[#00002E] hover:underline flex items-center gap-1"
+            >
+              View All
+              <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
+
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64">
+              <Loader2 className="w-10 h-10 animate-spin text-[#00002E]" />
+            </div>
+          ) : allParts.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {allParts.slice(0, 8).map((part) => (
+                <ProductCardModern key={part.id} part={part} onViewDetails={handleViewDetails} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-gray-50 rounded-2xl">
+              <p className="text-gray-500">No products available at the moment.</p>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Features Bar */}
-      <FeaturesBar />
+      {/* Newsletter Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-50">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-3xl shadow-xl p-8 md:p-12">
+            <div className="text-center mb-8">
+              <h3 className="text-3xl font-bold text-[#00002E] mb-3">
+                Subscribe to Our Newsletter
+              </h3>
+              <p className="text-gray-600">
+                Get the latest updates on new parts, deals, and automotive tips.
+              </p>
+            </div>
+            <form className="flex flex-col sm:flex-row gap-4 max-w-xl mx-auto">
+              <input
+                type="email"
+                placeholder="Enter your email"
+                className="flex-1 px-6 py-4 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00002E] focus:border-transparent"
+              />
+              <button
+                type="submit"
+                className="px-8 py-4 bg-[#00002E] hover:bg-[#000050] text-white font-bold rounded-full transition-all duration-300 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
+              >
+                Subscribe
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            </form>
+          </div>
+        </div>
+      </section>
 
       {/* Footer */}
-      <FooterNew />
+      <FooterModern />
 
       {/* Product Detail Modal */}
       <ProductDetailModal

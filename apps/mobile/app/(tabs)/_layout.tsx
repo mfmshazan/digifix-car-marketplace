@@ -35,7 +35,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
           ),
-          headerTitle: "DigiFix Auto Parts",
+          headerTitle: "DIGIFIX Auto Parts",
         }}
       />
       <Tabs.Screen

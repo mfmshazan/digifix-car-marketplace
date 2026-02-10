@@ -5,8 +5,8 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeft, Filter, Loader2, Package, ShoppingCart, Check } from 'lucide-react';
-import Navbar from '@/components/layout/Navbar';
-import Footer from '@/components/layout/Footer';
+import NavbarModern from '@/components/layout/NavbarModern';
+import FooterModern from '@/components/layout/FooterModern';
 import { categoriesApi } from '@/lib/api';
 import { useCartStore } from '@/store/cartStore';
 
@@ -110,7 +110,7 @@ export default function CategoryPartsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar />
+      <NavbarModern />
       
       <main className="pt-20">
         {/* Header */}
@@ -293,7 +293,7 @@ export default function CategoryPartsPage() {
         </div>
       </main>
 
-      <Footer />
+      <FooterModern />
     </div>
   );
 }

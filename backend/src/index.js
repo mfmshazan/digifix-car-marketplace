@@ -45,8 +45,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📱 Mobile access: http://10.19.40.60:${PORT}/api`);
 });
 
 export default app;

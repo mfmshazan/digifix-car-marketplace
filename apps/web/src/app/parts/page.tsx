@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Filter, Grid, List, ChevronDown, Search, X } from 'lucide-react';
 import { carPartsApi, CarPart } from '@/lib/api';
-import ProductCardNew from '@/components/products/ProductCardNew';
+import ProductCardModern from '@/components/products/ProductCardModern';
 import ProductDetailModal from '@/components/products/ProductDetailModal';
-import NavbarNew from '@/components/layout/NavbarNew';
-import FooterNew from '@/components/layout/FooterNew';
+import NavbarModern from '@/components/layout/NavbarModern';
+import FooterModern from '@/components/layout/FooterModern';
 
 const conditions = ['ALL', 'NEW', 'USED', 'RECONDITIONED'];
 
@@ -65,14 +65,14 @@ export default function PartsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <NavbarNew />
+      <NavbarModern />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Car Parts</h1>
+          <h1 className="text-3xl font-bold text-[#00002E] mb-2">Car Parts</h1>
           <p className="text-gray-600">
             Browse our collection of premium car parts
-            {categoryFilter && <span className="text-orange-500"> in {categoryFilter}</span>}
+            {categoryFilter && <span className="text-[#00002E] font-medium"> in {categoryFilter}</span>}
           </p>
         </div>
 
@@ -174,7 +174,7 @@ export default function PartsPage() {
         ) : filteredParts.length > 0 ? (
           <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4' : 'grid-cols-1'}`}>
             {filteredParts.map((part) => (
-              <ProductCardNew key={part.id} part={part} onViewDetails={handleViewDetails} />
+              <ProductCardModern key={part.id} part={part} onViewDetails={handleViewDetails} />
             ))}
           </div>
         ) : (
@@ -197,7 +197,7 @@ export default function PartsPage() {
         onClose={handleCloseModal}
       />
 
-      <FooterNew />
+      <FooterModern />
     </div>
   );
 }

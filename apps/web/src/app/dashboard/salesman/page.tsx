@@ -45,7 +45,7 @@ export default function SalesmanDashboard() {
   if (!user) {
     return (
       <div className="min-h-screen pt-20 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full"></div>
+        <div className="animate-spin w-8 h-8 border-2 border-[#00002E] border-t-transparent rounded-full"></div>
       </div>
     );
   }
@@ -86,11 +86,11 @@ export default function SalesmanDashboard() {
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center">
+              <div className="w-16 h-16 bg-[#00002E]/10 rounded-full flex items-center justify-center">
                 {user.avatar ? (
                   <Image src={user.avatar} alt={user.name || ''} width={64} height={64} className="rounded-full" />
                 ) : (
-                  <Store className="w-8 h-8 text-primary-600" />
+                  <Store className="w-8 h-8 text-[#00002E]" />
                 )}
               </div>
               <div>
@@ -101,12 +101,12 @@ export default function SalesmanDashboard() {
             <div className="flex gap-3">
               <button 
                 onClick={() => setShowAddModal(true)}
-                className="btn-primary flex items-center gap-2"
+                className="px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" />
                 Add Product
               </button>
-              <button onClick={handleLogout} className="btn-secondary flex items-center gap-2 text-red-600 hover:text-red-700 hover:border-red-300">
+              <button onClick={handleLogout} className="px-4 py-2 border border-gray-200 hover:border-red-300 text-red-600 hover:text-red-700 font-medium rounded-xl transition-all flex items-center gap-2">
                 <LogOut className="w-4 h-4" />
                 Logout
               </button>
@@ -137,7 +137,7 @@ export default function SalesmanDashboard() {
           <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-gray-900">My Products</h2>
-              <Link href="/dashboard/salesman/products" className="text-primary-500 hover:text-primary-600 text-sm font-medium flex items-center gap-1">
+              <Link href="/dashboard/salesman/products" className="text-[#00002E] hover:text-[#000050] text-sm font-medium flex items-center gap-1">
                 View All <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
@@ -177,7 +177,7 @@ export default function SalesmanDashboard() {
                       <td className="py-4 text-gray-600">{product.sales} sold</td>
                       <td className="py-4">
                         <div className="flex items-center gap-2">
-                          <button aria-label="Edit product" className="p-2 text-gray-400 hover:text-primary-500 transition-colors">
+                          <button aria-label="Edit product" className="p-2 text-gray-400 hover:text-[#00002E] transition-colors">
                             <Edit className="w-4 h-4" />
                           </button>
                           <button aria-label="Delete product" className="p-2 text-gray-400 hover:text-red-500 transition-colors">
@@ -196,7 +196,7 @@ export default function SalesmanDashboard() {
           <div className="bg-white rounded-2xl shadow-sm p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-gray-900">Recent Orders</h2>
-              <Link href="/dashboard/salesman/orders" className="text-primary-500 hover:text-primary-600 text-sm font-medium flex items-center gap-1">
+              <Link href="/dashboard/salesman/orders" className="text-[#00002E] hover:text-[#000050] text-sm font-medium flex items-center gap-1">
                 View All <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
@@ -293,7 +293,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
                 </div>
               ))}
               {images.length < 5 && (
-                <label className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-primary-500 transition-colors">
+                <label className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-[#00002E] transition-colors">
                   <Camera className="w-6 h-6 text-gray-400" />
                   <span className="text-xs text-gray-500 mt-1">Add Photo</span>
                   <input
@@ -315,7 +315,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
               placeholder="e.g., Front Brake Pad Set"
               required
             />
@@ -327,7 +327,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent h-24 resize-none"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] h-24 resize-none"
               placeholder="Describe your product..."
             />
           </div>
@@ -340,7 +340,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
                 type="number"
                 value={formData.price}
                 onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
                 placeholder="0.00"
                 required
               />
@@ -351,7 +351,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
                 type="number"
                 value={formData.stock}
                 onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
                 placeholder="0"
                 required
               />
@@ -369,7 +369,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
                   onClick={() => setFormData({ ...formData, condition })}
                   className={`px-4 py-2 rounded-xl font-medium transition-colors ${
                     formData.condition === condition
-                      ? 'bg-primary-500 text-white'
+                      ? 'bg-[#00002E] text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
@@ -386,7 +386,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
               type="text"
               value={formData.carNumberPlate}
               onChange={(e) => setFormData({ ...formData, carNumberPlate: e.target.value.toUpperCase() })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent uppercase"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] uppercase"
               placeholder="e.g., CAB-1234"
               required
             />
@@ -394,10 +394,10 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
 
           {/* Submit */}
           <div className="flex gap-3 pt-4">
-            <button type="button" onClick={onClose} className="flex-1 btn-secondary">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl transition-all">
               Cancel
             </button>
-            <button type="submit" className="flex-1 btn-primary">
+            <button type="submit" className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all">
               Add Product
             </button>
           </div>

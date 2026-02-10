@@ -52,6 +52,7 @@ export default function LoginScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePressIn = (animValue: Animated.Value) => {
@@ -151,7 +152,7 @@ export default function LoginScreen() {
             <View style={styles.logoContainer}>
               <Ionicons name="car-sport" size={64} color="#00002E" />
             </View>
-            <Text style={styles.brandName}>DigiFix Auto Parts</Text>
+            <Text style={styles.brandName}>DIGIFIX Auto Parts</Text>
             <Text style={styles.tagline}>Your trusted car parts delivery partner</Text>
           </Animated.View>
 

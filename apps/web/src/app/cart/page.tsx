@@ -5,8 +5,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Trash2, Plus, Minus, ShoppingBag, ArrowLeft, Check, ArrowRight } from 'lucide-react';
 import { useCartStore, CartItem } from '@/store/cartStore';
-import NavbarNew from '@/components/layout/NavbarNew';
-import FooterNew from '@/components/layout/FooterNew';
+import NavbarModern from '@/components/layout/NavbarModern';
+import FooterModern from '@/components/layout/FooterModern';
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, clearCart, getTotalPrice } = useCartStore();
@@ -19,7 +19,7 @@ export default function CartPage() {
   if (items.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <NavbarNew />
+        <NavbarModern />
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center py-20">
           <div className="w-24 h-24 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
             <ShoppingBag className="w-12 h-12 text-gray-400" />
@@ -28,19 +28,19 @@ export default function CartPage() {
           <p className="text-gray-600 mb-8">
             Looks like you haven't added any parts to your cart yet.
           </p>
-          <Link href="/parts" className="inline-flex items-center gap-2 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-colors">
+          <Link href="/parts" className="inline-flex items-center gap-2 px-6 py-3 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-colors">
             <ArrowLeft className="w-5 h-5" />
             Browse Parts
           </Link>
         </div>
-        <FooterNew />
+        <FooterModern />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <NavbarNew />
+      <NavbarModern />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">My Shopping Cart</h1>
@@ -85,8 +85,8 @@ export default function CartPage() {
                   </span>
                 </div>
                 {subtotal < 5000 && (
-                  <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">
-                    <p className="text-sm text-orange-700">
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                    <p className="text-sm text-[#00002E]">
                       Add Rs. {(5000 - subtotal).toLocaleString()} more for free shipping!
                     </p>
                   </div>
@@ -102,7 +102,7 @@ export default function CartPage() {
                     value={promoCode}
                     onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
                     placeholder="Enter code"
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
                   />
                   <button className="px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors font-medium">
                     Apply
@@ -113,18 +113,18 @@ export default function CartPage() {
               <div className="border-t border-gray-200 pt-4 mb-6">
                 <div className="flex justify-between text-lg font-bold">
                   <span className="text-gray-900">Total</span>
-                  <span className="text-orange-500">Rs. {total.toLocaleString()}</span>
+                  <span className="text-[#00002E]">Rs. {total.toLocaleString()}</span>
                 </div>
               </div>
 
-              <button className="w-full px-6 py-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2">
+              <button className="w-full px-6 py-4 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2">
                 Proceed to Checkout
                 <ArrowRight className="w-5 h-5" />
               </button>
 
               <Link
                 href="/parts"
-                className="block text-center text-gray-600 hover:text-orange-500 text-sm transition-colors mt-4"
+                className="block text-center text-gray-600 hover:text-[#00002E] text-sm transition-colors mt-4"
               >
                 ← Continue Shopping
               </Link>
@@ -132,7 +132,7 @@ export default function CartPage() {
           </div>
         </div>
       </div>
-      <FooterNew />
+      <FooterModern />
     </div>
   );
 }
@@ -174,7 +174,7 @@ function CartItemCard({
           <p className="text-gray-500 text-sm mb-3">{item.carInfo}</p>
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-orange-500 font-bold text-lg">
+              <span className="text-[#00002E] font-bold text-lg">
                 Rs. {(price * item.quantity).toLocaleString()}
               </span>
               {item.quantity > 1 && (

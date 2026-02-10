@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Search, Package, ArrowRight, Loader2 } from 'lucide-react';
-import NavbarNew from '@/components/layout/NavbarNew';
-import FooterNew from '@/components/layout/FooterNew';
+import NavbarModern from '@/components/layout/NavbarModern';
+import FooterModern from '@/components/layout/FooterModern';
 import { categoriesApi } from '@/lib/api';
 
 interface Category {
@@ -93,11 +93,11 @@ export default function CategoriesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <NavbarNew />
+      <NavbarModern />
       
       <main>
         {/* Hero Section */}
-        <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white py-16">
+        <div className="bg-gradient-to-r from-[#00002E] to-[#000050] text-white py-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 className="text-3xl md:text-4xl font-bold mb-4">Browse Categories</h1>
             <p className="text-white/80 text-lg mb-8">
@@ -113,7 +113,7 @@ export default function CategoriesPage() {
                   placeholder="Search categories..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 rounded-xl bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full pl-12 pr-4 py-4 rounded-xl bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#00002E]"
                 />
               </div>
             </div>
@@ -124,14 +124,14 @@ export default function CategoriesPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           {isLoading ? (
             <div className="flex justify-center items-center h-64">
-              <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+              <Loader2 className="w-8 h-8 animate-spin text-[#00002E]" />
             </div>
           ) : error ? (
             <div className="text-center py-12">
               <p className="text-red-500 mb-4">{error}</p>
               <button
                 onClick={loadCategories}
-                className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-colors"
+                className="px-6 py-3 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-colors"
               >
                 Try Again
               </button>
@@ -173,10 +173,10 @@ export default function CategoriesPage() {
                       </p>
                     )}
                     <div className="flex items-center justify-between">
-                      <span className="text-orange-500 font-semibold">
+                      <span className="text-[#00002E] font-semibold">
                         {getCategoryCount(category)} products
                       </span>
-                      <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-orange-500 group-hover:translate-x-1 transition-all" />
+                      <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-[#00002E] group-hover:translate-x-1 transition-all" />
                     </div>
                   </div>
                 </Link>
@@ -197,7 +197,7 @@ export default function CategoriesPage() {
               </p>
               <Link 
                 href="/parts" 
-                className="inline-flex items-center gap-2 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-colors"
               >
                 Search by Number Plate
                 <ArrowRight className="w-4 h-4" />
@@ -207,7 +207,7 @@ export default function CategoriesPage() {
         </div>
       </main>
 
-      <FooterNew />
+      <FooterModern />
     </div>
   );
 }

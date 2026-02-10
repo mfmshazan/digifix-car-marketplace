@@ -78,16 +78,17 @@ export default function PopularCategories() {
   };
 
   return (
-    <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
+    <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div className="flex items-center justify-between mb-12">
+        <h2 className="text-3xl md:text-4xl font-bold text-[#00002E]">
           Popular Categories
         </h2>
         <Link
           href="/categories"
-          className="text-sm font-medium text-gray-600 hover:text-primary-500 underline underline-offset-4 transition-colors"
+          className="text-sm font-semibold text-[#00002E] hover:underline flex items-center gap-1"
         >
           View All Category
+          <ArrowRight className="w-4 h-4" />
         </Link>
       </div>
 
@@ -96,7 +97,7 @@ export default function PopularCategories() {
           <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-8">
           {categories.map((category) => (
             <Link
               key={category.id}
@@ -104,20 +105,22 @@ export default function PopularCategories() {
               className="group flex flex-col items-center"
             >
               {/* Circular Image Container */}
-              <div className="relative w-24 h-24 md:w-28 md:h-28 rounded-full bg-gray-100 overflow-hidden border-2 border-gray-200 group-hover:border-orange-400 transition-all duration-300 shadow-md group-hover:shadow-lg mb-4">
+              <div className="relative w-28 h-28 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden border-4 border-gray-200 group-hover:border-[#00002E] transition-all duration-300 shadow-lg group-hover:shadow-2xl mb-4">
                 <Image
                   src={getCategoryImage(category.name)}
                   alt={category.name}
                   fill
                   className="object-cover group-hover:scale-110 transition-transform duration-500"
                 />
+                {/* Gradient overlay on hover */}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#00002E]/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </div>
               {/* Category Name */}
-              <h3 className="text-sm font-semibold text-gray-900 text-center group-hover:text-orange-500 transition-colors mb-1">
+              <h3 className="text-sm md:text-base font-bold text-gray-900 text-center group-hover:text-[#00002E] transition-colors mb-1">
                 {category.name}
               </h3>
               {/* Item Count */}
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-500 font-medium">
                 {getCategoryCount(category)} items
               </p>
             </Link>

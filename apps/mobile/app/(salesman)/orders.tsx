@@ -190,7 +190,7 @@ export default function SalesmanOrdersScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   filtersContainer: {
     paddingVertical: 12,
@@ -208,8 +208,8 @@ const styles = StyleSheet.create({
     borderColor: "#E0E0E0",
   },
   filterChipActive: {
-    backgroundColor: "#FF6B35",
-    borderColor: "#FF6B35",
+    backgroundColor: "#00002E",
+    borderColor: "#00002E",
   },
   filterChipText: {
     fontSize: 13,
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
   orderTotal: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#FF6B35",
+    color: "#00002E",
   },
   orderActions: {
     flexDirection: "row",
@@ -324,3 +324,6 @@ const styles = StyleSheet.create({
     color: "#999",
   },
 });
+
+
+

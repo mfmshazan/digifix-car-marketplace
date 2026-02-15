@@ -19,7 +19,7 @@ const featuredParts = [
     originalPrice: 59.99,
     rating: 4.8,
     reviews: 124,
-    image: "https://via.placeholder.com/150/FF6B35/FFFFFF?text=Brake",
+    image: "https://via.placeholder.com/150/DC2626/FFFFFF?text=Brake",
     category: "Brakes",
   },
   {
@@ -29,7 +29,7 @@ const featuredParts = [
     originalPrice: 18.99,
     rating: 4.6,
     reviews: 89,
-    image: "https://via.placeholder.com/150/4ECDC4/FFFFFF?text=Filter",
+    image: "https://via.placeholder.com/150/1A1A1A/FFFFFF?text=Filter",
     category: "Filters",
   },
   {
@@ -39,7 +39,7 @@ const featuredParts = [
     originalPrice: 32.99,
     rating: 4.9,
     reviews: 256,
-    image: "https://via.placeholder.com/150/45B7D1/FFFFFF?text=Spark",
+    image: "https://via.placeholder.com/150/EF4444/FFFFFF?text=Spark",
     category: "Engine",
   },
   {
@@ -49,17 +49,17 @@ const featuredParts = [
     originalPrice: 25.99,
     rating: 4.7,
     reviews: 167,
-    image: "https://via.placeholder.com/150/96CEB4/FFFFFF?text=Air",
+    image: "https://via.placeholder.com/150/6B7280/FFFFFF?text=Air",
     category: "Filters",
   },
 ];
 
 const categories = [
-  { id: "1", name: "Engine", icon: "cog", color: "#FF6B35" },
-  { id: "2", name: "Brakes", icon: "disc", color: "#4ECDC4" },
-  { id: "3", name: "Filters", icon: "filter", color: "#45B7D1" },
-  { id: "4", name: "Electrical", icon: "flash", color: "#96CEB4" },
-  { id: "5", name: "Suspension", icon: "car-sport", color: "#DDA0DD" },
+  { id: "1", name: "Engine", icon: "cog", color: "#00002E" },
+  { id: "2", name: "Brakes", icon: "disc", color: "#1A1A1A" },
+  { id: "3", name: "Filters", icon: "filter", color: "#00002E" },
+  { id: "4", name: "Electrical", icon: "flash", color: "#6B7280" },
+  { id: "5", name: "Suspension", icon: "car-sport", color: "#6B7280" },
   { id: "6", name: "More", icon: "ellipsis-horizontal", color: "#999" },
 ];
 
@@ -68,13 +68,13 @@ const promotions = [
     id: "1",
     title: "Summer Sale",
     description: "Up to 40% off on brake systems",
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
   },
   {
     id: "2",
     title: "Free Delivery",
     description: "On orders over $50",
-    backgroundColor: "#4ECDC4",
+    backgroundColor: "#1A1A1A",
   },
 ];
 
@@ -94,12 +94,7 @@ export default function HomeScreen() {
     <TouchableOpacity style={styles.productCard}>
       <View style={styles.productImageContainer}>
         <View style={styles.productImagePlaceholder}>
-          <Ionicons name="car-sport" size={40} color="#FF6B35" />
-        </View>
-        <View style={styles.discountBadge}>
-          <Text style={styles.discountText}>
-            -{Math.round(((item.originalPrice - item.price) / item.originalPrice) * 100)}%
-          </Text>
+          <Ionicons name="car-sport" size={40} color="#00002E" />
         </View>
       </View>
       <View style={styles.productInfo}>
@@ -149,7 +144,7 @@ export default function HomeScreen() {
             onChangeText={setSearchQuery}
           />
           <TouchableOpacity>
-            <Ionicons name="options" size={20} color="#FF6B35" />
+            <Ionicons name="options" size={20} color="#00002E" />
           </TouchableOpacity>
         </View>
       </View>
@@ -207,20 +202,20 @@ export default function HomeScreen() {
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.quickActions}>
           <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#FFF3EE" }]}>
-              <Ionicons name="car" size={24} color="#FF6B35" />
+            <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
+              <Ionicons name="car" size={24} color="#00002E" />
             </View>
             <Text style={styles.quickActionText}>Find by Vehicle</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#E8F8F5" }]}>
-              <Ionicons name="barcode" size={24} color="#4ECDC4" />
+            <View style={[styles.quickActionIcon, { backgroundColor: "#F5F5F5" }]}>
+              <Ionicons name="barcode" size={24} color="#1A1A1A" />
             </View>
             <Text style={styles.quickActionText}>Scan Part Code</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#EBF5FB" }]}>
-              <Ionicons name="location" size={24} color="#45B7D1" />
+            <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
+              <Ionicons name="location" size={24} color="#00002E" />
             </View>
             <Text style={styles.quickActionText}>Track Order</Text>
           </TouchableOpacity>
@@ -251,12 +246,12 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   searchContainer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
   },
   searchBar: {
     flexDirection: "row",
@@ -292,7 +287,7 @@ const styles = StyleSheet.create({
   },
   seeAllText: {
     fontSize: 14,
-    color: "#FF6B35",
+    color: "#00002E",
     fontWeight: "500",
   },
   promotionsList: {
@@ -367,7 +362,7 @@ const styles = StyleSheet.create({
   },
   productImagePlaceholder: {
     height: 120,
-    backgroundColor: "#FFF3EE",
+    backgroundColor: "#E5E7EB",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     justifyContent: "center",
@@ -377,10 +372,32 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 8,
     left: 8,
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+  },
+  discountBadgeOuter: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    backgroundColor: "#00002E",
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  discountTextOuter: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "bold",
   },
   discountText: {
     color: "#FFFFFF",
@@ -425,7 +442,7 @@ const styles = StyleSheet.create({
   price: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#FF6B35",
+    color: "#00002E",
   },
   originalPrice: {
     fontSize: 12,
@@ -437,7 +454,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 12,
     right: 12,
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -468,3 +485,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+
+

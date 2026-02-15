@@ -1,5 +1,5 @@
 /**
- * API Configuration for DigiFix Mobile App
+ * API Configuration for DIGIFIX Mobile App
  * 
  * This file handles API URL configuration for different environments:
  * - Android Emulator: Uses 10.0.2.2 (maps to host's localhost)
@@ -17,7 +17,7 @@ import Constants from 'expo-constants';
 
 // Your computer's local IP address (for physical device testing)
 // Run 'ipconfig' (Windows) or 'ifconfig' (Mac/Linux) to find this
-const LOCAL_IP = '10.35.227.60';
+const LOCAL_IP = '10.19.40.60';
 
 // Backend port (should match Docker/backend configuration)
 const API_PORT = 3000;

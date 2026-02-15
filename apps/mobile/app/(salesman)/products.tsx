@@ -89,7 +89,7 @@ export default function ProductsScreen() {
   const renderProduct = ({ item }: { item: (typeof sampleProducts)[0] }) => (
     <TouchableOpacity style={styles.productCard}>
       <View style={styles.productImage}>
-        <Ionicons name="cube" size={32} color="#FF6B35" />
+        <Ionicons name="cube" size={32} color="#00002E" />
       </View>
       <View style={styles.productInfo}>
         <Text style={styles.productName}>{item.name}</Text>
@@ -211,7 +211,7 @@ export default function ProductsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -252,8 +252,8 @@ const styles = StyleSheet.create({
     borderColor: "#E0E0E0",
   },
   filterChipActive: {
-    backgroundColor: "#FF6B35",
-    borderColor: "#FF6B35",
+    backgroundColor: "#00002E",
+    borderColor: "#00002E",
   },
   filterChipText: {
     fontSize: 13,
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
   productImage: {
     width: 64,
     height: 64,
-    backgroundColor: "#FFF3EE",
+    backgroundColor: "#E5E7EB",
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
   productPrice: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#FF6B35",
+    color: "#00002E",
     marginRight: 12,
   },
   stockBadge: {
@@ -352,3 +352,6 @@ const styles = StyleSheet.create({
     color: "#999",
   },
 });
+
+
+

@@ -60,7 +60,7 @@ export default function OrdersScreen() {
         <Text style={styles.orderTotal}>${item.total.toFixed(2)}</Text>
       </View>
       <TouchableOpacity style={styles.trackButton}>
-        <Ionicons name="location" size={16} color="#FF6B35" />
+        <Ionicons name="location" size={16} color="#00002E" />
         <Text style={styles.trackButtonText}>Track Order</Text>
       </TouchableOpacity>
     </TouchableOpacity>
@@ -92,7 +92,7 @@ export default function OrdersScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   list: {
     padding: 16,
@@ -183,3 +183,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 });
+
+
+

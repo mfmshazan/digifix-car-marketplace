@@ -7,6 +7,7 @@ import productRoutes from './routes/product.routes.js';
 import categoryRoutes from './routes/category.routes.js';
 import orderRoutes from './routes/order.routes.js';
 import carPartRoutes from './routes/carPart.routes.js';
+import cartRoutes from './routes/cart.routes.js';
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/car-parts', carPartRoutes);
+app.use('/api/cart', cartRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -43,8 +45,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📱 Mobile access: http://10.19.40.60:${PORT}/api`);
 });
 
 export default app;

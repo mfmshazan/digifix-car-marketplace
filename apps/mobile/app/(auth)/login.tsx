@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Animated,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -23,6 +25,51 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const buttonScale = useRef(new Animated.Value(1)).current;
+  const googleButtonScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handlePressIn = (animValue: Animated.Value) => {
+    Animated.spring(animValue, {
+      toValue: 0.95,
+      friction: 5,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = (animValue: Animated.Value) => {
+    Animated.spring(animValue, {
+      toValue: 1,
+      friction: 5,
+      useNativeDriver: true,
+    }).start();
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -34,18 +81,14 @@ export default function LoginScreen() {
     setError("");
 
     try {
-      // Call backend API to login
       const response = await loginUser({ email, password });
 
       if (response.success && response.data) {
-        // Save token and user data to AsyncStorage
         await saveToken(response.data.token);
         await saveUser(response.data.user);
 
-        // Show success message
         Alert.alert("Success", "Login successful!");
 
-        // Redirect based on user role
         if (response.data.user.role === "SALESMAN") {
           router.replace("/(salesman)");
         } else {
@@ -56,11 +99,34 @@ export default function LoginScreen() {
       }
     } catch (err: any) {
       console.error("Login error:", err);
-      // This error means user hasn't signed up or credentials are wrong
       setError(err.message || "Invalid email or password. Please check your credentials or sign up first.");
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleGoogleSignIn = () => {
+    Alert.alert("Coming Soon", "Google Sign-In will be available soon!");
+  };
+
+  const handleForgotPassword = () => {
+    Alert.alert(
+      "Reset Password",
+      "Please enter your email address to receive a password reset link.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Send", 
+          onPress: () => {
+            if (email) {
+              Alert.alert("Email Sent", `Password reset link sent to ${email}`);
+            } else {
+              Alert.alert("Error", "Please enter your email address first");
+            }
+          }
+        },
+      ]
+    );
   };
 
   return (
@@ -73,17 +139,33 @@ export default function LoginScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Logo Section */}
-          <View style={styles.logoSection}>
+          {/* Logo Section with Animation */}
+          <Animated.View 
+            style={[
+              styles.logoSection,
+              {
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }],
+              }
+            ]}
+          >
             <View style={styles.logoContainer}>
-              <Ionicons name="car-sport" size={64} color="#FF6B35" />
+              <Ionicons name="car-sport" size={64} color="#00002E" />
             </View>
-            <Text style={styles.brandName}>DigiFix Auto Parts</Text>
+            <Text style={styles.brandName}>DIGIFIX Auto Parts</Text>
             <Text style={styles.tagline}>Your trusted car parts delivery partner</Text>
-          </View>
+          </Animated.View>
 
-          {/* Form Card */}
-          <View style={styles.formCard}>
+          {/* Form Card with Animation */}
+          <Animated.View 
+            style={[
+              styles.formCard,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              }
+            ]}
+          >
             <Text style={styles.title}>Welcome Back</Text>
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -124,17 +206,50 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
-              onPress={handleLogin}
-              disabled={isLoading}
+            {/* Forgot Password */}
+            <TouchableOpacity 
+              style={styles.forgotPassword}
+              onPress={handleForgotPassword}
             >
-              {isLoading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.loginButtonText}>Sign In</Text>
-              )}
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
             </TouchableOpacity>
+
+            {/* Sign In Button with Animation */}
+            <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+              <Pressable
+                style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                onPress={handleLogin}
+                onPressIn={() => handlePressIn(buttonScale)}
+                onPressOut={() => handlePressOut(buttonScale)}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.loginButtonText}>Sign In</Text>
+                )}
+              </Pressable>
+            </Animated.View>
+
+            {/* Divider */}
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or continue with</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Google Sign In Button */}
+            <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
+              <Pressable
+                style={styles.googleButton}
+                onPress={handleGoogleSignIn}
+                onPressIn={() => handlePressIn(googleButtonScale)}
+                onPressOut={() => handlePressOut(googleButtonScale)}
+              >
+                <Ionicons name="logo-google" size={20} color="#DB4437" />
+                <Text style={styles.googleButtonText}>Sign in with Google</Text>
+              </Pressable>
+            </Animated.View>
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>{"Don't have an account? "}</Text>
@@ -142,7 +257,7 @@ export default function LoginScreen() {
                 <Text style={styles.signUpText}>Sign Up</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -152,7 +267,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F5F5",
+    backgroundColor: "#FFFFFF",
   },
   keyboardView: {
     flex: 1,
@@ -170,7 +285,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "#FFF0EB",
+    backgroundColor: "#E5E7EB",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
@@ -230,15 +345,15 @@ const styles = StyleSheet.create({
   },
   forgotPassword: {
     alignSelf: "flex-end",
-    marginBottom: 24,
+    marginBottom: 20,
   },
   forgotPasswordText: {
-    color: "#FF6B35",
+    color: "#00002E",
     fontSize: 14,
     fontWeight: "500",
   },
   loginButton: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
@@ -246,10 +361,42 @@ const styles = StyleSheet.create({
     height: 56,
   },
   loginButtonDisabled: {
-    backgroundColor: "#FFB299",
+    backgroundColor: "#9CA3AF",
   },
   loginButtonText: {
     color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#E5E7EB",
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    color: "#9CA3AF",
+    fontSize: 14,
+  },
+  googleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    height: 56,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    gap: 12,
+  },
+  googleButtonText: {
+    color: "#1A1A1A",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -264,8 +411,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   signUpText: {
-    color: "#FF6B35",
+    color: "#00002E",
     fontSize: 14,
     fontWeight: "600",
   },
 });
+
+
+

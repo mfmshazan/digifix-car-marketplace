@@ -8,25 +8,11 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { createCar, createCarPart, getAllCars, Car } from "../../src/api/carParts";
-
-const categories = [
-  { id: "", name: "Select category" },
-  { id: "brakes", name: "🛑 Brakes" },
-  { id: "engine", name: "⚙️ Engine Parts" },
-  { id: "filters", name: "🔧 Filters" },
-  { id: "lighting", name: "💡 Lighting" },
-  { id: "suspension", name: "🚗 Suspension" },
-  { id: "electrical", name: "🔋 Electrical" },
-  { id: "tires", name: "🛞 Tires & Wheels" },
-  { id: "fluids", name: "🛢️ Fluids & Chemicals" },
-  { id: "exhaust", name: "💨 Exhaust" },
-  { id: "interior", name: "🪑 Interior" },
-];
+import { createCar, createCarPart } from "../../src/api/carParts";
+import { getAllCategories, Category } from "../../src/api/categories";
 
 const conditions = [
   { value: "NEW", label: "New" },
@@ -35,18 +21,14 @@ const conditions = [
 ];
 
 export default function AddCarPartScreen() {
-  // Car form state
-  const [carMode, setCarMode] = useState<"existing" | "new">("existing");
-  const [numberPlate, setNumberPlate] = useState("");
+  // Car info (optional - for compatibility info)
   const [carMake, setCarMake] = useState("");
   const [carModel, setCarModel] = useState("");
   const [carYear, setCarYear] = useState("");
-  const [engineType, setEngineType] = useState("");
-  const [carColor, setCarColor] = useState("");
-  const [existingCars, setExistingCars] = useState<Car[]>([]);
-  const [selectedCar, setSelectedCar] = useState<Car | null>(null);
-  const [showCarPicker, setShowCarPicker] = useState(false);
-  const [isLoadingCars, setIsLoadingCars] = useState(true);
+
+  // Categories from API
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
 
   // Part form state
   const [partName, setPartName] = useState("");
@@ -61,64 +43,62 @@ export default function AddCarPartScreen() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load existing cars on mount
+  // Load categories on mount
   useEffect(() => {
-    loadExistingCars();
+    loadCategories();
   }, []);
 
-  const loadExistingCars = async () => {
+  const loadCategories = async () => {
     try {
-      setIsLoadingCars(true);
-      const response = await getAllCars({ limit: 100 });
-      if (response.success) {
-        setExistingCars(response.data.cars);
+      setIsLoadingCategories(true);
+      const response = await getAllCategories();
+      if (response.success && response.data) {
+        setCategories(response.data);
+        // Auto-select first category if available
+        if (response.data.length > 0) {
+          setSelectedCategory(response.data[0].id);
+        }
       }
     } catch (error) {
-      console.error("Failed to load cars:", error);
+      console.error("Failed to load categories:", error);
+      Alert.alert("Error", "Failed to load categories. Please try again.");
     } finally {
-      setIsLoadingCars(false);
+      setIsLoadingCategories(false);
     }
   };
 
   const handleSubmit = async () => {
-    // Validate part fields
-    if (!partName || !price || !stock || !selectedCategory) {
-      Alert.alert("Error", "Please fill in all required part fields");
-      return;
-    }
-
-    // Validate car fields based on mode
-    if (carMode === "existing" && !selectedCar) {
-      Alert.alert("Error", "Please select an existing car");
-      return;
-    }
-
-    if (carMode === "new" && (!numberPlate || !carMake || !carModel || !carYear)) {
-      Alert.alert("Error", "Please fill in all required car fields");
+    // Validate required part fields
+    if (!partName || !price || !selectedCategory) {
+      Alert.alert("Error", "Please fill in all required fields (Part Name, Price, Category)");
       return;
     }
 
     try {
       setIsSubmitting(true);
-      let carId = selectedCar?.id;
 
-      // Create new car if needed
-      if (carMode === "new") {
-        const carResponse = await createCar({
-          numberPlate,
-          make: carMake,
-          model: carModel,
-          year: parseInt(carYear),
-          engineType: engineType || undefined,
-          color: carColor || undefined,
-        });
+      // Generate car info for the part
+      const make = carMake.trim() || "Universal";
+      const model = carModel.trim() || "All Models";
+      const year = carYear ? parseInt(carYear) : new Date().getFullYear();
 
-        if (carResponse.success) {
-          carId = carResponse.data.id;
-        } else {
-          throw new Error(carResponse.message || "Failed to create car");
-        }
+      // Generate a unique number plate based on car details and timestamp
+      const timestamp = Date.now();
+      const generatedPlate = `${make.substring(0, 3).toUpperCase()}${model.substring(0, 2).toUpperCase()}-${year}-${timestamp}`;
+
+      // Create car record first
+      const carResponse = await createCar({
+        numberPlate: generatedPlate,
+        make: make,
+        model: model,
+        year: year,
+      });
+
+      if (!carResponse.success) {
+        throw new Error(carResponse.message || "Failed to create car record");
       }
+
+      const carId = carResponse.data.id;
 
       // Create the car part
       const partResponse = await createCarPart({
@@ -127,9 +107,9 @@ export default function AddCarPartScreen() {
         partNumber: partNumber || undefined,
         price: parseFloat(price),
         discountPrice: discountPrice ? parseFloat(discountPrice) : undefined,
-        stock: parseInt(stock),
+        stock: stock ? parseInt(stock) : 1,
         condition: selectedCondition as "NEW" | "USED" | "REFURBISHED",
-        carId: carId!,
+        carId: carId,
         categoryId: selectedCategory,
       });
 
@@ -155,180 +135,15 @@ export default function AddCarPartScreen() {
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header Info */}
       <View style={styles.infoCard}>
-        <Ionicons name="information-circle" size={24} color="#FF6B35" />
+        <Ionicons name="information-circle" size={24} color="#00002E" />
         <Text style={styles.infoText}>
-          Add car parts that customers can find by searching their cars number plate
+          Add car parts to your store. Enter part details and optionally specify compatible car info.
         </Text>
-      </View>
-
-      {/* Car Selection Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Step 1: Select or Add Car</Text>
-
-        {/* Mode Toggle */}
-        <View style={styles.modeToggle}>
-          <TouchableOpacity
-            style={[styles.modeButton, carMode === "existing" && styles.modeButtonActive]}
-            onPress={() => setCarMode("existing")}
-          >
-            <Text style={[styles.modeButtonText, carMode === "existing" && styles.modeButtonTextActive]}>
-              Existing Car
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modeButton, carMode === "new" && styles.modeButtonActive]}
-            onPress={() => setCarMode("new")}
-          >
-            <Text style={[styles.modeButtonText, carMode === "new" && styles.modeButtonTextActive]}>
-              New Car
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {carMode === "existing" ? (
-          // Existing Car Picker
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>
-              Select Car <Text style={styles.required}>*</Text>
-            </Text>
-            {isLoadingCars ? (
-              <ActivityIndicator size="small" color="#FF6B35" />
-            ) : (
-              <>
-                <TouchableOpacity
-                  style={styles.selectInput}
-                  onPress={() => setShowCarPicker(!showCarPicker)}
-                >
-                  <Text style={[styles.selectInputText, !selectedCar && styles.placeholderText]}>
-                    {selectedCar
-                      ? `${selectedCar.numberPlate} - ${selectedCar.make} ${selectedCar.model}`
-                      : "Select a car"}
-                  </Text>
-                  <Ionicons
-                    name={showCarPicker ? "chevron-up" : "chevron-down"}
-                    size={20}
-                    color="#999"
-                  />
-                </TouchableOpacity>
-                {showCarPicker && (
-                  <View style={styles.picker}>
-                    <ScrollView style={{ maxHeight: 200 }}>
-                      {existingCars.map((car) => (
-                        <TouchableOpacity
-                          key={car.id}
-                          style={[
-                            styles.pickerOption,
-                            selectedCar?.id === car.id && styles.pickerOptionSelected,
-                          ]}
-                          onPress={() => {
-                            setSelectedCar(car);
-                            setShowCarPicker(false);
-                          }}
-                        >
-                          <View>
-                            <Text style={styles.carPlateText}>{car.numberPlate}</Text>
-                            <Text style={styles.carDetailsText}>
-                              {car.make} {car.model} ({car.year})
-                            </Text>
-                          </View>
-                          {selectedCar?.id === car.id && (
-                            <Ionicons name="checkmark" size={18} color="#FF6B35" />
-                          )}
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-              </>
-            )}
-          </View>
-        ) : (
-          // New Car Form
-          <>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>
-                Number Plate <Text style={styles.required}>*</Text>
-              </Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., CAB-1234"
-                placeholderTextColor="#999"
-                value={numberPlate}
-                onChangeText={setNumberPlate}
-                autoCapitalize="characters"
-              />
-            </View>
-
-            <View style={styles.rowInputs}>
-              <View style={[styles.inputGroup, styles.halfInput]}>
-                <Text style={styles.label}>
-                  Make <Text style={styles.required}>*</Text>
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., Toyota"
-                  placeholderTextColor="#999"
-                  value={carMake}
-                  onChangeText={setCarMake}
-                />
-              </View>
-              <View style={[styles.inputGroup, styles.halfInput]}>
-                <Text style={styles.label}>
-                  Model <Text style={styles.required}>*</Text>
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., Corolla"
-                  placeholderTextColor="#999"
-                  value={carModel}
-                  onChangeText={setCarModel}
-                />
-              </View>
-            </View>
-
-            <View style={styles.rowInputs}>
-              <View style={[styles.inputGroup, styles.halfInput]}>
-                <Text style={styles.label}>
-                  Year <Text style={styles.required}>*</Text>
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., 2020"
-                  placeholderTextColor="#999"
-                  value={carYear}
-                  onChangeText={setCarYear}
-                  keyboardType="number-pad"
-                />
-              </View>
-              <View style={[styles.inputGroup, styles.halfInput]}>
-                <Text style={styles.label}>Engine Type</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., 1.8L Petrol"
-                  placeholderTextColor="#999"
-                  value={engineType}
-                  onChangeText={setEngineType}
-                />
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Color</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., White"
-                placeholderTextColor="#999"
-                value={carColor}
-                onChangeText={setCarColor}
-              />
-            </View>
-          </>
-        )}
       </View>
 
       {/* Part Details Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Step 2: Part Details</Text>
+        <Text style={styles.sectionTitle}>Part Details</Text>
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>
@@ -373,40 +188,53 @@ export default function AddCarPartScreen() {
           <Text style={styles.label}>
             Category <Text style={styles.required}>*</Text>
           </Text>
-          <TouchableOpacity
-            style={styles.selectInput}
-            onPress={() => setShowCategoryPicker(!showCategoryPicker)}
-          >
-            <Text style={[styles.selectInputText, !selectedCategory && styles.placeholderText]}>
-              {categories.find((c) => c.id === selectedCategory)?.name || "Select category"}
-            </Text>
-            <Ionicons
-              name={showCategoryPicker ? "chevron-up" : "chevron-down"}
-              size={20}
-              color="#999"
-            />
-          </TouchableOpacity>
-          {showCategoryPicker && (
-            <View style={styles.picker}>
-              {categories.filter((c) => c.id).map((category) => (
-                <TouchableOpacity
-                  key={category.id}
-                  style={[
-                    styles.pickerOption,
-                    selectedCategory === category.id && styles.pickerOptionSelected,
-                  ]}
-                  onPress={() => {
-                    setSelectedCategory(category.id);
-                    setShowCategoryPicker(false);
-                  }}
-                >
-                  <Text style={styles.pickerOptionText}>{category.name}</Text>
-                  {selectedCategory === category.id && (
-                    <Ionicons name="checkmark" size={18} color="#FF6B35" />
-                  )}
-                </TouchableOpacity>
-              ))}
+          {isLoadingCategories ? (
+            <View style={styles.selectInput}>
+              <ActivityIndicator size="small" color="#00002E" />
+              <Text style={styles.placeholderText}>Loading categories...</Text>
             </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.selectInput}
+                onPress={() => setShowCategoryPicker(!showCategoryPicker)}
+              >
+                <Text style={[styles.selectInputText, !selectedCategory && styles.placeholderText]}>
+                  {categories.find((c) => c.id === selectedCategory)?.name || "Select category"}
+                </Text>
+                <Ionicons
+                  name={showCategoryPicker ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color="#999"
+                />
+              </TouchableOpacity>
+              {showCategoryPicker && (
+                <View style={styles.picker}>
+                  <ScrollView style={{ maxHeight: 200 }}>
+                    {categories.map((category) => (
+                      <TouchableOpacity
+                        key={category.id}
+                        style={[
+                          styles.pickerOption,
+                          selectedCategory === category.id && styles.pickerOptionSelected,
+                        ]}
+                        onPress={() => {
+                          setSelectedCategory(category.id);
+                          setShowCategoryPicker(false);
+                        }}
+                      >
+                        <Text style={styles.pickerOptionText}>
+                          {category.icon ? `${category.icon} ` : ''}{category.name}
+                        </Text>
+                        {selectedCategory === category.id && (
+                          <Ionicons name="checkmark" size={18} color="#00002E" />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -490,6 +318,50 @@ export default function AddCarPartScreen() {
         </View>
       </View>
 
+      {/* Compatible Car Info Section (Optional) */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Compatible Car Info (Optional)</Text>
+        <Text style={styles.sectionSubtitle}>
+          Add car details to help customers find compatible parts
+        </Text>
+
+        <View style={styles.rowInputs}>
+          <View style={[styles.inputGroup, styles.halfInput]}>
+            <Text style={styles.label}>Make</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g., Toyota"
+              placeholderTextColor="#999"
+              value={carMake}
+              onChangeText={setCarMake}
+            />
+          </View>
+          <View style={[styles.inputGroup, styles.halfInput]}>
+            <Text style={styles.label}>Model</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g., Corolla"
+              placeholderTextColor="#999"
+              value={carModel}
+              onChangeText={setCarModel}
+            />
+          </View>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Year</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g., 2020"
+            placeholderTextColor="#999"
+            value={carYear}
+            onChangeText={setCarYear}
+            keyboardType="numeric"
+            maxLength={4}
+          />
+        </View>
+      </View>
+
       {/* Submit Button */}
       <View style={styles.submitSection}>
         <TouchableOpacity
@@ -511,23 +383,23 @@ export default function AddCarPartScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#F5F5F5",
   },
   infoCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF8F5",
+    backgroundColor: "#E8EAF6",
     margin: 16,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#FFE0D3",
+    borderColor: "#C5CAE9",
   },
   infoText: {
     flex: 1,
     marginLeft: 12,
     fontSize: 14,
-    color: "#666",
+    color: "#333",
     lineHeight: 20,
   },
   section: {
@@ -536,11 +408,21 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderRadius: 16,
     padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "700",
     color: "#1A1A2E",
+    marginBottom: 8,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: "#666",
     marginBottom: 16,
   },
   modeToggle: {
@@ -557,7 +439,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   modeButtonActive: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
   },
   modeButtonText: {
     fontSize: 14,
@@ -628,7 +510,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F5F5F5",
   },
   pickerOptionSelected: {
-    backgroundColor: "#FFF8F5",
+    backgroundColor: "#E5E7EB",
   },
   pickerOptionText: {
     fontSize: 14,
@@ -637,7 +519,7 @@ const styles = StyleSheet.create({
   carPlateText: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#FF6B35",
+    color: "#00002E",
   },
   carDetailsText: {
     fontSize: 13,
@@ -664,7 +546,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   conditionButtonActive: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
   },
   conditionButtonText: {
     fontSize: 13,
@@ -700,11 +582,11 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   submitButton: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: "center",
-    shadowColor: "#FF6B35",
+    shadowColor: "#00002E",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -719,3 +601,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
 });
+
+
+

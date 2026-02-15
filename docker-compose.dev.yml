@@ -17,3 +17,19 @@ services:
       # Don't mount node_modules (use container's version)
       - /app/node_modules
     command: npm run dev
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-3000}/api
+    volumes:
+      # Mount source code for hot-reloading
+      - ./apps/web/src:/app/src
+      - ./apps/web/public:/app/public
+      # Don't mount node_modules (use container's version)
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev

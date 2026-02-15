@@ -5,12 +5,12 @@ export default function CustomerTabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#FF6B35",
-        tabBarInactiveTintColor: "#999",
+        tabBarActiveTintColor: "#00002E",
+        tabBarInactiveTintColor: "#6B7280",
         tabBarStyle: {
           backgroundColor: "#FFFFFF",
           borderTopWidth: 1,
-          borderTopColor: "#F0F0F0",
+          borderTopColor: "#E5E5E5",
           height: 60,
           paddingBottom: 8,
           paddingTop: 8,
@@ -20,7 +20,7 @@ export default function CustomerTabLayout() {
           fontWeight: "500",
         },
         headerStyle: {
-          backgroundColor: "#FF6B35",
+          backgroundColor: "#00002E",
         },
         headerTintColor: "#FFFFFF",
         headerTitleStyle: {
@@ -35,7 +35,7 @@ export default function CustomerTabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
           ),
-          headerTitle: "DigiFix Auto Parts",
+          headerTitle: "DIGIFIX Auto Parts",
         }}
       />
       <Tabs.Screen
@@ -77,3 +77,6 @@ export default function CustomerTabLayout() {
     </Tabs>
   );
 }
+
+
+

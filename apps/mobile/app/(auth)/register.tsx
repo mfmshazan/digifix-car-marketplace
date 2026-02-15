@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Animated,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -27,6 +29,53 @@ export default function RegisterScreen() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const buttonScale = useRef(new Animated.Value(1)).current;
+  const googleButtonScale = useRef(new Animated.Value(1)).current;
+  const customerButtonScale = useRef(new Animated.Value(1)).current;
+  const salesmanButtonScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handlePressIn = (animValue: Animated.Value) => {
+    Animated.spring(animValue, {
+      toValue: 0.95,
+      friction: 5,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = (animValue: Animated.Value) => {
+    Animated.spring(animValue, {
+      toValue: 1,
+      friction: 5,
+      useNativeDriver: true,
+    }).start();
+  };
 
   const handleRegister = async () => {
     if (!name || !email || !password || !confirmPassword) {
@@ -48,7 +97,6 @@ export default function RegisterScreen() {
     setError("");
 
     try {
-      // Call backend API to register
       const response = await registerUser({
         name,
         email,
@@ -57,21 +105,18 @@ export default function RegisterScreen() {
       });
 
       if (response.success && response.data) {
-        // Save token and user data to AsyncStorage
         await saveToken(response.data.token);
         await saveUser(response.data.user);
 
         const userRole = response.data.user.role;
 
-        // Show success message
         Alert.alert(
           "Success",
-          "Registration successful! Welcome to DigiFix!",
+          "Registration successful! Welcome to DIGIFIX!",
           [
             {
               text: "OK",
               onPress: () => {
-                // Redirect based on user role
                 if (userRole === "SALESMAN") {
                   router.replace("/(salesman)");
                 } else {
@@ -92,6 +137,10 @@ export default function RegisterScreen() {
     }
   };
 
+  const handleGoogleSignUp = () => {
+    Alert.alert("Coming Soon", "Google Sign-Up will be available soon!");
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -102,17 +151,33 @@ export default function RegisterScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Logo Section */}
-          <View style={styles.logoSection}>
+          {/* Logo Section with Animation */}
+          <Animated.View 
+            style={[
+              styles.logoSection,
+              {
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }],
+              }
+            ]}
+          >
             <View style={styles.logoContainer}>
-              <Ionicons name="car-sport" size={64} color="#FF6B35" />
+              <Ionicons name="car-sport" size={64} color="#00002E" />
             </View>
-            <Text style={styles.brandName}>DigiFix Auto Parts</Text>
+            <Text style={styles.brandName}>DIGIFIX Auto Parts</Text>
             <Text style={styles.tagline}>Your trusted car parts delivery partner</Text>
-          </View>
+          </Animated.View>
 
-          {/* Form Card */}
-          <View style={styles.formCard}>
+          {/* Form Card with Animation */}
+          <Animated.View 
+            style={[
+              styles.formCard,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              }
+            ]}
+          >
             <Text style={styles.title}>Create Account</Text>
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -143,53 +208,61 @@ export default function RegisterScreen() {
               />
             </View>
 
-            {/* Role Selection */}
+            {/* Role Selection with Animation */}
             <View style={styles.roleContainer}>
               <Text style={styles.roleLabel}>I want to register as:</Text>
               <View style={styles.roleButtons}>
-                <TouchableOpacity
-                  style={[
-                    styles.roleButton,
-                    role === "CUSTOMER" && styles.roleButtonActive,
-                  ]}
-                  onPress={() => setRole("CUSTOMER")}
-                >
-                  <Ionicons
-                    name="person-outline"
-                    size={20}
-                    color={role === "CUSTOMER" ? "#FF6B35" : "#666"}
-                  />
-                  <Text
+                <Animated.View style={[{ flex: 1 }, { transform: [{ scale: customerButtonScale }] }]}>
+                  <Pressable
                     style={[
-                      styles.roleButtonText,
-                      role === "CUSTOMER" && styles.roleButtonTextActive,
+                      styles.roleButton,
+                      role === "CUSTOMER" && styles.roleButtonActive,
                     ]}
+                    onPress={() => setRole("CUSTOMER")}
+                    onPressIn={() => handlePressIn(customerButtonScale)}
+                    onPressOut={() => handlePressOut(customerButtonScale)}
                   >
-                    Customer
-                  </Text>
-                </TouchableOpacity>
+                    <Ionicons
+                      name="person-outline"
+                      size={20}
+                      color={role === "CUSTOMER" ? "#FFFFFF" : "#666"}
+                    />
+                    <Text
+                      style={[
+                        styles.roleButtonText,
+                        role === "CUSTOMER" && styles.roleButtonTextActive,
+                      ]}
+                    >
+                      Customer
+                    </Text>
+                  </Pressable>
+                </Animated.View>
 
-                <TouchableOpacity
-                  style={[
-                    styles.roleButton,
-                    role === "SALESMAN" && styles.roleButtonActive,
-                  ]}
-                  onPress={() => setRole("SALESMAN")}
-                >
-                  <Ionicons
-                    name="storefront-outline"
-                    size={20}
-                    color={role === "SALESMAN" ? "#FF6B35" : "#666"}
-                  />
-                  <Text
+                <Animated.View style={[{ flex: 1 }, { transform: [{ scale: salesmanButtonScale }] }]}>
+                  <Pressable
                     style={[
-                      styles.roleButtonText,
-                      role === "SALESMAN" && styles.roleButtonTextActive,
+                      styles.roleButton,
+                      role === "SALESMAN" && styles.roleButtonActive,
                     ]}
+                    onPress={() => setRole("SALESMAN")}
+                    onPressIn={() => handlePressIn(salesmanButtonScale)}
+                    onPressOut={() => handlePressOut(salesmanButtonScale)}
                   >
-                    Shop Owner
-                  </Text>
-                </TouchableOpacity>
+                    <Ionicons
+                      name="storefront-outline"
+                      size={20}
+                      color={role === "SALESMAN" ? "#FFFFFF" : "#666"}
+                    />
+                    <Text
+                      style={[
+                        styles.roleButtonText,
+                        role === "SALESMAN" && styles.roleButtonTextActive,
+                      ]}
+                    >
+                      Shop Owner
+                    </Text>
+                  </Pressable>
+                </Animated.View>
               </View>
             </View>
 
@@ -237,17 +310,42 @@ export default function RegisterScreen() {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={[styles.registerButton, isLoading && styles.registerButtonDisabled]}
-              onPress={handleRegister}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.registerButtonText}>Sign Up</Text>
-              )}
-            </TouchableOpacity>
+            {/* Sign Up Button with Animation */}
+            <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+              <Pressable
+                style={[styles.registerButton, isLoading && styles.registerButtonDisabled]}
+                onPress={handleRegister}
+                onPressIn={() => handlePressIn(buttonScale)}
+                onPressOut={() => handlePressOut(buttonScale)}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.registerButtonText}>Sign Up</Text>
+                )}
+              </Pressable>
+            </Animated.View>
+
+            {/* Divider */}
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or continue with</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Google Sign Up Button */}
+            <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
+              <Pressable
+                style={styles.googleButton}
+                onPress={handleGoogleSignUp}
+                onPressIn={() => handlePressIn(googleButtonScale)}
+                onPressOut={() => handlePressOut(googleButtonScale)}
+              >
+                <Ionicons name="logo-google" size={20} color="#DB4437" />
+                <Text style={styles.googleButtonText}>Sign up with Google</Text>
+              </Pressable>
+            </Animated.View>
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>{"Already have an account? "}</Text>
@@ -255,7 +353,7 @@ export default function RegisterScreen() {
                 <Text style={styles.signInText}>Sign In</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -265,7 +363,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F5F5",
+    backgroundColor: "#FFFFFF",
   },
   keyboardView: {
     flex: 1,
@@ -283,7 +381,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "#FFF0EB",
+    backgroundColor: "#E5E7EB",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
@@ -342,7 +440,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   registerButton: {
-    backgroundColor: "#FF6B35",
+    backgroundColor: "#00002E",
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
@@ -351,7 +449,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   registerButtonDisabled: {
-    backgroundColor: "#FFB299",
+    backgroundColor: "#9CA3AF",
   },
   registerButtonText: {
     color: "#FFFFFF",
@@ -376,16 +474,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F5F5F5",
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
     borderWidth: 2,
-    borderColor: "#F5F5F5",
+    borderColor: "#E5E7EB",
     gap: 8,
   },
   roleButtonActive: {
-    backgroundColor: "#FFF0EB",
-    borderColor: "#FF6B35",
+    backgroundColor: "#00002E",
+    borderColor: "#00002E",
   },
   roleButtonText: {
     fontSize: 14,
@@ -393,7 +491,39 @@ const styles = StyleSheet.create({
     color: "#666",
   },
   roleButtonTextActive: {
-    color: "#FF6B35",
+    color: "#FFFFFF",
+  },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 16,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#E5E7EB",
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    color: "#9CA3AF",
+    fontSize: 14,
+  },
+  googleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    height: 56,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    gap: 12,
+  },
+  googleButtonText: {
+    color: "#1A1A1A",
+    fontSize: 16,
+    fontWeight: "600",
   },
   footer: {
     flexDirection: "row",
@@ -406,8 +536,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   signInText: {
-    color: "#FF6B35",
+    color: "#00002E",
     fontSize: 14,
     fontWeight: "600",
   },
 });
+
+
+

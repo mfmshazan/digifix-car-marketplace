@@ -5,7 +5,7 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#FF6B35",
+        tabBarActiveTintColor: "#00002E",
         tabBarInactiveTintColor: "#999",
         tabBarStyle: {
           backgroundColor: "#FFFFFF",
@@ -20,7 +20,7 @@ export default function TabLayout() {
           fontWeight: "500",
         },
         headerStyle: {
-          backgroundColor: "#FF6B35",
+          backgroundColor: "#00002E",
         },
         headerTintColor: "#FFFFFF",
         headerTitleStyle: {
@@ -35,7 +35,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
           ),
-          headerTitle: "DigiFix Auto Parts",
+          headerTitle: "DIGIFIX Auto Parts",
         }}
       />
       <Tabs.Screen
@@ -77,3 +77,6 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+
+

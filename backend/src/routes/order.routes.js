@@ -1,5 +1,12 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.middleware.js';
+import {
+  getSalesmanSalesSummary,
+  getSalesmanOrders,
+  updateOrderStatus,
+  getCustomerOrders,
+  createOrder
+} from '../controllers/order.controller.js';
 
 const router = Router();
 
@@ -7,30 +14,12 @@ const router = Router();
 router.use(authenticate);
 
 // Customer routes
-router.get('/', (req, res) => {
-  // TODO: Implement - Get user's orders
-  res.json({ orders: [] });
-});
-
-router.post('/', (req, res) => {
-  // TODO: Implement - Create order
-  res.json({ message: 'Order created' });
-});
-
-router.get('/:id', (req, res) => {
-  // TODO: Implement - Get order by ID
-  res.json({ order: null });
-});
+router.get('/', getCustomerOrders);
+router.post('/', createOrder);
 
 // Salesman routes
-router.get('/salesman/orders', authorize('SALESMAN'), (req, res) => {
-  // TODO: Implement - Get salesman's orders
-  res.json({ orders: [] });
-});
-
-router.put('/:id/status', authorize('SALESMAN'), (req, res) => {
-  // TODO: Implement - Update order status
-  res.json({ message: 'Order status updated' });
-});
+router.get('/salesman/summary', authorize('SALESMAN'), getSalesmanSalesSummary);
+router.get('/salesman/orders', authorize('SALESMAN'), getSalesmanOrders);
+router.put('/:id/status', authorize('SALESMAN'), updateOrderStatus);
 
 export default router;

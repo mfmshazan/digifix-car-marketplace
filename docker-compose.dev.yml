@@ -1,35 +1,109 @@
-# Docker Compose Override for Development
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Docker Compose for Development (Standalone)
+# Usage: docker-compose -f docker-compose.dev.yml up -d
 #
-# This enables hot-reloading by mounting source code
+# This is a complete development setup with hot-reloading
 
 services:
+  # ================================
+  # PostgreSQL Database
+  # ================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: digifix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-digifix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-digifix123}
+      POSTGRES_DB: ${POSTGRES_DB:-digifix_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-digifix} -d ${POSTGRES_DB:-digifix_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - digifix-network
+
+  # ================================
+  # Backend API Server (Development)
+  # ================================
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
+    container_name: digifix-backend
+    restart: unless-stopped
     environment:
       NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-digifix}:${POSTGRES_PASSWORD:-digifix123}@postgres:5432/${POSTGRES_DB:-digifix_db}?schema=public
+      DIRECT_URL: postgresql://${POSTGRES_USER:-digifix}:${POSTGRES_PASSWORD:-digifix123}@postgres:5432/${POSTGRES_DB:-digifix_db}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      FRONTEND_URL: ${FRONTEND_URL:-*}
+      # Enable polling for hot-reload on Windows
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
     volumes:
       # Mount source code for hot-reloading
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
       # Don't mount node_modules (use container's version)
       - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - digifix-network
     command: npm run dev
 
+  # ================================
+  # Web Frontend (Development)
+  # ================================
   web:
     build:
       context: ./apps/web
       dockerfile: Dockerfile.dev
+    container_name: digifix-web
+    restart: unless-stopped
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-3000}/api
+      # Enable polling for hot-reload on Windows
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${WEB_PORT:-3001}:3001"
     volumes:
       # Mount source code for hot-reloading
       - ./apps/web/src:/app/src
       - ./apps/web/public:/app/public
+      - ./apps/web/next.config.mjs:/app/next.config.mjs
+      - ./apps/web/tailwind.config.ts:/app/tailwind.config.ts
+      - ./apps/web/postcss.config.js:/app/postcss.config.js
+      - ./apps/web/.env.local:/app/.env.local
       # Don't mount node_modules (use container's version)
       - /app/node_modules
       - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - digifix-network
     command: npm run dev
+
+# ================================
+# Volumes
+# ================================
+volumes:
+  postgres_data:
+    driver: local
+
+# ================================
+# Networks
+# ================================
+networks:
+  digifix-network:
+    driver: bridge

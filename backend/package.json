@@ -18,7 +18,7 @@
   "license": "ISC",
   "description": "DigiFix Car Marketplace Backend API",
   "dependencies": {
-    "@prisma/client": "^6.19.1",
+    "@prisma/client": "^6.19.2",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

@@ -2,33 +2,12 @@
 # Usage: docker-compose -f docker-compose.dev.yml up -d
 #
 # This is a complete development setup with hot-reloading
+# Connects to Supabase PostgreSQL (cloud database)
 
 services:
   # ================================
-  # PostgreSQL Database
-  # ================================
-  postgres:
-    image: postgres:16-alpine
-    container_name: digifix-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-digifix}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-digifix123}
-      POSTGRES_DB: ${POSTGRES_DB:-digifix_db}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-digifix} -d ${POSTGRES_DB:-digifix_db}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - digifix-network
-
-  # ================================
   # Backend API Server (Development)
+  # Uses Supabase PostgreSQL - no local database needed
   # ================================
   backend:
     build:
@@ -39,9 +18,11 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      DATABASE_URL: postgresql://${POSTGRES_USER:-digifix}:${POSTGRES_PASSWORD:-digifix123}@postgres:5432/${POSTGRES_DB:-digifix_db}?schema=public
-      DIRECT_URL: postgresql://${POSTGRES_USER:-digifix}:${POSTGRES_PASSWORD:-digifix123}@postgres:5432/${POSTGRES_DB:-digifix_db}?schema=public
-      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      # Supabase PostgreSQL connection (from backend/.env)
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+      JWT_SECRET: ${JWT_SECRET:-digifix-car-marketplace-super-secret-jwt-key-2026}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       FRONTEND_URL: ${FRONTEND_URL:-*}
       # Enable polling for hot-reload on Windows
       CHOKIDAR_USEPOLLING: "true"
@@ -53,9 +34,6 @@ services:
       - ./backend/prisma:/app/prisma
       # Don't mount node_modules (use container's version)
       - /app/node_modules
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - digifix-network
     command: npm run dev
@@ -93,13 +71,6 @@ services:
     networks:
       - digifix-network
     command: npm run dev
-
-# ================================
-# Volumes
-# ================================
-volumes:
-  postgres_data:
-    driver: local
 
 # ================================
 # Networks

@@ -1,135 +1,214 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { getSalesmanOrders, updateOrderStatus } from "../../src/api/orders";
 
-// Sample orders data
-const sampleOrders = [
-  {
-    id: "ORD-001",
-    customer: "John Doe",
-    email: "john@example.com",
-    date: "Dec 22, 2025",
-    items: [
-      { name: "Brake Pads Set", quantity: 2, price: 45.99 },
-    ],
-    total: 91.98,
-    status: "Pending",
-    statusColor: "#FF9800",
-  },
-  {
-    id: "ORD-002",
-    customer: "Jane Smith",
-    email: "jane@example.com",
-    date: "Dec 21, 2025",
-    items: [
-      { name: "Oil Filter Premium", quantity: 2, price: 12.99 },
-    ],
-    total: 25.98,
-    status: "Processing",
-    statusColor: "#2196F3",
-  },
-  {
-    id: "ORD-003",
-    customer: "Mike Johnson",
-    email: "mike@example.com",
-    date: "Dec 20, 2025",
-    items: [
-      { name: "Spark Plugs (4 Pack)", quantity: 2, price: 24.99 },
-    ],
-    total: 49.98,
-    status: "Shipped",
-    statusColor: "#9C27B0",
-  },
-  {
-    id: "ORD-004",
-    customer: "Sarah Williams",
-    email: "sarah@example.com",
-    date: "Dec 19, 2025",
-    items: [
-      { name: "Air Filter", quantity: 1, price: 19.99 },
-      { name: "Oil Filter Premium", quantity: 1, price: 12.99 },
-    ],
-    total: 32.98,
-    status: "Delivered",
-    statusColor: "#4CAF50",
-  },
-  {
-    id: "ORD-005",
-    customer: "Tom Brown",
-    email: "tom@example.com",
-    date: "Dec 18, 2025",
-    items: [
-      { name: "Headlight Bulb H7", quantity: 2, price: 15.99 },
-    ],
-    total: 31.98,
-    status: "Cancelled",
-    statusColor: "#F44336",
-  },
-];
+// Order type from API
+interface OrderItem {
+  id: string;
+  productId: string;
+  quantity: number;
+  price: number;
+  total: number;
+  product?: {
+    id: string;
+    name: string;
+    images: string[];
+  };
+}
 
-const statusFilters = ["All", "Pending", "Processing", "Shipped", "Delivered", "Cancelled"];
+interface Order {
+  id: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  subtotal: number;
+  deliveryFee: number;
+  discount: number;
+  total: number;
+  createdAt: string;
+  customer?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  items: OrderItem[];
+}
+
+const statusFilters = ["All", "PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"];
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "PENDING": return "#FF9800";
+    case "CONFIRMED": return "#2196F3";
+    case "PROCESSING": return "#2196F3";
+    case "SHIPPED": return "#9C27B0";
+    case "DELIVERED": return "#4CAF50";
+    case "CANCELLED": return "#F44336";
+    case "REFUNDED": return "#F44336";
+    default: return "#666";
+  }
+};
+
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric', 
+    year: 'numeric' 
+  });
+};
 
 export default function SalesmanOrdersScreen() {
   const [selectedFilter, setSelectedFilter] = useState("All");
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredOrders = sampleOrders.filter((order) => {
-    if (selectedFilter === "All") return true;
-    return order.status === selectedFilter;
-  });
+  const fetchOrders = useCallback(async (showRefresh = false) => {
+    try {
+      if (showRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setError(null);
 
-  const renderOrder = ({ item }: { item: (typeof sampleOrders)[0] }) => (
-    <TouchableOpacity style={styles.orderCard}>
-      <View style={styles.orderHeader}>
-        <View>
-          <Text style={styles.orderId}>{item.id}</Text>
-          <Text style={styles.orderDate}>{item.date}</Text>
+      const statusParam = selectedFilter === "All" ? undefined : selectedFilter;
+      const response = await getSalesmanOrders(statusParam);
+
+      if (response.success && response.data) {
+        setOrders(response.data.orders || []);
+      } else {
+        setError(response.message || "Failed to load orders");
+      }
+    } catch (err: any) {
+      console.error("Fetch orders error:", err);
+      setError(err.message || "Failed to load orders");
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [selectedFilter]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  const handleUpdateStatus = async (orderId: string, newStatus: string) => {
+    try {
+      const response = await updateOrderStatus(orderId, newStatus);
+      if (response.success) {
+        Alert.alert("Success", `Order status updated to ${newStatus}`);
+        fetchOrders(); // Refresh orders
+      } else {
+        Alert.alert("Error", response.message || "Failed to update status");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to update status");
+    }
+  };
+
+  const confirmStatusChange = (orderId: string, currentStatus: string) => {
+    const nextStatus = getNextStatus(currentStatus);
+    if (!nextStatus) return;
+
+    Alert.alert(
+      "Update Order Status",
+      `Change status from ${currentStatus} to ${nextStatus}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Confirm", onPress: () => handleUpdateStatus(orderId, nextStatus) }
+      ]
+    );
+  };
+
+  const getNextStatus = (currentStatus: string) => {
+    switch (currentStatus) {
+      case "PENDING": return "CONFIRMED";
+      case "CONFIRMED": return "PROCESSING";
+      case "PROCESSING": return "SHIPPED";
+      case "SHIPPED": return "DELIVERED";
+      default: return null;
+    }
+  };
+
+  const renderOrder = ({ item }: { item: Order }) => {
+    const statusColor = getStatusColor(item.status);
+    const canProgress = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED"].includes(item.status);
+
+    return (
+      <TouchableOpacity style={styles.orderCard}>
+        <View style={styles.orderHeader}>
+          <View>
+            <Text style={styles.orderId}>{item.orderNumber}</Text>
+            <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
+          </View>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: statusColor + "20" },
+            ]}
+          >
+            <Text style={[styles.statusText, { color: statusColor }]}>
+              {item.status}
+            </Text>
+          </View>
         </View>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: item.statusColor + "20" },
-          ]}
-        >
-          <Text style={[styles.statusText, { color: item.statusColor }]}>
-            {item.status}
+
+        <View style={styles.customerInfo}>
+          <Ionicons name="person-outline" size={16} color="#666" />
+          <Text style={styles.customerName}>
+            {item.customer?.name || "Unknown Customer"}
           </Text>
         </View>
-      </View>
 
-      <View style={styles.customerInfo}>
-        <Ionicons name="person-outline" size={16} color="#666" />
-        <Text style={styles.customerName}>{item.customer}</Text>
-      </View>
+        <View style={styles.orderItems}>
+          {item.items.map((orderItem, index) => (
+            <Text key={index} style={styles.orderItemText}>
+              {orderItem.quantity}x {orderItem.product?.name || "Product"}
+            </Text>
+          ))}
+        </View>
 
-      <View style={styles.orderItems}>
-        {item.items.map((orderItem, index) => (
-          <Text key={index} style={styles.orderItemText}>
-            {orderItem.quantity}x {orderItem.name}
-          </Text>
-        ))}
-      </View>
-
-      <View style={styles.orderFooter}>
-        <Text style={styles.orderTotal}>${item.total.toFixed(2)}</Text>
-        <View style={styles.orderActions}>
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="eye-outline" size={18} color="#666" />
-          </TouchableOpacity>
-          {item.status === "Pending" && (
-            <TouchableOpacity style={[styles.actionButton, styles.confirmButton]}>
-              <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+        <View style={styles.orderFooter}>
+          <Text style={styles.orderTotal}>${item.total.toFixed(2)}</Text>
+          <View style={styles.orderActions}>
+            <TouchableOpacity style={styles.actionButton}>
+              <Ionicons name="eye-outline" size={18} color="#666" />
             </TouchableOpacity>
-          )}
+            {canProgress && (
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.confirmButton]}
+                onPress={() => confirmStatusChange(item.id, item.status)}
+              >
+                <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
+      </TouchableOpacity>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#00002E" />
+        <Text style={styles.loadingText}>Loading orders...</Text>
       </View>
-    </TouchableOpacity>
-  );
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -165,24 +244,44 @@ export default function SalesmanOrdersScreen() {
       {/* Orders Count */}
       <View style={styles.countContainer}>
         <Text style={styles.countText}>
-          {filteredOrders.length} order(s)
+          {orders.length} order(s)
         </Text>
       </View>
 
       {/* Orders List */}
-      <FlatList
-        data={filteredOrders}
-        renderItem={renderOrder}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="receipt-outline" size={60} color="#CCC" />
-            <Text style={styles.emptyText}>No orders found</Text>
-          </View>
-        }
-      />
+      {error ? (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={60} color="#F44336" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => fetchOrders()}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={orders}
+          renderItem={renderOrder}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => fetchOrders(true)}
+              colors={["#00002E"]}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="receipt-outline" size={60} color="#CCC" />
+              <Text style={styles.emptyText}>No orders found</Text>
+              <Text style={styles.emptySubtext}>
+                Orders from customers will appear here
+              </Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
@@ -191,6 +290,40 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#FFFFFF",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#666",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  errorText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#F44336",
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: "#00002E",
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "600",
   },
   filtersContainer: {
     paddingVertical: 12,
@@ -322,6 +455,12 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: "#999",
+  },
+  emptySubtext: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#BBB",
+    textAlign: "center",
   },
 });
 

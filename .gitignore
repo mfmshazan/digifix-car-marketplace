@@ -69,3 +69,6 @@ out/
 # Docker
 .docker/
 docker-compose.override.yml
+
+# token
+token.txt

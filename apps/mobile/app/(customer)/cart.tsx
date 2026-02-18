@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -12,10 +12,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useCart, CartItem } from "../../src/store/cartStore";
 import { useRouter } from "expo-router";
+import { createOrder } from "../../src/api/orders";
 
 export default function CartScreen() {
   const { items, updateQuantity, removeItem, clearCart, getTotalPrice, isLoading } = useCart();
   const router = useRouter();
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
   
   const subtotal = getTotalPrice();
   const deliveryFee = subtotal > 50 ? 0 : 5.99;
@@ -51,9 +53,57 @@ export default function CartScreen() {
     );
   };
 
-  const handleCheckout = () => {
-    Alert.alert("Checkout", "Proceeding to checkout...");
-    // TODO: Implement checkout flow
+  const handleCheckout = async () => {
+    if (items.length === 0) {
+      Alert.alert("Empty Cart", "Please add items to your cart first.");
+      return;
+    }
+
+    setIsCheckingOut(true);
+    
+    try {
+      // Prepare order items
+      const orderItems = items.map(item => ({
+        productId: item.id,
+        quantity: item.quantity
+      }));
+
+      // Create the order (no address required)
+      const orderResponse = await createOrder(
+        orderItems,
+        "CASH_ON_DELIVERY" // Default payment method
+      );
+
+      if (orderResponse.success) {
+        // Clear local cart after successful order
+        clearCart();
+        
+        Alert.alert(
+          "Order Placed! 🎉",
+          `Your order ${orderResponse.data.orderNumber} has been placed successfully!\n\nTotal: $${orderResponse.data.total.toFixed(2)}\n\nSellers have been notified.`,
+          [
+            { 
+              text: "View Orders", 
+              onPress: () => router.push("/(customer)/orders") 
+            },
+            { 
+              text: "Continue Shopping", 
+              onPress: () => router.push("/(customer)") 
+            }
+          ]
+        );
+      } else {
+        throw new Error(orderResponse.message || "Failed to create order");
+      }
+    } catch (error: any) {
+      console.error("Checkout error:", error);
+      Alert.alert(
+        "Checkout Failed",
+        error.message || "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsCheckingOut(false);
+    }
   };
 
   const renderCartItem = ({ item }: { item: CartItem }) => (
@@ -160,9 +210,22 @@ export default function CartScreen() {
               <Text style={styles.totalLabel}>Total</Text>
               <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
             </View>
-            <TouchableOpacity style={styles.checkoutButton} onPress={handleCheckout}>
-              <Text style={styles.checkoutButtonText}>Proceed to Checkout</Text>
-              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" style={{ marginLeft: 8 }} />
+            <TouchableOpacity 
+              style={[styles.checkoutButton, isCheckingOut && styles.checkoutButtonDisabled]} 
+              onPress={handleCheckout}
+              disabled={isCheckingOut}
+            >
+              {isCheckingOut ? (
+                <>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <Text style={[styles.checkoutButtonText, { marginLeft: 8 }]}>Processing...</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.checkoutButtonText}>Proceed to Checkout</Text>
+                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" style={{ marginLeft: 8 }} />
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </>
@@ -375,6 +438,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+  },
+  checkoutButtonDisabled: {
+    backgroundColor: "#9CA3AF",
   },
   checkoutButtonText: {
     color: "#FFFFFF",

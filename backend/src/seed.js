@@ -258,7 +258,12 @@ async function seed() {
   const hashedPassword = await bcrypt.hash('password123', 10);
   const salesman = await prisma.user.upsert({
     where: { email: 'salesman@test.com' },
-    update: {},
+    update: {
+      password: hashedPassword,
+      name: 'Test Shop Owner',
+      role: 'SALESMAN',
+      isVerified: true,
+    },
     create: {
       email: 'salesman@test.com',
       password: hashedPassword,
@@ -273,7 +278,12 @@ async function seed() {
   // Create a test customer user
   const customer = await prisma.user.upsert({
     where: { email: 'customer@test.com' },
-    update: {},
+    update: {
+      password: hashedPassword,
+      name: 'Test Customer',
+      role: 'CUSTOMER',
+      isVerified: true,
+    },
     create: {
       email: 'customer@test.com',
       password: hashedPassword,
@@ -327,6 +337,117 @@ async function seed() {
   console.log(`   - ${createdCars.length} cars`);
   console.log(`   - ${totalParts} car parts`);
   console.log(`   - 2 test users (salesman@test.com, customer@test.com)`);
+
+  // Create mock orders for salesman to see
+  console.log('\nCreating mock orders...');
+  
+  // Get first 3 car parts for the orders
+  const sampleParts = await prisma.carPart.findMany({
+    take: 5,
+    where: { sellerId: salesman.id },
+    include: {
+      car: true,
+      category: true,
+    },
+  });
+
+  if (sampleParts.length > 0) {
+    // Delete existing mock orders to avoid duplicates
+    await prisma.orderItem.deleteMany({
+      where: { order: { customerId: customer.id } },
+    });
+    await prisma.orderTracking.deleteMany({
+      where: { order: { customerId: customer.id } },
+    });
+    await prisma.order.deleteMany({
+      where: { customerId: customer.id },
+    });
+
+    // Create mock orders
+    const mockOrders = [
+      {
+        orderNumber: 'ORD-MOCK-001',
+        status: 'PENDING',
+        paymentStatus: 'PENDING',
+        paymentMethod: 'CASH_ON_DELIVERY',
+        parts: [sampleParts[0], sampleParts[1]].filter(Boolean),
+        createdAt: new Date(),
+      },
+      {
+        orderNumber: 'ORD-MOCK-002',
+        status: 'CONFIRMED',
+        paymentStatus: 'PAID',
+        paymentMethod: 'CARD',
+        parts: [sampleParts[2]].filter(Boolean),
+        createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
+      },
+      {
+        orderNumber: 'ORD-MOCK-003',
+        status: 'PROCESSING',
+        paymentStatus: 'PAID',
+        paymentMethod: 'CARD',
+        parts: [sampleParts[3], sampleParts[4]].filter(Boolean),
+        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
+      },
+      {
+        orderNumber: 'ORD-MOCK-004',
+        status: 'DELIVERED',
+        paymentStatus: 'PAID',
+        paymentMethod: 'CASH_ON_DELIVERY',
+        parts: [sampleParts[0]].filter(Boolean),
+        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
+      },
+    ];
+
+    for (const mockOrder of mockOrders) {
+      if (mockOrder.parts.length === 0) continue;
+
+      const subtotal = mockOrder.parts.reduce((sum, part) => {
+        const price = part.discountPrice || part.price;
+        return sum + price * 2; // quantity of 2 for each
+      }, 0);
+      const deliveryFee = 300;
+      const total = subtotal + deliveryFee;
+
+      const order = await prisma.order.create({
+        data: {
+          orderNumber: mockOrder.orderNumber,
+          customerId: customer.id,
+          salesmanId: salesman.id,
+          status: mockOrder.status,
+          paymentStatus: mockOrder.paymentStatus,
+          paymentMethod: mockOrder.paymentMethod,
+          subtotal,
+          deliveryFee,
+          total,
+          createdAt: mockOrder.createdAt,
+          items: {
+            create: mockOrder.parts.map(part => ({
+              carPartId: part.id,
+              itemType: 'CAR_PART',
+              itemName: part.name,
+              quantity: 2,
+              price: part.discountPrice || part.price,
+              total: (part.discountPrice || part.price) * 2,
+            })),
+          },
+        },
+      });
+
+      // Create tracking entry
+      await prisma.orderTracking.create({
+        data: {
+          orderId: order.id,
+          status: mockOrder.status,
+          description: `Order ${mockOrder.status.toLowerCase()}`,
+        },
+      });
+
+      console.log(`  ✅ Created order ${order.orderNumber} (${mockOrder.status})`);
+    }
+  }
+
+  console.log(`\n   - Mock orders created for salesman dashboard`);
   
   // List cars with number plates
   console.log('\n📋 Cars available for testing:');

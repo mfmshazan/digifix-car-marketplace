@@ -1,35 +1,80 @@
-# Docker Compose Override for Development
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Docker Compose for Development (Standalone)
+# Usage: docker-compose -f docker-compose.dev.yml up -d
 #
-# This enables hot-reloading by mounting source code
+# This is a complete development setup with hot-reloading
+# Connects to Supabase PostgreSQL (cloud database)
 
 services:
+  # ================================
+  # Backend API Server (Development)
+  # Uses Supabase PostgreSQL - no local database needed
+  # ================================
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
+    container_name: digifix-backend
+    restart: unless-stopped
     environment:
       NODE_ENV: development
+      PORT: 3000
+      # Supabase PostgreSQL connection (from backend/.env)
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+      JWT_SECRET: ${JWT_SECRET:-digifix-car-marketplace-super-secret-jwt-key-2026}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      FRONTEND_URL: ${FRONTEND_URL:-*}
+      # Enable polling for hot-reload on Windows
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
     volumes:
       # Mount source code for hot-reloading
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
       # Don't mount node_modules (use container's version)
       - /app/node_modules
+    networks:
+      - digifix-network
     command: npm run dev
 
+  # ================================
+  # Web Frontend (Development)
+  # ================================
   web:
     build:
       context: ./apps/web
       dockerfile: Dockerfile.dev
+    container_name: digifix-web
+    restart: unless-stopped
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-3000}/api
+      # Enable polling for hot-reload on Windows
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${WEB_PORT:-3001}:3001"
     volumes:
       # Mount source code for hot-reloading
       - ./apps/web/src:/app/src
       - ./apps/web/public:/app/public
+      - ./apps/web/next.config.mjs:/app/next.config.mjs
+      - ./apps/web/tailwind.config.ts:/app/tailwind.config.ts
+      - ./apps/web/postcss.config.js:/app/postcss.config.js
+      - ./apps/web/.env.local:/app/.env.local
       # Don't mount node_modules (use container's version)
       - /app/node_modules
       - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - digifix-network
     command: npm run dev
+
+# ================================
+# Networks
+# ================================
+networks:
+  digifix-network:
+    driver: bridge

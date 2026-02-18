@@ -37,6 +37,18 @@ export const getSalesmanSalesSummary = async (req, res) => {
                   }
                 }
               }
+            },
+            carPart: {
+              select: {
+                id: true,
+                name: true,
+                images: true,
+                category: {
+                  select: {
+                    name: true
+                  }
+                }
+              }
             }
           }
         },
@@ -110,10 +122,34 @@ export const getSalesmanSalesSummary = async (req, res) => {
     const monthlyRevenue = monthOrders.reduce((sum, order) => sum + order.total, 0);
     const monthlyOrders = monthOrders.length;
 
-    // Get top selling products this month
-    const topProducts = await prisma.orderItem.groupBy({
+    // Get top selling items this month (both products and car parts)
+    const topProductItems = await prisma.orderItem.groupBy({
       by: ['productId'],
       where: {
+        productId: { not: null },
+        order: {
+          salesmanId,
+          createdAt: {
+            gte: startOfMonth
+          }
+        }
+      },
+      _sum: {
+        quantity: true,
+        total: true
+      },
+      orderBy: {
+        _sum: {
+          quantity: 'desc'
+        }
+      },
+      take: 5
+    });
+
+    const topCarPartItems = await prisma.orderItem.groupBy({
+      by: ['carPartId'],
+      where: {
+        carPartId: { not: null },
         order: {
           salesmanId,
           createdAt: {
@@ -134,8 +170,8 @@ export const getSalesmanSalesSummary = async (req, res) => {
     });
 
     // Get product details for top products
-    const topProductIds = topProducts.map(p => p.productId);
-    const productDetails = await prisma.product.findMany({
+    const topProductIds = topProductItems.map(p => p.productId).filter(Boolean);
+    const productDetails = topProductIds.length > 0 ? await prisma.product.findMany({
       where: {
         id: { in: topProductIds }
       },
@@ -150,9 +186,29 @@ export const getSalesmanSalesSummary = async (req, res) => {
           }
         }
       }
-    });
+    }) : [];
 
-    const topSellingProducts = topProducts.map(p => {
+    // Get car part details for top car parts
+    const topCarPartIds = topCarPartItems.map(p => p.carPartId).filter(Boolean);
+    const carPartDetails = topCarPartIds.length > 0 ? await prisma.carPart.findMany({
+      where: {
+        id: { in: topCarPartIds }
+      },
+      select: {
+        id: true,
+        name: true,
+        images: true,
+        price: true,
+        category: {
+          select: {
+            name: true
+          }
+        }
+      }
+    }) : [];
+
+    // Combine and sort top selling items
+    const topSellingFromProducts = topProductItems.map(p => {
       const details = productDetails.find(pd => pd.id === p.productId);
       return {
         ...details,
@@ -161,20 +217,38 @@ export const getSalesmanSalesSummary = async (req, res) => {
       };
     });
 
+    const topSellingFromCarParts = topCarPartItems.map(p => {
+      const details = carPartDetails.find(pd => pd.id === p.carPartId);
+      return {
+        ...details,
+        totalSold: p._sum.quantity,
+        totalRevenue: p._sum.total
+      };
+    });
+
+    // Merge and sort by quantity sold
+    const topSellingProducts = [...topSellingFromProducts, ...topSellingFromCarParts]
+      .sort((a, b) => (b.totalSold || 0) - (a.totalSold || 0))
+      .slice(0, 5);
+
     // Format today's orders for display
     const formattedOrders = todayOrders.map(order => ({
       id: order.id,
       orderNumber: order.orderNumber,
       customer: order.customer?.name || 'Unknown Customer',
       customerEmail: order.customer?.email,
-      items: order.items.map(item => ({
-        productName: item.product?.name,
-        productImage: item.product?.images?.[0],
-        category: item.product?.category?.name,
-        quantity: item.quantity,
-        price: item.price,
-        total: item.total
-      })),
+      items: order.items.map(item => {
+        // Handle both product and carPart
+        const itemData = item.product || item.carPart;
+        return {
+          productName: item.itemName || itemData?.name || 'Unknown Item',
+          productImage: itemData?.images?.[0],
+          category: itemData?.category?.name,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.total
+        };
+      }),
       subtotal: order.subtotal,
       deliveryFee: order.deliveryFee,
       discount: order.discount,
@@ -240,6 +314,13 @@ export const getSalesmanOrders = async (req, res) => {
                 name: true,
                 images: true
               }
+            },
+            carPart: {
+              select: {
+                id: true,
+                name: true,
+                images: true
+              }
             }
           }
         },
@@ -259,12 +340,29 @@ export const getSalesmanOrders = async (req, res) => {
       take: parseInt(limit)
     });
 
+    // Format orders to include proper item names and images
+    const formattedOrders = orders.map(order => ({
+      ...order,
+      items: order.items.map(item => {
+        // Get product or carPart details
+        const productData = item.product || item.carPart;
+        return {
+          ...item,
+          product: {
+            id: productData?.id || item.productId || item.carPartId,
+            name: item.itemName || productData?.name || 'Unknown Item',
+            images: productData?.images || []
+          }
+        };
+      })
+    }));
+
     const total = await prisma.order.count({ where });
 
     res.json({
       success: true,
       data: {
-        orders,
+        orders: formattedOrders,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -430,6 +528,9 @@ export const getCustomerOrders = async (req, res) => {
 
 /**
  * Create new order
+ * Supports both Product and CarPart items
+ * Groups items by seller and creates separate orders
+ * Address is optional
  */
 export const createOrder = async (req, res) => {
   try {
@@ -443,117 +544,376 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    if (!addressId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Delivery address is required'
+    // Address is optional - verify only if provided
+    let validAddressId = null;
+    if (addressId) {
+      const address = await prisma.address.findFirst({
+        where: {
+          id: addressId,
+          userId: customerId
+        }
       });
-    }
-
-    // Verify address belongs to user
-    const address = await prisma.address.findFirst({
-      where: {
-        id: addressId,
-        userId: customerId
+      if (address) {
+        validAddressId = address.id;
       }
-    });
-
-    if (!address) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid delivery address'
-      });
     }
 
-    // Get product details and calculate totals
-    const productIds = items.map(item => item.productId);
+    // Get item IDs (could be Product IDs or CarPart IDs)
+    const itemIds = items.map(item => item.productId);
+    
+    // First, try to find items as Products
     const products = await prisma.product.findMany({
       where: {
-        id: { in: productIds }
+        id: { in: itemIds }
+      },
+      include: {
+        salesman: {
+          select: {
+            id: true,
+            name: true,
+            store: {
+              select: {
+                name: true
+              }
+            }
+          }
+        }
       }
     });
 
-    if (products.length !== items.length) {
+    // Then, find items as CarParts
+    const carParts = await prisma.carPart.findMany({
+      where: {
+        id: { in: itemIds }
+      },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            name: true,
+            store: {
+              select: {
+                name: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Combine both types into a unified format
+    const allItems = [];
+    
+    // Add products
+    products.forEach(product => {
+      allItems.push({
+        id: product.id,
+        type: 'PRODUCT',
+        name: product.name,
+        price: product.price,
+        discountPrice: product.discountPrice,
+        images: product.images,
+        sellerId: product.salesmanId,
+        sellerName: product.salesman?.name || 'Unknown Seller',
+        storeName: product.salesman?.store?.name
+      });
+    });
+
+    // Add car parts
+    carParts.forEach(part => {
+      allItems.push({
+        id: part.id,
+        type: 'CAR_PART',
+        name: part.name,
+        price: part.price,
+        discountPrice: part.discountPrice,
+        images: part.images,
+        sellerId: part.sellerId,
+        sellerName: part.seller?.name || 'Unknown Seller',
+        storeName: part.seller?.store?.name
+      });
+    });
+
+    // Check if all items were found
+    if (allItems.length !== items.length) {
+      const foundIds = allItems.map(i => i.id);
+      const missingIds = itemIds.filter(id => !foundIds.includes(id));
       return res.status(400).json({
         success: false,
-        message: 'One or more products not found'
+        message: `One or more items not found: ${missingIds.join(', ')}`
       });
     }
 
-    // Calculate order totals
-    let subtotal = 0;
-    const orderItems = items.map(item => {
-      const product = products.find(p => p.id === item.productId);
-      const price = product.discountPrice || product.price;
-      const total = price * item.quantity;
-      subtotal += total;
-
-      return {
-        productId: item.productId,
-        quantity: item.quantity,
+    // Group items by seller
+    const groupedBySeller = {};
+    items.forEach(orderItem => {
+      const item = allItems.find(i => i.id === orderItem.productId);
+      const sellerId = item.sellerId;
+      
+      if (!groupedBySeller[sellerId]) {
+        groupedBySeller[sellerId] = {
+          sellerId,
+          sellerName: item.sellerName,
+          storeName: item.storeName,
+          items: []
+        };
+      }
+      
+      const price = item.discountPrice || item.price;
+      groupedBySeller[sellerId].items.push({
+        productId: orderItem.productId,
+        itemType: item.type,
+        name: item.name,
+        quantity: orderItem.quantity,
         price,
-        total
-      };
+        total: price * orderItem.quantity
+      });
     });
 
-    const deliveryFee = 300; // Fixed delivery fee
-    const total = subtotal + deliveryFee;
+    // Calculate total
+    const deliveryFee = 300;
+    let grandTotal = deliveryFee;
+    
+    Object.values(groupedBySeller).forEach(sellerGroup => {
+      sellerGroup.subtotal = sellerGroup.items.reduce((sum, item) => sum + item.total, 0);
+      grandTotal += sellerGroup.subtotal;
+    });
 
-    // Create order - use the first product's salesman (for simplicity)
-    // In a real app, you might split orders by salesman
-    const salesmanId = products[0].salesmanId;
+    // Generate order number prefix
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const orderPrefix = `ORD-${timestamp}-${randomPart}`;
 
-    const order = await prisma.order.create({
-      data: {
-        customerId,
-        salesmanId,
-        addressId,
-        subtotal,
-        deliveryFee,
-        total,
-        paymentMethod,
-        notes,
-        items: {
-          create: orderItems
-        }
-      },
-      include: {
-        items: {
-          include: {
-            product: true
+    // Create orders for each seller in a transaction
+    const createdOrders = await prisma.$transaction(async (tx) => {
+      const orders = [];
+      let orderIndex = 1;
+      
+      for (const [sellerId, sellerGroup] of Object.entries(groupedBySeller)) {
+        const orderNumber = Object.keys(groupedBySeller).length > 1 
+          ? `${orderPrefix}-${orderIndex}` 
+          : orderPrefix;
+        
+        const orderData = {
+          orderNumber,
+          customerId,
+          salesmanId: sellerId,
+          subtotal: sellerGroup.subtotal,
+          total: sellerGroup.subtotal + (Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0),
+          deliveryFee: Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0,
+          paymentMethod,
+          notes,
+          status: 'PENDING',
+          paymentStatus: 'PENDING',
+          items: {
+            create: sellerGroup.items.map(item => ({
+              productId: item.itemType === 'PRODUCT' ? item.productId : null,
+              carPartId: item.itemType === 'CAR_PART' ? item.productId : null,
+              itemType: item.itemType,
+              itemName: item.name,
+              quantity: item.quantity,
+              price: item.price,
+              total: item.total
+            }))
           }
-        },
-        address: true
+        };
+        
+        if (validAddressId) {
+          orderData.addressId = validAddressId;
+        }
+        
+        const order = await tx.order.create({
+          data: orderData,
+          include: {
+            items: {
+              include: {
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                    images: true
+                  }
+                },
+                carPart: {
+                  select: {
+                    id: true,
+                    name: true,
+                    images: true
+                  }
+                }
+              }
+            },
+            salesman: {
+              select: {
+                id: true,
+                name: true,
+                store: {
+                  select: {
+                    name: true
+                  }
+                }
+              }
+            }
+          }
+        });
+
+        // Create tracking entry
+        await tx.orderTracking.create({
+          data: {
+            orderId: order.id,
+            status: 'PENDING',
+            description: 'Order placed'
+          }
+        });
+
+        orders.push(order);
+        orderIndex++;
       }
+
+      return orders;
     });
 
-    // Create initial tracking entry
-    await prisma.orderTracking.create({
-      data: {
-        orderId: order.id,
-        status: 'PENDING',
-        description: 'Order placed successfully'
-      }
-    });
-
-    // Clear cart items for these products
-    await prisma.cartItem.deleteMany({
-      where: {
-        userId: customerId,
-        productId: { in: productIds }
-      }
-    });
+    // Format response
+    const response = {
+      orderNumber: orderPrefix,
+      total: grandTotal,
+      deliveryFee,
+      status: 'PENDING',
+      paymentStatus: 'PENDING',
+      createdAt: createdOrders[0]?.createdAt,
+      orders: createdOrders.map(order => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        sellerId: order.salesmanId,
+        sellerName: order.salesman?.name,
+        storeName: order.salesman?.store?.name,
+        status: order.status,
+        subtotal: order.subtotal,
+        items: order.items.map(item => {
+          const itemData = item.itemType === 'CAR_PART' ? item.carPart : item.product;
+          return {
+            id: item.id,
+            name: item.itemName || itemData?.name,
+            image: itemData?.images?.[0],
+            quantity: item.quantity,
+            price: item.price,
+            total: item.total
+          };
+        })
+      }))
+    };
 
     res.status(201).json({
       success: true,
       message: 'Order created successfully',
-      data: order
+      data: response
     });
   } catch (error) {
     console.error('Create order error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to create order',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get customer orders
+ */
+export const getCustomerOrdersSimple = async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const { status, page = 1, limit = 20 } = req.query;
+
+    const where = { customerId };
+    if (status) {
+      where.status = status;
+    }
+
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        include: {
+          items: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  images: true
+                }
+              },
+              carPart: {
+                select: {
+                  id: true,
+                  name: true,
+                  images: true
+                }
+              }
+            }
+          },
+          salesman: {
+            select: {
+              id: true,
+              name: true,
+              store: {
+                select: {
+                  name: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (parseInt(page) - 1) * parseInt(limit),
+        take: parseInt(limit)
+      }),
+      prisma.order.count({ where })
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        orders: orders.map(order => ({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          subtotal: order.subtotal,
+          deliveryFee: order.deliveryFee,
+          total: order.total,
+          createdAt: order.createdAt,
+          seller: {
+            id: order.salesman?.id,
+            name: order.salesman?.name,
+            storeName: order.salesman?.store?.name
+          },
+          items: order.items.map(item => {
+            const itemData = item.itemType === 'CAR_PART' ? item.carPart : item.product;
+            return {
+              id: item.id,
+              name: item.itemName || itemData?.name,
+              image: itemData?.images?.[0],
+              quantity: item.quantity,
+              price: item.price,
+              total: item.total
+            };
+          })
+        })),
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / parseInt(limit))
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get customer orders error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch orders',
       error: error.message
     });
   }

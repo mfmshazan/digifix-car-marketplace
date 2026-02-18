@@ -221,11 +221,11 @@ export const getCustomerOrders = async (
   }
 };
 
-// Create order
+// Create order (address is optional)
 export const createOrder = async (
   items: { productId: string; quantity: number }[],
-  addressId: string,
   paymentMethod: string,
+  addressId?: string,
   notes?: string
 ) => {
   try {
@@ -235,18 +235,30 @@ export const createOrder = async (
       throw new Error('Not authenticated');
     }
 
+    const orderData: {
+      items: { productId: string; quantity: number }[];
+      paymentMethod: string;
+      addressId?: string;
+      notes?: string;
+    } = {
+      items,
+      paymentMethod
+    };
+
+    if (addressId) {
+      orderData.addressId = addressId;
+    }
+    if (notes) {
+      orderData.notes = notes;
+    }
+
     const response = await fetch(`${API_URL}/orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        items,
-        addressId,
-        paymentMethod,
-        notes
-      }),
+      body: JSON.stringify(orderData),
     });
 
     const result = await response.json();

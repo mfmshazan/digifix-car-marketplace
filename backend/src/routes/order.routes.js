@@ -14,10 +14,10 @@ const router = Router();
 router.use(authenticate);
 
 // Customer routes
-router.get('/', getCustomerOrders);
-router.post('/', createOrder);
+router.post('/', createOrder);        // Create order
+router.get('/', getCustomerOrders);   // Get customer orders
 
-// Salesman routes
+// Salesman routes - They see only their orders
 router.get('/salesman/summary', authorize('SALESMAN'), getSalesmanSalesSummary);
 router.get('/salesman/orders', authorize('SALESMAN'), getSalesmanOrders);
 router.put('/:id/status', authorize('SALESMAN'), updateOrderStatus);

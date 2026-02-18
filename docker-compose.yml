@@ -1,0 +1,73 @@
+# ================================================
+# Docker Compose for DigiFix Car Marketplace
+# ================================================
+# Production-like build using Supabase (cloud database)
+#
+# Usage:  docker compose up --build
+# Stop:   docker compose down
+# Logs:   docker compose logs -f
+# ================================================
+
+services:
+  # ================================
+  # Backend API Server
+  # ================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: digifix-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      # Supabase PostgreSQL connection
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+      # Auth
+      JWT_SECRET: ${JWT_SECRET:-digifix-car-marketplace-super-secret-jwt-key-2026}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      # Clerk
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      # CORS
+      FRONTEND_URL: ${FRONTEND_URL:-*}
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - digifix-network
+
+  # ================================
+  # Web Frontend (Next.js)
+  # ================================
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-3000}/api
+    container_name: digifix-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-3000}/api
+    ports:
+      - "${WEB_PORT:-3001}:3001"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - digifix-network
+
+# ================================
+# Networks
+# ================================
+networks:
+  digifix-network:
+    driver: bridge

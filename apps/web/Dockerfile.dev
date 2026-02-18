@@ -1,0 +1,22 @@
+# Development Dockerfile for Next.js Web Application
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install libc6-compat for Alpine compatibility with Next.js
+RUN apk add --no-cache libc6-compat
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 3001
+
+# Start development server (bind to 0.0.0.0 so it's accessible outside container)
+CMD ["npx", "next", "dev", "-p", "3001", "-H", "0.0.0.0"]

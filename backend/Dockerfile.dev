@@ -1,0 +1,23 @@
+# Development Dockerfile with hot-reloading support
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Install dependencies (including devDependencies like nodemon)
+RUN npm install
+
+# Generate Prisma Client
+RUN npx prisma generate
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 3000
+
+# Start: push Prisma schema to DB then start dev server with nodemon
+CMD ["sh", "-c", "npx prisma db push --skip-generate && npm run dev"]

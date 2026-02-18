@@ -1,0 +1,93 @@
+# ================================================
+# Docker Compose for DigiFix - DEVELOPMENT MODE
+# ================================================
+# Development setup with hot-reloading
+# Uses Supabase PostgreSQL (cloud database)
+#
+# Usage:  docker compose -f docker-compose.dev.yml up --build
+# Stop:   docker compose -f docker-compose.dev.yml down
+# Logs:   docker compose -f docker-compose.dev.yml logs -f
+# ================================================
+
+services:
+  # ================================
+  # Backend API Server (Development)
+  # ================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: digifix-backend-dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      # Supabase PostgreSQL connection
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+      # Auth
+      JWT_SECRET: ${JWT_SECRET:-digifix-car-marketplace-super-secret-jwt-key-2026}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      # Clerk
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      # CORS
+      FRONTEND_URL: ${FRONTEND_URL:-*}
+      # Enable polling for hot-reload in Docker
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      # Mount source code for hot-reloading
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+      # Don't mount node_modules (use container's version)
+      - /app/node_modules
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - digifix-network
+
+  # ================================
+  # Web Frontend (Development)
+  # ================================
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+    container_name: digifix-web-dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-3000}/api
+      # Enable polling for hot-reload in Docker
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${WEB_PORT:-3001}:3001"
+    volumes:
+      # Mount source code for hot-reloading
+      - ./apps/web/src:/app/src
+      - ./apps/web/public:/app/public
+      - ./apps/web/next.config.mjs:/app/next.config.mjs
+      - ./apps/web/tailwind.config.ts:/app/tailwind.config.ts
+      - ./apps/web/postcss.config.js:/app/postcss.config.js
+      # Don't mount node_modules or .next (use container's version)
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - digifix-network
+
+# ================================
+# Networks
+# ================================
+networks:
+  digifix-network:
+    driver: bridge

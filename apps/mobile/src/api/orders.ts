@@ -1,0 +1,275 @@
+import { API_URL } from '../config/api.config';
+import { getToken } from './storage';
+
+export interface OrderItem {
+  productName: string;
+  productImage?: string;
+  category?: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
+export interface Order {
+  id: string;
+  orderNumber: string;
+  customer: string;
+  customerEmail?: string;
+  items: OrderItem[];
+  subtotal: number;
+  deliveryFee: number;
+  discount: number;
+  total: number;
+  status: string;
+  paymentStatus: string;
+  createdAt: string;
+}
+
+export interface SalesmanSalesSummary {
+  today: {
+    date: string;
+    totalOrders: number;
+    totalRevenue: number;
+    pendingOrders: number;
+    completedOrders: number;
+    totalItems: number;
+    orders: Order[];
+  };
+  weekly: {
+    totalRevenue: number;
+    totalOrders: number;
+  };
+  monthly: {
+    totalRevenue: number;
+    totalOrders: number;
+  };
+  topSellingProducts: {
+    id: string;
+    name: string;
+    images: string[];
+    price: number;
+    category?: { name: string };
+    totalSold: number;
+    totalRevenue: number;
+  }[];
+}
+
+export interface SalesSummaryResponse {
+  success: boolean;
+  message?: string;
+  data?: SalesmanSalesSummary;
+}
+
+// Get salesman sales summary
+export const getSalesmanSalesSummary = async (date?: string): Promise<SalesSummaryResponse> => {
+  try {
+    const token = await getToken();
+    
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    const url = date 
+      ? `${API_URL}/orders/salesman/summary?date=${date}`
+      : `${API_URL}/orders/salesman/summary`;
+
+    console.log('Fetching sales summary from:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    // Get raw text first to handle non-JSON responses
+    const text = await response.text();
+    
+    // Check if response is HTML (server not reachable or wrong endpoint)
+    if (text.startsWith('<') || text.startsWith('<!')) {
+      console.error('Received HTML instead of JSON. Server may not be reachable.');
+      console.error('Response preview:', text.substring(0, 200));
+      throw new Error('Cannot connect to server. Make sure backend is running and phone is on same WiFi.');
+    }
+
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      console.error('Invalid JSON response:', text.substring(0, 200));
+      throw new Error('Invalid server response');
+    }
+    
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to get sales summary');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Get sales summary error:', error);
+    throw error;
+  }
+};
+
+// Get salesman orders
+export const getSalesmanOrders = async (
+  status?: string,
+  page: number = 1,
+  limit: number = 20
+) => {
+  try {
+    const token = await getToken();
+    
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    let url = `${API_URL}/orders/salesman/orders?page=${page}&limit=${limit}`;
+    if (status) {
+      url += `&status=${status}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to get orders');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Get salesman orders error:', error);
+    throw error;
+  }
+};
+
+// Update order status
+export const updateOrderStatus = async (orderId: string, status: string) => {
+  try {
+    const token = await getToken();
+    
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    const response = await fetch(`${API_URL}/orders/${orderId}/status`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status }),
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to update order status');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Update order status error:', error);
+    throw error;
+  }
+};
+
+// Get customer orders
+export const getCustomerOrders = async (
+  status?: string,
+  page: number = 1,
+  limit: number = 20
+) => {
+  try {
+    const token = await getToken();
+    
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    let url = `${API_URL}/orders?page=${page}&limit=${limit}`;
+    if (status) {
+      url += `&status=${status}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to get orders');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Get customer orders error:', error);
+    throw error;
+  }
+};
+
+// Create order (address is optional)
+export const createOrder = async (
+  items: { productId: string; quantity: number }[],
+  paymentMethod: string,
+  addressId?: string,
+  notes?: string
+) => {
+  try {
+    const token = await getToken();
+    
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    const orderData: {
+      items: { productId: string; quantity: number }[];
+      paymentMethod: string;
+      addressId?: string;
+      notes?: string;
+    } = {
+      items,
+      paymentMethod
+    };
+
+    if (addressId) {
+      orderData.addressId = addressId;
+    }
+    if (notes) {
+      orderData.notes = notes;
+    }
+
+    const response = await fetch(`${API_URL}/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(orderData),
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to create order');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Create order error:', error);
+    throw error;
+  }
+};

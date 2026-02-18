@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import * as ImagePicker from "expo-image-picker";
+import { supabase } from "../../src/lib/supabase";
 import {
   View,
   Text,
@@ -26,6 +28,7 @@ const categories = [
   "Accessories",
 ];
 
+
 export default function AddProductScreen() {
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
@@ -35,14 +38,65 @@ export default function AddProductScreen() {
   const [sku, setSku] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
-  const handleSubmit = () => {
+  // Pick images from device
+  const pickImages = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission required", "Camera roll permissions are required!");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.7,
+      selectionLimit: 5,
+    });
+    if (!result.canceled && result.assets) {
+      setImages(result.assets.map((asset) => asset.uri));
+    }
+  };
+
+  // Upload images to Supabase Storage
+  const uploadImagesToSupabase = async () => {
+    setUploading(true);
+    try {
+      const uploadedUrls: string[] = [];
+      for (const uri of images) {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const fileName = `product_${Date.now()}_${Math.floor(Math.random()*10000)}.jpg`;
+        const { data, error } = await supabase.storage.from("product-images").upload(fileName, blob, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+        if (error) throw error;
+        const { data: publicUrlData } = supabase.storage.from("product-images").getPublicUrl(fileName);
+        uploadedUrls.push(publicUrlData.publicUrl);
+      }
+      return uploadedUrls;
+    } catch (err: any) {
+      Alert.alert("Image Upload Error", err.message || "Failed to upload images");
+      return [];
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!productName || !price || !stock || !selectedCategory) {
       Alert.alert("Error", "Please fill in all required fields");
       return;
     }
-
-    // TODO: Implement API call to create product
+    let imageUrls: string[] = [];
+    if (images.length > 0) {
+      imageUrls = await uploadImagesToSupabase();
+      if (imageUrls.length === 0) return; // Stop if upload failed
+    }
+    // TODO: Implement API call to create product, include imageUrls
+    // Example: await api.createProduct({ ...fields, images: imageUrls })
     Alert.alert("Success", "Product added successfully!", [
       {
         text: "OK",
@@ -55,11 +109,18 @@ export default function AddProductScreen() {
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Product Image Section */}
       <View style={styles.imageSection}>
-        <TouchableOpacity style={styles.imageUpload}>
+        <TouchableOpacity style={styles.imageUpload} onPress={pickImages} disabled={uploading}>
           <Ionicons name="camera" size={40} color="#999" />
-          <Text style={styles.imageUploadText}>Add Product Images</Text>
+          <Text style={styles.imageUploadText}>{uploading ? "Uploading..." : "Add Product Images"}</Text>
           <Text style={styles.imageUploadSubtext}>Tap to upload (max 5)</Text>
         </TouchableOpacity>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 10 }}>
+          {images.map((uri, idx) => (
+            <View key={idx} style={{ marginRight: 8, marginBottom: 8 }}>
+              <Text style={{ fontSize: 10, maxWidth: 80 }}>{uri.split("/").pop()}</Text>
+            </View>
+          ))}
+        </View>
       </View>
 
       {/* Form Section */}

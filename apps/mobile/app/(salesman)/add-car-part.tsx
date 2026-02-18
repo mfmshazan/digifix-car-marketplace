@@ -9,8 +9,10 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { supabase } from "../../src/lib/supabase";
 import { createCar, createCarPart } from "../../src/api/carParts";
 import { getAllCategories, Category } from "../../src/api/categories";
 
@@ -40,6 +42,8 @@ export default function AddCarPartScreen() {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedCondition, setSelectedCondition] = useState("NEW");
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -67,6 +71,50 @@ export default function AddCarPartScreen() {
     }
   };
 
+  // Pick images from device
+  const pickImages = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission required", "Camera roll permissions are required!");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.7,
+      selectionLimit: 5,
+    });
+    if (!result.canceled && result.assets) {
+      setImages(result.assets.map((asset) => asset.uri));
+    }
+  };
+
+  // Upload images to Supabase Storage
+  const uploadImagesToSupabase = async () => {
+    setUploading(true);
+    try {
+      const uploadedUrls: string[] = [];
+      for (const uri of images) {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const fileName = `carpart_${Date.now()}_${Math.floor(Math.random()*10000)}.jpg`;
+        const { data, error } = await supabase.storage.from("carpart-images").upload(fileName, blob, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+        if (error) throw error;
+        const { data: publicUrlData } = supabase.storage.from("carpart-images").getPublicUrl(fileName);
+        uploadedUrls.push(publicUrlData.publicUrl);
+      }
+      return uploadedUrls;
+    } catch (err: any) {
+      Alert.alert("Image Upload Error", err.message || "Failed to upload images");
+      return [];
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     // Validate required part fields
     if (!partName || !price || !selectedCategory) {
@@ -76,6 +124,13 @@ export default function AddCarPartScreen() {
 
     try {
       setIsSubmitting(true);
+
+      // Upload images if any selected
+      let imageUrls: string[] = [];
+      if (images.length > 0) {
+        imageUrls = await uploadImagesToSupabase();
+        if (imageUrls.length === 0) return; // Stop if upload failed
+      }
 
       // Generate car info for the part
       const make = carMake.trim() || "Universal";
@@ -310,11 +365,18 @@ export default function AddCarPartScreen() {
         {/* Image Upload Placeholder */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Part Images</Text>
-          <TouchableOpacity style={styles.imageUpload}>
+          <TouchableOpacity style={styles.imageUpload} onPress={pickImages} disabled={uploading}>
             <Ionicons name="camera" size={32} color="#999" />
-            <Text style={styles.imageUploadText}>Add Images</Text>
+            <Text style={styles.imageUploadText}>{uploading ? "Uploading..." : "Add Images"}</Text>
             <Text style={styles.imageUploadSubtext}>Tap to upload (max 5)</Text>
           </TouchableOpacity>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 10 }}>
+            {images.map((uri, idx) => (
+              <View key={idx} style={{ marginRight: 8, marginBottom: 8 }}>
+                <Text style={{ fontSize: 10, maxWidth: 80 }}>{uri.split("/").pop()}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       </View>
 

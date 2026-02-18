@@ -55,43 +55,56 @@ export default function CartScreen() {
 
   const handleCheckout = async () => {
     if (items.length === 0) {
-      Alert.alert("Empty Cart", "Please add items to your cart first.");
+      Alert.alert("Empty Cart", "Please add items to your cart before checkout");
       return;
     }
 
     setIsCheckingOut(true);
     
     try {
-      // Prepare order items
+      // Step 1: Prepare order items for API
       const orderItems = items.map(item => ({
         productId: item.id,
         quantity: item.quantity
       }));
 
-      // Create the order (no address required)
+      // Step 2: Create the order via API
       const orderResponse = await createOrder(
         orderItems,
         "CASH_ON_DELIVERY" // Default payment method
       );
 
       if (orderResponse.success) {
-        // Clear local cart after successful order
+        const orderId = orderResponse.data.orderNumber;
+        
+        // Step 3: Prepare order data with full details for checkout page
+        const orderData = {
+          items: items.map(item => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.discountPrice || item.price,
+            image: item.image,
+            categoryName: item.categoryName,
+          })),
+          subtotal,
+          deliveryFee,
+          total,
+          itemCount: items.length,
+        };
+
+        // Step 4: Clear local cart after successful order creation
         clearCart();
         
-        Alert.alert(
-          "Order Placed! 🎉",
-          `Your order ${orderResponse.data.orderNumber} has been placed successfully!\n\nTotal: $${orderResponse.data.total.toFixed(2)}\n\nSellers have been notified.`,
-          [
-            { 
-              text: "View Orders", 
-              onPress: () => router.push("/(customer)/orders") 
-            },
-            { 
-              text: "Continue Shopping", 
-              onPress: () => router.push("/(customer)") 
-            }
-          ]
-        );
+        // Step 5: Navigate to checkout with PayHere payment
+        // Pass the created orderId and full order data
+        router.push({
+          pathname: '/(checkout)',
+          params: {
+            orderId,
+            orderData: JSON.stringify(orderData),
+          },
+        });
       } else {
         throw new Error(orderResponse.message || "Failed to create order");
       }

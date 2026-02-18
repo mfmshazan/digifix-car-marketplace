@@ -14,6 +14,7 @@ export default function RootLayout() {
         <Stack.Screen name="(customer)" />
         <Stack.Screen name="(salesman)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(checkout)" options={{ headerShown: false }} />
       </Stack>
     </CartProvider>
   );

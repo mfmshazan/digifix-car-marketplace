@@ -684,7 +684,7 @@ export const createOrder = async (req, res) => {
     const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
     const orderPrefix = `ORD-${timestamp}-${randomPart}`;
 
-    // Create orders for each seller in a transaction
+    // Create orders for each seller in a transaction (increased timeout for remote DB)
     const createdOrders = await prisma.$transaction(async (tx) => {
       const orders = [];
       let orderIndex = 1;
@@ -696,8 +696,8 @@ export const createOrder = async (req, res) => {
         
         const orderData = {
           orderNumber,
-          customerId,
-          salesmanId: sellerId,
+          customer: { connect: { id: customerId } },
+          salesman: { connect: { id: sellerId } },
           subtotal: sellerGroup.subtotal,
           total: sellerGroup.subtotal + (Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0),
           deliveryFee: Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0,
@@ -706,20 +706,26 @@ export const createOrder = async (req, res) => {
           status: 'PENDING',
           paymentStatus: 'PENDING',
           items: {
-            create: sellerGroup.items.map(item => ({
-              productId: item.itemType === 'PRODUCT' ? item.productId : null,
-              carPartId: item.itemType === 'CAR_PART' ? item.productId : null,
-              itemType: item.itemType,
-              itemName: item.name,
-              quantity: item.quantity,
-              price: item.price,
-              total: item.total
-            }))
+            create: sellerGroup.items.map(item => {
+              const itemData = {
+                itemType: item.itemType,
+                itemName: item.name,
+                quantity: item.quantity,
+                price: item.price,
+                total: item.total
+              };
+              if (item.itemType === 'PRODUCT') {
+                itemData.product = { connect: { id: item.productId } };
+              } else if (item.itemType === 'CAR_PART') {
+                itemData.carPart = { connect: { id: item.productId } };
+              }
+              return itemData;
+            })
           }
         };
         
         if (validAddressId) {
-          orderData.addressId = validAddressId;
+          orderData.address = { connect: { id: validAddressId } };
         }
         
         const order = await tx.order.create({
@@ -771,7 +777,7 @@ export const createOrder = async (req, res) => {
       }
 
       return orders;
-    });
+    }, { timeout: 30000 });
 
     // Format response
     const response = {

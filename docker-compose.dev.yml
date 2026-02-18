@@ -24,6 +24,13 @@ services:
       JWT_SECRET: ${JWT_SECRET:-digifix-car-marketplace-super-secret-jwt-key-2026}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       FRONTEND_URL: ${FRONTEND_URL:-*}
+      # PayHere Payment Gateway
+      PAYHERE_MODE: ${PAYHERE_MODE:-SANDBOX}
+      PAYHERE_MERCHANT_ID: ${PAYHERE_MERCHANT_ID}
+      PAYHERE_MERCHANT_SECRET: ${PAYHERE_MERCHANT_SECRET}
+      PAYHERE_RETURN_URL: ${PAYHERE_RETURN_URL:-http://localhost:3000/api/payments/return}
+      PAYHERE_NOTIFY_URL: ${PAYHERE_NOTIFY_URL:-http://localhost:3000/api/payments/notify}
+      PAYHERE_CANCEL_URL: ${PAYHERE_CANCEL_URL:-exp://localhost:8081}
       # Enable polling for hot-reload on Windows
       CHOKIDAR_USEPOLLING: "true"
     ports:

@@ -239,17 +239,18 @@ model Order {
   updatedAt     DateTime      @updatedAt
 
   // Relations
-  customerId String
-  customer   User   @relation("CustomerOrders", fields: [customerId], references: [id])
-
-  salesmanId String
-  salesman   User   @relation("SalesmanOrders", fields: [salesmanId], references: [id])
-
-  addressId String?
-  address   Address? @relation(fields: [addressId], references: [id])
-
-  items    OrderItem[]
-  tracking OrderTracking[]
+  customerId      String
+  customer        User          @relation("CustomerOrders", fields: [customerId], references: [id])
+  
+  salesmanId      String?
+  salesman        User?         @relation("SalesmanOrders", fields: [salesmanId], references: [id])
+  
+  addressId       String?
+  address         Address?       @relation(fields: [addressId], references: [id])
+  
+  items           OrderItem[]
+  tracking        OrderTracking[]
+  payment         Payment?      // Payment details for this order
 
   @@index([customerId])
   @@index([salesmanId])
@@ -380,4 +381,74 @@ model CarPart {
   @@index([sellerId])
   @@index([name])
   @@index([partNumber])
+}
+
+// Payment Gateway Models for PayHere Integration
+enum PaymentMethod {
+  CARD
+  WALLET
+  INTERNET_BANKING
+}
+
+model Payment {
+  id                String      @id @default(cuid())
+  orderId           String      @unique
+  order             Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  // Payment Gateway Details
+  merchantId        String
+  paymentId         String?     @unique // PayHere payment ID
+  
+  // Payment Information
+  amount            Float       @default(0)
+  currency          String      @default("LKR")
+  paymentMethod     PaymentMethod?
+  status            PaymentStatus @default(PENDING)
+  
+  // Customer Information
+  customerName      String
+  customerEmail     String
+  customerPhone     String
+  
+  // PayHere Response Data
+  paymentGatewayResponse  String? // JSON response from PayHere
+  authorizationToken      String? // For 3D Secure
+  
+  // Logs
+  logs              PaymentLog[]
+  
+  // Timestamps
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  processedAt       DateTime?
+  
+  // Search/Filter Indices
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PaymentLog {
+  id                String      @id @default(cuid())
+  paymentId         String?
+  payment           Payment?    @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  
+  // Log Information
+  action            String      // e.g., INITIATED, APPROVED, DECLINED, REFUND_INITIATED
+  statusBefore      String?
+  statusAfter       String?
+  message           String?
+  
+  // Response from Gateway
+  gatewayResponse   String?     // JSON response
+  errorCode         String?
+  errorMessage      String?
+  
+  // Timestamps
+  createdAt         DateTime    @default(now())
+  
+  @@index([paymentId])
+  @@index([action])
+  @@index([createdAt])
 }

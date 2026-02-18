@@ -19,4 +19,5 @@ COPY . .
 EXPOSE 3000
 
 # Start with nodemon for hot-reloading
-CMD ["sh", "-c", "npx prisma db push --skip-generate && npm run dev"]
+# Also run prisma generate at startup so schema changes via volume mount are picked up
+CMD ["sh", "-c", "npx prisma generate && npm run dev"]

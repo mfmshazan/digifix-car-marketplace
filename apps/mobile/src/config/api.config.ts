@@ -17,7 +17,7 @@ import Constants from 'expo-constants';
 
 // Your computer's local IP address (for physical device testing)
 // Run 'ipconfig' (Windows) or 'ifconfig' (Mac/Linux) to find this
-const LOCAL_IP = '192.168.43.171';
+const LOCAL_IP = '192.168.8.168';
 
 // Backend port (should match Docker/backend configuration)
 const API_PORT = 3000;
@@ -32,7 +32,7 @@ const API_PORT = 3000;
 const getApiUrl = (): string => {
   // Check if running in Expo Go on a device
   const isExpoGo = Constants.appOwnership === 'expo';
-  
+
   // Check if running in development
   const isDevelopment = __DEV__;
 

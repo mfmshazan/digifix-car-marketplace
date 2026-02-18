@@ -265,8 +265,8 @@ export default function SalesmanDashboard() {
 
               {/* Order Items */}
               <View style={styles.itemsList}>
-                {order.items.map((item, idx) => (
-                  <View key={idx} style={styles.orderItem}>
+                {order.items.map((item) => (
+                  <View key={item.id || item.productName} style={styles.orderItem}>
                     <View style={styles.itemImageContainer}>
                       {item.productImage ? (
                         <Image 
@@ -338,7 +338,7 @@ export default function SalesmanDashboard() {
           <Text style={styles.sectionTitle}>Top Selling Products</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {salesData.topSellingProducts.map((product) => (
-              <View key={product.id} style={styles.topProductCard}>
+              <View key={product.uniqueId || product.id} style={styles.topProductCard}>
                 {product.images?.[0] ? (
                   <Image 
                     source={{ uri: product.images[0] }} 

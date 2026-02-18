@@ -2,6 +2,7 @@ import { API_URL } from '../config/api.config';
 import { getToken } from './storage';
 
 export interface OrderItem {
+  id?: string;
   productName: string;
   productImage?: string;
   category?: string;
@@ -45,6 +46,7 @@ export interface SalesmanSalesSummary {
   };
   topSellingProducts: {
     id: string;
+    uniqueId?: string;
     name: string;
     images: string[];
     price: number;

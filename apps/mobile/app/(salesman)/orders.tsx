@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { getSalesmanOrders, updateOrderStatus } from "../../src/api/orders";
+import { usePendingOrders } from "../../src/store/pendingOrdersStore";
 
 // Order type from API
 interface OrderItem {
@@ -74,6 +75,7 @@ export default function SalesmanOrdersScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { refreshPendingCount } = usePendingOrders();
 
   const fetchOrders = useCallback(async (showRefresh = false) => {
     try {
@@ -111,12 +113,28 @@ export default function SalesmanOrdersScreen() {
       if (response.success) {
         Alert.alert("Success", `Order status updated to ${newStatus}`);
         fetchOrders(); // Refresh orders
+        refreshPendingCount(); // Update badge count
       } else {
         Alert.alert("Error", response.message || "Failed to update status");
       }
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to update status");
     }
+  };
+
+  const confirmCancelOrder = (orderId: string, orderNumber: string) => {
+    Alert.alert(
+      "Cancel Order",
+      `Are you sure you want to cancel order ${orderNumber}? This action cannot be undone.`,
+      [
+        { text: "No", style: "cancel" },
+        { 
+          text: "Yes, Cancel", 
+          style: "destructive",
+          onPress: () => handleUpdateStatus(orderId, "CANCELLED") 
+        }
+      ]
+    );
   };
 
   const confirmStatusChange = (orderId: string, currentStatus: string) => {
@@ -146,9 +164,11 @@ export default function SalesmanOrdersScreen() {
   const renderOrder = ({ item }: { item: Order }) => {
     const statusColor = getStatusColor(item.status);
     const canProgress = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED"].includes(item.status);
+    const isPending = item.status === "PENDING";
+    const canCancel = ["PENDING", "CONFIRMED"].includes(item.status);
 
     return (
-      <TouchableOpacity style={styles.orderCard}>
+      <TouchableOpacity style={[styles.orderCard, isPending && styles.pendingOrderCard]}>
         <View style={styles.orderHeader}>
           <View>
             <Text style={styles.orderId}>{item.orderNumber}</Text>
@@ -187,16 +207,35 @@ export default function SalesmanOrdersScreen() {
             <TouchableOpacity style={styles.actionButton}>
               <Ionicons name="eye-outline" size={18} color="#666" />
             </TouchableOpacity>
-            {canProgress && (
+            {canCancel && (
               <TouchableOpacity 
-                style={[styles.actionButton, styles.confirmButton]}
+                style={[styles.actionButton, styles.cancelButton]}
+                onPress={() => confirmCancelOrder(item.id, item.orderNumber)}
+              >
+                <Ionicons name="close" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
+            {canProgress && !isPending && (
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.progressButton]}
                 onPress={() => confirmStatusChange(item.id, item.status)}
               >
-                <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
               </TouchableOpacity>
             )}
           </View>
         </View>
+
+        {/* Prominent Confirm Order button for PENDING orders */}
+        {isPending && (
+          <TouchableOpacity 
+            style={styles.confirmOrderButton}
+            onPress={() => confirmStatusChange(item.id, item.status)}
+          >
+            <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+            <Text style={styles.confirmOrderButtonText}>Confirm Order</Text>
+          </TouchableOpacity>
+        )}
       </TouchableOpacity>
     );
   };
@@ -444,8 +483,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  confirmButton: {
+  progressButton: {
+    backgroundColor: "#2196F3",
+  },
+  cancelButton: {
+    backgroundColor: "#F44336",
+  },
+  pendingOrderCard: {
+    borderWidth: 2,
+    borderColor: "#FF9800",
+  },
+  confirmOrderButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#4CAF50",
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginTop: 12,
+    gap: 8,
+  },
+  confirmOrderButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "600",
   },
   emptyContainer: {
     alignItems: "center",

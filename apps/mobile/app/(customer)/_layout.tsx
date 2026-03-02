@@ -1,5 +1,25 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { View, Text, StyleSheet } from "react-native";
+import { useCart } from "../../src/store/cartStore";
+
+function CartTabIcon({ color, size }: { color: string; size: number }) {
+  const { getTotalItems } = useCart();
+  const itemCount = getTotalItems();
+
+  return (
+    <View style={{ width: 24, height: 24 }}>
+      <Ionicons name="cart" size={size} color={color} />
+      {itemCount > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>
+            {itemCount > 99 ? "99+" : itemCount}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
 
 export default function CustomerTabLayout() {
   return (
@@ -52,7 +72,7 @@ export default function CustomerTabLayout() {
         options={{
           title: "Cart",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cart" size={size} color={color} />
+            <CartTabIcon color={color} size={size} />
           ),
         }}
       />
@@ -78,5 +98,22 @@ export default function CustomerTabLayout() {
   );
 }
 
-
-
+const styles = StyleSheet.create({
+  badge: {
+    position: "absolute",
+    right: -8,
+    top: -4,
+    backgroundColor: "#F44336",
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+});

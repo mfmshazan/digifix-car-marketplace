@@ -212,6 +212,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
       const details = productDetails.find(pd => pd.id === p.productId);
       return {
         ...details,
+        uniqueId: `product-${p.productId}`, // Add unique identifier
         totalSold: p._sum.quantity,
         totalRevenue: p._sum.total
       };
@@ -221,6 +222,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
       const details = carPartDetails.find(pd => pd.id === p.carPartId);
       return {
         ...details,
+        uniqueId: `carpart-${p.carPartId}`, // Add unique identifier
         totalSold: p._sum.quantity,
         totalRevenue: p._sum.total
       };
@@ -241,6 +243,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
         // Handle both product and carPart
         const itemData = item.product || item.carPart;
         return {
+          id: item.id, // Add unique id for React keys
           productName: item.itemName || itemData?.name || 'Unknown Item',
           productImage: itemData?.images?.[0],
           category: itemData?.category?.name,

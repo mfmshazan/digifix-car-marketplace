@@ -352,102 +352,110 @@ async function seed() {
   });
 
   if (sampleParts.length > 0) {
-    // Delete existing mock orders to avoid duplicates
-    await prisma.orderItem.deleteMany({
-      where: { order: { customerId: customer.id } },
+    // Use fixed dates for mock orders so they don't change on re-seed
+    const today = new Date('2026-02-18T10:00:00Z');
+    const oneDayAgo = new Date('2026-02-17T10:00:00Z');
+    const twoDaysAgo = new Date('2026-02-16T10:00:00Z');
+    const fiveDaysAgo = new Date('2026-02-13T10:00:00Z');
+
+    // Check if mock orders already exist
+    const existingMockOrders = await prisma.order.findMany({
+      where: {
+        orderNumber: {
+          in: ['ORD-MOCK-001', 'ORD-MOCK-002', 'ORD-MOCK-003', 'ORD-MOCK-004']
+        }
+      }
     });
-    await prisma.orderTracking.deleteMany({
-      where: { order: { customerId: customer.id } },
-    });
-    await prisma.order.deleteMany({
-      where: { customerId: customer.id },
-    });
 
-    // Create mock orders
-    const mockOrders = [
-      {
-        orderNumber: 'ORD-MOCK-001',
-        status: 'PENDING',
-        paymentStatus: 'PENDING',
-        paymentMethod: 'CASH_ON_DELIVERY',
-        parts: [sampleParts[0], sampleParts[1]].filter(Boolean),
-        createdAt: new Date(),
-      },
-      {
-        orderNumber: 'ORD-MOCK-002',
-        status: 'CONFIRMED',
-        paymentStatus: 'PAID',
-        paymentMethod: 'CARD',
-        parts: [sampleParts[2]].filter(Boolean),
-        createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
-      },
-      {
-        orderNumber: 'ORD-MOCK-003',
-        status: 'PROCESSING',
-        paymentStatus: 'PAID',
-        paymentMethod: 'CARD',
-        parts: [sampleParts[3], sampleParts[4]].filter(Boolean),
-        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
-      },
-      {
-        orderNumber: 'ORD-MOCK-004',
-        status: 'DELIVERED',
-        paymentStatus: 'PAID',
-        paymentMethod: 'CASH_ON_DELIVERY',
-        parts: [sampleParts[0]].filter(Boolean),
-        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
-      },
-    ];
+    // Only create mock orders if they don't exist
+    if (existingMockOrders.length > 0) {
+      console.log(`  ℹ️  Mock orders already exist, skipping creation`);
+    } else {
+      // Create mock orders
+      const mockOrders = [
+        {
+          orderNumber: 'ORD-MOCK-001',
+          status: 'PENDING',
+          paymentStatus: 'PENDING',
+          paymentMethod: 'CASH_ON_DELIVERY',
+          parts: [sampleParts[0], sampleParts[1]].filter(Boolean),
+          createdAt: today,
+        },
+        {
+          orderNumber: 'ORD-MOCK-002',
+          status: 'CONFIRMED',
+          paymentStatus: 'PAID',
+          paymentMethod: 'CARD',
+          parts: [sampleParts[2]].filter(Boolean),
+          createdAt: oneDayAgo,
+        },
+        {
+          orderNumber: 'ORD-MOCK-003',
+          status: 'PROCESSING',
+          paymentStatus: 'PAID',
+          paymentMethod: 'CARD',
+          parts: [sampleParts[3], sampleParts[4]].filter(Boolean),
+          createdAt: twoDaysAgo,
+        },
+        {
+          orderNumber: 'ORD-MOCK-004',
+          status: 'DELIVERED',
+          paymentStatus: 'PAID',
+          paymentMethod: 'CASH_ON_DELIVERY',
+          parts: [sampleParts[0]].filter(Boolean),
+          createdAt: fiveDaysAgo,
+        },
+      ];
 
-    for (const mockOrder of mockOrders) {
-      if (mockOrder.parts.length === 0) continue;
+      for (const mockOrder of mockOrders) {
+        if (mockOrder.parts.length === 0) continue;
 
-      const subtotal = mockOrder.parts.reduce((sum, part) => {
-        const price = part.discountPrice || part.price;
-        return sum + price * 2; // quantity of 2 for each
-      }, 0);
-      const deliveryFee = 300;
-      const total = subtotal + deliveryFee;
+        const subtotal = mockOrder.parts.reduce((sum, part) => {
+          const price = part.discountPrice || part.price;
+          return sum + price * 2; // quantity of 2 for each
+        }, 0);
+        const deliveryFee = 300;
+        const total = subtotal + deliveryFee;
 
-      const order = await prisma.order.create({
-        data: {
-          orderNumber: mockOrder.orderNumber,
-          customerId: customer.id,
-          salesmanId: salesman.id,
-          status: mockOrder.status,
-          paymentStatus: mockOrder.paymentStatus,
-          paymentMethod: mockOrder.paymentMethod,
-          subtotal,
-          deliveryFee,
-          total,
-          createdAt: mockOrder.createdAt,
-          items: {
-            create: mockOrder.parts.map(part => ({
-              carPartId: part.id,
-              itemType: 'CAR_PART',
-              itemName: part.name,
-              quantity: 2,
-              price: part.discountPrice || part.price,
-              total: (part.discountPrice || part.price) * 2,
-            })),
+        const order = await prisma.order.create({
+          data: {
+            orderNumber: mockOrder.orderNumber,
+            customerId: customer.id,
+            salesmanId: salesman.id,
+            status: mockOrder.status,
+            paymentStatus: mockOrder.paymentStatus,
+            paymentMethod: mockOrder.paymentMethod,
+            subtotal,
+            deliveryFee,
+            total,
+            createdAt: mockOrder.createdAt,
+            items: {
+              create: mockOrder.parts.map(part => ({
+                carPartId: part.id,
+                itemType: 'CAR_PART',
+                itemName: part.name,
+                quantity: 2,
+                price: part.discountPrice || part.price,
+                total: (part.discountPrice || part.price) * 2,
+              })),
+            },
           },
-        },
-      });
+        });
 
-      // Create tracking entry
-      await prisma.orderTracking.create({
-        data: {
-          orderId: order.id,
-          status: mockOrder.status,
-          description: `Order ${mockOrder.status.toLowerCase()}`,
-        },
-      });
+        // Create tracking entry
+        await prisma.orderTracking.create({
+          data: {
+            orderId: order.id,
+            status: mockOrder.status,
+            description: `Order ${mockOrder.status.toLowerCase()}`,
+          },
+        });
 
-      console.log(`  ✅ Created order ${order.orderNumber} (${mockOrder.status})`);
+        console.log(`  ✅ Created order ${order.orderNumber} (${mockOrder.status})`);
+      }
+      console.log(`\n   - Mock orders created for salesman dashboard`);
     }
   }
-
-  console.log(`\n   - Mock orders created for salesman dashboard`);
   
   // List cars with number plates
   console.log('\n📋 Cars available for testing:');

@@ -11,7 +11,6 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/a
 function SSOCallbackContent() {
     const { isLoaded, isSignedIn, getToken } = useAuth();
     const { user: clerkUser } = useUser();
-    const { signIn } = useClerk();
     const router = useRouter();
     const searchParams = useSearchParams();
     const login = useAuthStore((state) => state.login);

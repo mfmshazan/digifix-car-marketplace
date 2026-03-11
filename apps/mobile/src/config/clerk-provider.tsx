@@ -38,7 +38,7 @@ if (!publishableKey) {
 export function ClerkAuthProvider({ children }: { children: React.ReactNode }) {
     return (
         <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
-            <ClerkLoaded>{children}</ClerkLoaded>
+            {children}
         </ClerkProvider>
     );
 }

@@ -18,6 +18,8 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { loginUser } from "../../src/api/auth";
 import { saveToken, saveUser } from "../../src/api/storage";
+import { useAuth } from "@clerk/clerk-expo";
+import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -25,7 +27,10 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  
+
+  const { getToken } = useAuth();
+  const { signInWithGoogle } = useGoogleSignIn();
+
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -52,7 +57,7 @@ export default function LoginScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePressIn = (animValue: Animated.Value) => {
@@ -105,8 +110,47 @@ export default function LoginScreen() {
     }
   };
 
-  const handleGoogleSignIn = () => {
-    Alert.alert("Coming Soon", "Google Sign-In will be available soon!");
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsLoading(true);
+      setError("");
+
+      const result = await signInWithGoogle();
+
+      if (result.success) {
+        // Get the Clerk session token
+        const clerkToken = await getToken();
+
+        if (!clerkToken) {
+          throw new Error("Failed to get Clerk authentication token");
+        }
+
+        // Sync with our backend to get our own JWT token
+        const response = await syncClerkWithBackend(clerkToken);
+
+        if (response.success && response.data) {
+          await saveToken(response.data.token);
+          await saveUser(response.data.user);
+
+          Alert.alert("Success", "Google Sign-In successful!");
+
+          if (response.data.user.role === "SALESMAN") {
+            router.replace("/(salesman)");
+          } else {
+            router.replace("/(customer)");
+          }
+        } else {
+          setError(response.message || "Backend sync failed");
+        }
+      } else if (result.message) {
+        setError(result.message);
+      }
+    } catch (err: any) {
+      console.error("Google sign-in error:", err);
+      setError(err.message || "Failed to sign in with Google. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleForgotPassword = () => {
@@ -115,8 +159,8 @@ export default function LoginScreen() {
       "Please enter your email address to receive a password reset link.",
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Send", 
+        {
+          text: "Send",
           onPress: () => {
             if (email) {
               Alert.alert("Email Sent", `Password reset link sent to ${email}`);
@@ -140,7 +184,7 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {/* Logo Section with Animation */}
-          <Animated.View 
+          <Animated.View
             style={[
               styles.logoSection,
               {
@@ -157,7 +201,7 @@ export default function LoginScreen() {
           </Animated.View>
 
           {/* Form Card with Animation */}
-          <Animated.View 
+          <Animated.View
             style={[
               styles.formCard,
               {
@@ -194,20 +238,20 @@ export default function LoginScreen() {
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
                 style={styles.eyeIcon}
               >
-                <Ionicons 
-                  name={showPassword ? "eye-outline" : "eye-off-outline"} 
-                  size={20} 
-                  color="#999" 
+                <Ionicons
+                  name={showPassword ? "eye-outline" : "eye-off-outline"}
+                  size={20}
+                  color="#999"
                 />
               </TouchableOpacity>
             </View>
 
             {/* Forgot Password */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.forgotPassword}
               onPress={handleForgotPassword}
             >

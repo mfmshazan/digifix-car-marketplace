@@ -11,7 +11,7 @@ import FooterModern from '@/components/layout/FooterModern';
 
 const conditions = ['ALL', 'NEW', 'USED', 'RECONDITIONED'];
 
-export default function PartsPage() {
+function PartsContent() {
   const searchParams = useSearchParams();
   const categoryFilter = searchParams.get('category');
 
@@ -20,7 +20,6 @@ export default function PartsPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedCondition, setSelectedCondition] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
   const [selectedPart, setSelectedPart] = useState<CarPart | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -49,7 +48,7 @@ export default function PartsPage() {
   const filteredParts = parts.filter((part) =>
     searchQuery
       ? part.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        part.category.name.toLowerCase().includes(searchQuery.toLowerCase())
+      part.category.name.toLowerCase().includes(searchQuery.toLowerCase())
       : true
   );
 
@@ -109,11 +108,10 @@ export default function PartsPage() {
                     <button
                       key={condition}
                       onClick={() => setSelectedCondition(condition)}
-                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                        selectedCondition === condition
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${selectedCondition === condition
                           ? 'bg-orange-500 text-white'
                           : 'text-gray-600 hover:text-gray-900'
-                      }`}
+                        }`}
                     >
                       {condition}
                     </button>
@@ -125,22 +123,20 @@ export default function PartsPage() {
               <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-2 rounded-md transition-colors ${
-                    viewMode === 'grid'
+                  className={`p-2 rounded-md transition-colors ${viewMode === 'grid'
                       ? 'bg-orange-500 text-white'
                       : 'text-gray-600 hover:text-gray-900'
-                  }`}
+                    }`}
                   aria-label="Grid view"
                 >
                   <Grid className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`p-2 rounded-md transition-colors ${
-                    viewMode === 'list'
+                  className={`p-2 rounded-md transition-colors ${viewMode === 'list'
                       ? 'bg-orange-500 text-white'
                       : 'text-gray-600 hover:text-gray-900'
-                  }`}
+                    }`}
                   aria-label="List view"
                 >
                   <List className="w-4 h-4" />
@@ -199,5 +195,19 @@ export default function PartsPage() {
 
       <FooterModern />
     </div>
+  );
+}
+
+import { Suspense as ReactSuspense } from 'react';
+
+export default function PartsPage() {
+  return (
+    <ReactSuspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00002E]"></div>
+      </div>
+    }>
+      <PartsContent />
+    </ReactSuspense>
   );
 }

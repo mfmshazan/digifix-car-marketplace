@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
 import { authApi } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import GoogleSignInButton from '@/components/google-signin-button';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,11 +25,11 @@ export default function LoginPage() {
       setIsLoading(true);
       setError(null);
       const response = await authApi.login(email, password);
-      
+
       if (response.success) {
         const { user, token } = response.data;
         login(user, token);
-        
+
         // Redirect based on user role
         if (user.role === 'SALESMAN') {
           router.push('/dashboard/salesman');
@@ -55,7 +56,7 @@ export default function LoginPage() {
             <Link href="/" className="inline-flex items-center gap-3 mb-8">
               <div className="w-12 h-12 bg-[#00002E] rounded-xl flex items-center justify-center">
                 <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z"/>
+                  <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" />
                 </svg>
               </div>
               <span className="text-2xl font-black">
@@ -138,6 +139,19 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          {/* Google Sign In */}
+          <div className="mt-6">
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="bg-white px-4 text-gray-500">or continue with</span>
+              </div>
+            </div>
+            <GoogleSignInButton />
+          </div>
 
           <div className="mt-8 text-center">
             <p className="text-gray-600">

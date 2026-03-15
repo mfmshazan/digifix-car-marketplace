@@ -73,8 +73,6 @@ services:
     command: npm run dev
 
 # ================================
-# Networks
-# ================================
 networks:
   digifix-network:
     driver: bridge

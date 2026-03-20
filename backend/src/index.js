@@ -10,7 +10,8 @@ import carPartRoutes from './routes/carPart.routes.js';
 import cartRoutes from './routes/cart.routes.js';
 import clerkRoutes from './routes/clerk.routes.js';
 
-dotenv.config();
+// Load environment variables early - override ensures .env values take precedence over empty docker/shell variables
+dotenv.config({ override: true });
 
 const app = express();
 const PORT = process.env.PORT || 3000;

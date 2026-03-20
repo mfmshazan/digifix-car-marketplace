@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useSignIn, useAuth } from '@clerk/nextjs';
+import { useSignIn, useAuth, useClerk } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 
@@ -9,7 +9,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/a
 
 export default function GoogleSignInButton() {
     const { signIn, isLoaded: isSignInLoaded } = useSignIn();
-    const { getToken } = useAuth();
+    const { isSignedIn, getToken, signOut } = useAuth();
     const router = useRouter();
     const login = useAuthStore((state) => state.login);
     const [isLoading, setIsLoading] = useState(false);
@@ -22,6 +22,13 @@ export default function GoogleSignInButton() {
             setIsLoading(true);
             setError(null);
 
+            // If already signed in with Clerk, sign out first to avoid "session already exists"
+            if (isSignedIn) {
+                await signOut();
+                // Small delay to let Clerk fully clear the session
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
             // Start Google OAuth flow via Clerk
             await signIn.authenticateWithRedirect({
                 strategy: 'oauth_google',
@@ -30,6 +37,14 @@ export default function GoogleSignInButton() {
             });
         } catch (err: any) {
             console.error('Google sign-in error:', err);
+            const errorCode = err.errors?.[0]?.code;
+            
+            // If session still exists despite signOut, redirect to complete the flow
+            if (errorCode === 'session_exists') {
+                router.push('/sso-callback?complete=true');
+                return;
+            }
+            
             setError(err.errors?.[0]?.message || 'Failed to sign in with Google');
             setIsLoading(false);
         }

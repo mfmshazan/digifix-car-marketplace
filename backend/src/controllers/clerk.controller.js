@@ -5,10 +5,25 @@ import prisma from '../lib/prisma.js';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
-// Initialize Clerk client
-const clerkClient = createClerkClient({
-    secretKey: process.env.CLERK_SECRET_KEY,
-});
+// Initialize Clerk client lazily to ensure environment variables are loaded
+let clerkClient;
+const getClerkClient = () => {
+    if (!clerkClient) {
+        let secretKey = process.env.CLERK_SECRET_KEY;
+        
+        // Handle empty but defined string from Docker environment overrides
+        if (!secretKey || secretKey.trim() === "") {
+            console.error('CRITICAL: CLERK_SECRET_KEY is missing or empty in environment!');
+            // Log all env keys to see what's available (without values for security)
+            console.log('Available environment variables:', Object.keys(process.env).join(', '));
+        }
+
+        clerkClient = createClerkClient({
+            secretKey: secretKey,
+        });
+    }
+    return clerkClient;
+};
 
 // Generate JWT token (same as existing auth)
 const generateToken = (userId, role) => {
@@ -27,7 +42,7 @@ const generateToken = (userId, role) => {
  */
 const googleSignIn = async (req, res) => {
     try {
-        const { clerkToken, role = 'CUSTOMER' } = req.body;
+        const { clerkToken, role = 'CUSTOMER', sessionId } = req.body;
 
         if (!clerkToken) {
             return res.status(400).json({
@@ -38,16 +53,42 @@ const googleSignIn = async (req, res) => {
 
         // Verify the Clerk session token
         let clerkUser;
+        let clerkUserId;
+
         try {
-            // Verify JWT from Clerk
-            const { sub: clerkUserId } = await clerkClient.verifyToken(clerkToken);
-            clerkUser = await clerkClient.users.getUser(clerkUserId);
+            // Try standard JWT verification first (common for native and web)
+            // Added clockSkew leeway to handle minor clock synchronization issues
+            const decoded = await getClerkClient().verifyToken(clerkToken, { clockSkew: 60 });
+            clerkUserId = decoded.sub;
+            clerkUser = await getClerkClient().users.getUser(clerkUserId);
         } catch (verifyError) {
-            console.error('Clerk token verification failed:', verifyError);
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid Clerk token',
-            });
+            console.error('Clerk JWT verification failed:', verifyError.message);
+            
+            // Fallback to sessionId verification if verifyToken fails (especially common on Expo Web)
+            if (sessionId) {
+                try {
+                    const session = await getClerkClient().sessions.getSession(sessionId);
+                    if (session && session.status === 'active') {
+                        clerkUserId = session.userId;
+                        clerkUser = await getClerkClient().users.getUser(clerkUserId);
+                        console.log('Successfully verified via sessionId fallback');
+                    } else {
+                        throw new Error(`Session is ${session ? session.status : 'missing'}`);
+                    }
+                } catch (sessionError) {
+                    console.error('Clerk session fallback failed (ERR_S):', sessionError.message);
+                    return res.status(401).json({
+                        success: false,
+                        message: `Authentication failed (ERR_S): ${sessionError.message}`,
+                    });
+                }
+            } else {
+                console.error('Clerk JWT verification failed and no sessionId (ERR_T):', verifyError.message);
+                return res.status(401).json({
+                    success: false,
+                    message: `Authentication failed (ERR_T): ${verifyError.message}`,
+                });
+            }
         }
 
         // Extract user info from Clerk

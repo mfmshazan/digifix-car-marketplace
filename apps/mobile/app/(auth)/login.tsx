@@ -18,7 +18,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { loginUser } from "../../src/api/auth";
 import { saveToken, saveUser } from "../../src/api/storage";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth, useSession } from "@clerk/clerk-expo";
 import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
 
 export default function LoginScreen() {
@@ -28,7 +28,8 @@ export default function LoginScreen() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const { getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { session } = useSession();
   const { signInWithGoogle } = useGoogleSignIn();
 
   // Animation values
@@ -39,7 +40,28 @@ export default function LoginScreen() {
   const googleButtonScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    const checkExistingSession = async () => {
+      if (isLoaded && isSignedIn && !isLoading && session) {
+        try {
+          // User is already signed in with Clerk, but maybe not synced with our backend
+          const clerkToken = await getToken();
+          if (clerkToken) {
+            setIsLoading(true);
+            await handleBackendSync(clerkToken, session.id);
+          }
+        } catch (err) {
+          console.error("Auto-sync error:", err);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+    checkExistingSession();
+  }, [isLoaded, isSignedIn, session]);
+
+  useEffect(() => {
     Animated.parallel([
+
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 600,
@@ -118,40 +140,91 @@ export default function LoginScreen() {
       const result = await signInWithGoogle();
 
       if (result.success) {
+        // Small delay to ensure Clerk session is fully active/synced on web
+        if (Platform.OS === 'web') {
+          await new Promise(resolve => setTimeout(resolve, 800));
+        }
+
         // Get the Clerk session token
         const clerkToken = await getToken();
 
         if (!clerkToken) {
-          throw new Error("Failed to get Clerk authentication token");
-        }
-
-        // Sync with our backend to get our own JWT token
-        const response = await syncClerkWithBackend(clerkToken);
-
-        if (response.success && response.data) {
-          await saveToken(response.data.token);
-          await saveUser(response.data.user);
-
-          Alert.alert("Success", "Google Sign-In successful!");
-
-          if (response.data.user.role === "SALESMAN") {
-            router.replace("/(salesman)");
-          } else {
-            router.replace("/(customer)");
+          // If already signed in but token is not available yet, wait a bit more
+          if (isSignedIn && session) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const retryToken = await getToken();
+            if (retryToken) {
+              // Pass sessionId for improved verification reliability
+              await handleBackendSync(retryToken, session.id);
+              return;
+            }
           }
-        } else {
-          setError(response.message || "Backend sync failed");
+          throw new Error("Failed to get Clerk authentication token. Please try again.");
         }
+
+        // Pass sessionId for improved verification reliability
+        await handleBackendSync(clerkToken, session?.id);
       } else if (result.message) {
         setError(result.message);
       }
     } catch (err: any) {
       console.error("Google sign-in error:", err);
+      // Special handling for session exists error if it still bubbles up
+      if (err.message?.includes('already signed in') || err.errors?.[0]?.code === 'session_exists') {
+        const token = await getToken();
+        if (token && session) {
+          // Pass sessionId for improved verification reliability
+          await handleBackendSync(token, session.id);
+          return;
+        }
+      }
       setError(err.message || "Failed to sign in with Google. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleBackendSync = async (clerkToken: string, sessionId?: string) => {
+    try {
+      console.log('Finalizing backend sync with sessionId:', sessionId);
+      // Sync with our backend to get our own JWT token
+      const response = await syncClerkWithBackend(clerkToken, 'CUSTOMER', sessionId);
+
+      if (response.success && response.data) {
+        await saveToken(response.data.token);
+        await saveUser(response.data.user);
+
+        // Success - clear error
+        setError("");
+        
+        // Redirect to dashboard
+        const dashboardRoute = response.data.user.role === "SALESMAN" ? "/(salesman)" : "/(customer)";
+        
+        console.log('Sync successful, redirecting to:', dashboardRoute);
+        
+        if (Platform.OS === 'web') {
+           // On web, a hard redirect via router or window.location can be more reliable
+           router.replace(dashboardRoute as any);
+           // Fallback in case router.replace stalls on web
+           setTimeout(() => {
+             if (window.location.pathname.includes('login')) {
+                window.location.href = dashboardRoute;
+             }
+           }, 1000);
+        } else {
+           router.replace(dashboardRoute as any);
+        }
+      } else {
+        const errorMsg = response.message || "Backend sync failed";
+        console.error('Backend sync failed:', errorMsg);
+        setError(`${errorMsg}`);
+      }
+    } catch (syncErr: any) {
+      console.error("Backend sync error:", syncErr);
+      setError(`Auth Error: ${syncErr.message || "Unknown error"}`);
+    }
+  };
+
 
   const handleForgotPassword = () => {
     Alert.alert(

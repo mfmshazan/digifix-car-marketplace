@@ -16,8 +16,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { registerUser } from "../../src/api/auth";
+
 import { saveToken, saveUser } from "../../src/api/storage";
+import { useAuth } from "@clerk/clerk-expo";
+import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
 
 export default function RegisterScreen() {
   const [name, setName] = useState("");
@@ -29,6 +33,9 @@ export default function RegisterScreen() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const { getToken } = useAuth();
+  const { signInWithGoogle } = useGoogleSignIn();
   
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -137,8 +144,62 @@ export default function RegisterScreen() {
     }
   };
 
-  const handleGoogleSignUp = () => {
-    Alert.alert("Coming Soon", "Google Sign-Up will be available soon!");
+  const handleGoogleSignUp = async () => {
+    try {
+      setIsLoading(true);
+      setError("");
+
+      // Save role for the callback to recover after redirect (on web)
+      if (Platform.OS === 'web') {
+        await AsyncStorage.setItem('@digifix_pending_role', role);
+      }
+
+      const result = await signInWithGoogle();
+
+      if (result.success) {
+
+        const clerkToken = await getToken();
+
+        if (!clerkToken) {
+          throw new Error("Failed to get Clerk authentication token");
+        }
+
+        const response = await syncClerkWithBackend(clerkToken, role);
+
+        if (response.success && response.data) {
+          await saveToken(response.data.token);
+          await saveUser(response.data.user);
+
+          const userRole = response.data.user.role;
+
+          Alert.alert(
+            "Success",
+            "Google Registration successful! Welcome to DIGIFIX!",
+            [
+              {
+                text: "OK",
+                onPress: () => {
+                  if (userRole === "SALESMAN") {
+                    router.replace("/(salesman)");
+                  } else {
+                    router.replace("/(customer)");
+                  }
+                },
+              },
+            ]
+          );
+        } else {
+          setError(response.message || "Backend sync failed");
+        }
+      } else if (result.message) {
+        setError(result.message);
+      }
+    } catch (err: any) {
+      console.error("Google sign-up error:", err);
+      setError(err.message || "Failed to sign up with Google. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

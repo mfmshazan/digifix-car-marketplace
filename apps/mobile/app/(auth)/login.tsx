@@ -16,10 +16,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import { loginUser } from "../../src/api/auth";
 import { saveToken, saveUser } from "../../src/api/storage";
 import { useAuth } from "@clerk/clerk-expo";
 import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
+
+// Check if running in Expo Go (Google Sign-In won't work there)
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -28,6 +32,11 @@ export default function LoginScreen() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
+  // Check if Clerk is properly configured and not in Expo Go
+  const clerkKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  const isClerkConfigured = !isExpoGo && clerkKey && clerkKey !== 'pk_test_placeholder_key_configured_from_clerk_dashboard';
+
+  // Clerk hooks (will use mocks in Expo Go via Metro resolver)
   const { getToken } = useAuth();
   const { signInWithGoogle } = useGoogleSignIn();
 
@@ -111,6 +120,16 @@ export default function LoginScreen() {
   };
 
   const handleGoogleSignIn = async () => {
+    // Check if Clerk is properly configured
+    if (!isClerkConfigured) {
+      Alert.alert(
+        "Google Sign-In Not Available",
+        "Google Sign-In requires Clerk configuration. Please use email/password login or contact support.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError("");
@@ -275,25 +294,31 @@ export default function LoginScreen() {
               </Pressable>
             </Animated.View>
 
-            {/* Divider */}
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or continue with</Text>
-              <View style={styles.dividerLine} />
-            </View>
+            {/* Google Sign In - Only show if Clerk is configured */}
+            {isClerkConfigured && (
+              <>
+                {/* Divider */}
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or continue with</Text>
+                  <View style={styles.dividerLine} />
+                </View>
 
-            {/* Google Sign In Button */}
-            <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
-              <Pressable
-                style={styles.googleButton}
-                onPress={handleGoogleSignIn}
-                onPressIn={() => handlePressIn(googleButtonScale)}
-                onPressOut={() => handlePressOut(googleButtonScale)}
-              >
-                <Ionicons name="logo-google" size={20} color="#DB4437" />
-                <Text style={styles.googleButtonText}>Sign in with Google</Text>
-              </Pressable>
-            </Animated.View>
+                {/* Google Sign In Button */}
+                <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
+                  <Pressable
+                    style={styles.googleButton}
+                    onPress={handleGoogleSignIn}
+                    onPressIn={() => handlePressIn(googleButtonScale)}
+                    onPressOut={() => handlePressOut(googleButtonScale)}
+                    disabled={isLoading}
+                  >
+                    <Ionicons name="logo-google" size={20} color="#DB4437" />
+                    <Text style={styles.googleButtonText}>Sign in with Google</Text>
+                  </Pressable>
+                </Animated.View>
+              </>
+            )}
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>{"Don't have an account? "}</Text>

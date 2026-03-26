@@ -182,33 +182,7 @@ export default function RegisterScreen() {
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-            <View style={styles.inputContainer}>
-              <Ionicons name="person-outline" size={20} color="#999" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Full Name"
-                placeholderTextColor="#999"
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Email Address"
-                placeholderTextColor="#999"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            {/* Role Selection with Animation */}
+            {/* Role Selection with Animation - First so user knows what they're registering as */}
             <View style={styles.roleContainer}>
               <Text style={styles.roleLabel}>I want to register as:</Text>
               <View style={styles.roleButtons}>
@@ -264,6 +238,32 @@ export default function RegisterScreen() {
                   </Pressable>
                 </Animated.View>
               </View>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Ionicons name={role === "SALESMAN" ? "storefront-outline" : "person-outline"} size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder={role === "SALESMAN" ? "Shop Name" : "Full Name"}
+                placeholderTextColor="#999"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email Address"
+                placeholderTextColor="#999"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
             </View>
 
             <View style={styles.inputContainer}>

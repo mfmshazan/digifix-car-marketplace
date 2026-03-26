@@ -80,7 +80,7 @@ const cars = [
   },
 ];
 
-// Car parts for Shop A (Brakes, Engine, Filters, Lighting)
+// Car parts for Shop A (Brakes, Engine, Filters, Lighting, Exhaust, Tires)
 const getShopACarParts = (carId, categoryMap, sellerId) => [
   {
     name: 'Front Brake Pad Set',
@@ -134,6 +134,19 @@ const getShopACarParts = (carId, categoryMap, sellerId) => [
     sellerId,
   },
   {
+    name: 'Air Filter',
+    description: 'High-flow air filter from Shop A for improved engine performance.',
+    partNumber: 'A-FLT-AIR-002',
+    price: 2500,
+    discountPrice: 2100,
+    stock: 30,
+    condition: 'NEW',
+    images: ['https://images.unsplash.com/photo-1487754180451-c456f719a1fc?w=800'],
+    carId,
+    categoryId: categoryMap['Filters'],
+    sellerId,
+  },
+  {
     name: 'LED Headlight Bulbs (Pair)',
     description: 'Super bright LED headlight bulbs from Shop A. 6000K white light.',
     partNumber: 'A-LGT-HL-001',
@@ -144,6 +157,32 @@ const getShopACarParts = (carId, categoryMap, sellerId) => [
     images: ['https://images.unsplash.com/photo-1489824904134-891ab64532f1?w=800'],
     carId,
     categoryId: categoryMap['Lighting'],
+    sellerId,
+  },
+  {
+    name: 'Exhaust Muffler',
+    description: 'Stainless steel exhaust muffler from Shop A. Reduces noise and improves performance.',
+    partNumber: 'A-EXH-MF-001',
+    price: 18000,
+    discountPrice: 15500,
+    stock: 10,
+    condition: 'NEW',
+    images: ['https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=800'],
+    carId,
+    categoryId: categoryMap['Exhaust'],
+    sellerId,
+  },
+  {
+    name: 'All-Season Tire (1 pc)',
+    description: 'Premium all-season tire from Shop A with excellent grip.',
+    partNumber: 'A-TIR-AS-001',
+    price: 12500,
+    discountPrice: 11000,
+    stock: 16,
+    condition: 'NEW',
+    images: ['https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800'],
+    carId,
+    categoryId: categoryMap['Tires & Wheels'],
     sellerId,
   },
 ];
@@ -250,14 +289,14 @@ async function seed() {
     where: { email: 'shopa@gmail.com' },
     update: {
       password: hashedPassword,
-      name: 'Shop A - Auto Parts',
+      name: 'Shop A',
       role: 'SALESMAN',
       isVerified: true,
     },
     create: {
       email: 'shopa@gmail.com',
       password: hashedPassword,
-      name: 'Shop A - Auto Parts',
+      name: 'Shop A',
       phone: '+94771111111',
       role: 'SALESMAN',
       isVerified: true,
@@ -270,14 +309,14 @@ async function seed() {
     where: { email: 'shopb@gmail.com' },
     update: {
       password: hashedPassword,
-      name: 'Shop B - Car Accessories',
+      name: 'Shop B',
       role: 'SALESMAN',
       isVerified: true,
     },
     create: {
       email: 'shopb@gmail.com',
       password: hashedPassword,
-      name: 'Shop B - Car Accessories',
+      name: 'Shop B',
       phone: '+94772222222',
       role: 'SALESMAN',
       isVerified: true,
@@ -322,7 +361,7 @@ async function seed() {
   console.log('\nCreating car parts for Shop A...');
   let shopAPartsCount = 0;
   const shopAParts = [];
-  for (const car of createdCars.slice(0, 3)) { // First 3 cars for Shop A
+  for (const car of createdCars) { // All cars get Shop A parts
     const parts = getShopACarParts(car.id, categoryMap, salesmanA.id);
     for (const part of parts) {
       const created = await prisma.carPart.create({ data: part });
@@ -515,7 +554,7 @@ async function seed() {
   console.log('🏪 SHOP A SALESMAN:');
   console.log('   Email:    shopa@gmail.com');
   console.log('   Password: password123');
-  console.log('   Products: Brakes, Engine Parts, Filters, Lighting');
+  console.log('   Products: Brakes, Engine Parts, Filters, Lighting, Exhaust, Tires');
   console.log('');
   console.log('🏪 SHOP B SALESMAN:');
   console.log('   Email:    shopb@gmail.com');

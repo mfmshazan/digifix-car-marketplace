@@ -77,7 +77,7 @@ export default function CustomerHomeScreen() {
   const loadFeaturedParts = async () => {
     try {
       setIsLoading(true);
-      const response = await getAllCarParts({ limit: 10 });
+      const response = await getAllCarParts({ limit: 20 });
       if (response.success) {
         setFeaturedParts(response.data.parts);
       }
@@ -149,7 +149,7 @@ export default function CustomerHomeScreen() {
         </View>
       </View>
       <View style={styles.productInfo}>
-        <Text style={styles.productCategory}>{item.category.name}</Text>
+        <Text style={styles.productCategory}>{item.seller.name}</Text>
         <Text style={styles.productName} numberOfLines={2}>
           {item.name}
         </Text>
@@ -253,7 +253,7 @@ export default function CustomerHomeScreen() {
                   </View>
                   <View style={styles.partListInfo}>
                     <View style={styles.partListHeader}>
-                      <Text style={styles.partListCategory}>{item.category.name}</Text>
+                      <Text style={styles.partListCategory}>{item.seller.name}</Text>
                       <View style={[styles.conditionBadgeSmall, { 
                         backgroundColor: item.condition === 'NEW' ? '#4ECDC4' : item.condition === 'USED' ? '#FF6B35' : '#9B59B6' 
                       }]}>
@@ -651,8 +651,8 @@ const styles = StyleSheet.create({
   },
   productCategory: {
     fontSize: 10,
-    color: "#999",
-    textTransform: "uppercase",
+    color: "#00002E",
+    fontWeight: "500",
     marginBottom: 4,
   },
   productName: {
@@ -827,8 +827,8 @@ const styles = StyleSheet.create({
   },
   partListCategory: {
     fontSize: 11,
-    color: "#999",
-    textTransform: "uppercase",
+    color: "#00002E",
+    fontWeight: "500",
     marginRight: 8,
   },
   conditionBadgeSmall: {

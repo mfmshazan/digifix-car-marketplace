@@ -16,14 +16,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import Constants from "expo-constants";
 import { loginUser } from "../../src/api/auth";
 import { saveToken, saveUser } from "../../src/api/storage";
-import { useAuth } from "@clerk/clerk-expo";
-import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
-
-// Check if running in Expo Go (Google Sign-In won't work there)
-const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -32,20 +26,11 @@ export default function LoginScreen() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // Check if Clerk is properly configured and not in Expo Go
-  const clerkKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const isClerkConfigured = !isExpoGo && clerkKey && clerkKey !== 'pk_test_placeholder_key_configured_from_clerk_dashboard';
-
-  // Clerk hooks (will use mocks in Expo Go via Metro resolver)
-  const { getToken } = useAuth();
-  const { signInWithGoogle } = useGoogleSignIn();
-
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
-  const googleButtonScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -114,59 +99,6 @@ export default function LoginScreen() {
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message || "Invalid email or password. Please check your credentials or sign up first.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    // Check if Clerk is properly configured
-    if (!isClerkConfigured) {
-      Alert.alert(
-        "Google Sign-In Not Available",
-        "Google Sign-In requires Clerk configuration. Please use email/password login or contact support.",
-        [{ text: "OK" }]
-      );
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError("");
-
-      const result = await signInWithGoogle();
-
-      if (result.success) {
-        // Get the Clerk session token
-        const clerkToken = await getToken();
-
-        if (!clerkToken) {
-          throw new Error("Failed to get Clerk authentication token");
-        }
-
-        // Sync with our backend to get our own JWT token
-        const response = await syncClerkWithBackend(clerkToken);
-
-        if (response.success && response.data) {
-          await saveToken(response.data.token);
-          await saveUser(response.data.user);
-
-          Alert.alert("Success", "Google Sign-In successful!");
-
-          if (response.data.user.role === "SALESMAN") {
-            router.replace("/(salesman)");
-          } else {
-            router.replace("/(customer)");
-          }
-        } else {
-          setError(response.message || "Backend sync failed");
-        }
-      } else if (result.message) {
-        setError(result.message);
-      }
-    } catch (err: any) {
-      console.error("Google sign-in error:", err);
-      setError(err.message || "Failed to sign in with Google. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -294,32 +226,6 @@ export default function LoginScreen() {
               </Pressable>
             </Animated.View>
 
-            {/* Google Sign In - Only show if Clerk is configured */}
-            {isClerkConfigured && (
-              <>
-                {/* Divider */}
-                <View style={styles.divider}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>or continue with</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-
-                {/* Google Sign In Button */}
-                <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
-                  <Pressable
-                    style={styles.googleButton}
-                    onPress={handleGoogleSignIn}
-                    onPressIn={() => handlePressIn(googleButtonScale)}
-                    onPressOut={() => handlePressOut(googleButtonScale)}
-                    disabled={isLoading}
-                  >
-                    <Ionicons name="logo-google" size={20} color="#DB4437" />
-                    <Text style={styles.googleButtonText}>Sign in with Google</Text>
-                  </Pressable>
-                </Animated.View>
-              </>
-            )}
-
             <View style={styles.footer}>
               <Text style={styles.footerText}>{"Don't have an account? "}</Text>
               <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
@@ -434,38 +340,6 @@ const styles = StyleSheet.create({
   },
   loginButtonText: {
     color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#E5E7EB",
-  },
-  dividerText: {
-    marginHorizontal: 12,
-    color: "#9CA3AF",
-    fontSize: 14,
-  },
-  googleButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    height: 56,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    gap: 12,
-  },
-  googleButtonText: {
-    color: "#1A1A1A",
     fontSize: 16,
     fontWeight: "600",
   },

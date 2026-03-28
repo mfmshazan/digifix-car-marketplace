@@ -20,7 +20,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { registerUser } from "../../src/api/auth";
 
 import { saveToken, saveUser } from "../../src/api/storage";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth } from "@clerk/expo";
 import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
 
 export default function RegisterScreen() {
@@ -36,7 +36,7 @@ export default function RegisterScreen() {
 
   const { getToken } = useAuth();
   const { signInWithGoogle } = useGoogleSignIn();
-  
+
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -65,7 +65,7 @@ export default function RegisterScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePressIn = (animValue: Animated.Value) => {
@@ -161,6 +161,9 @@ export default function RegisterScreen() {
         const clerkToken = await getToken();
 
         if (!clerkToken) {
+          if (Platform.OS === "web") {
+            return;
+          }
           throw new Error("Failed to get Clerk authentication token");
         }
 
@@ -213,7 +216,7 @@ export default function RegisterScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {/* Logo Section with Animation */}
-          <Animated.View 
+          <Animated.View
             style={[
               styles.logoSection,
               {
@@ -230,7 +233,7 @@ export default function RegisterScreen() {
           </Animated.View>
 
           {/* Form Card with Animation */}
-          <Animated.View 
+          <Animated.View
             style={[
               styles.formCard,
               {
@@ -241,8 +244,7 @@ export default function RegisterScreen() {
           >
             <Text style={styles.title}>Create Account</Text>
 
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
+            {error && !isLoading ? <Text style={styles.errorText}>{error}</Text> : null}
             <View style={styles.inputContainer}>
               <Ionicons name="person-outline" size={20} color="#999" style={styles.inputIcon} />
               <TextInput
@@ -337,14 +339,14 @@ export default function RegisterScreen() {
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
                 style={styles.eyeIcon}
               >
-                <Ionicons 
-                  name={showPassword ? "eye-outline" : "eye-off-outline"} 
-                  size={20} 
-                  color="#999" 
+                <Ionicons
+                  name={showPassword ? "eye-outline" : "eye-off-outline"}
+                  size={20}
+                  color="#999"
                 />
               </TouchableOpacity>
             </View>
@@ -359,14 +361,14 @@ export default function RegisterScreen() {
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showConfirmPassword}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                 style={styles.eyeIcon}
               >
-                <Ionicons 
-                  name={showConfirmPassword ? "eye-outline" : "eye-off-outline"} 
-                  size={20} 
-                  color="#999" 
+                <Ionicons
+                  name={showConfirmPassword ? "eye-outline" : "eye-off-outline"}
+                  size={20}
+                  color="#999"
                 />
               </TouchableOpacity>
             </View>

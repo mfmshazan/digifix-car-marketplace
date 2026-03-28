@@ -10,7 +10,7 @@ let clerkClient;
 const getClerkClient = () => {
     if (!clerkClient) {
         let secretKey = process.env.CLERK_SECRET_KEY;
-        
+
         // Handle empty but defined string from Docker environment overrides
         if (!secretKey || secretKey.trim() === "") {
             console.error('CRITICAL: CLERK_SECRET_KEY is missing or empty in environment!');
@@ -55,40 +55,29 @@ const googleSignIn = async (req, res) => {
         let clerkUser;
         let clerkUserId;
 
+        if (!sessionId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication failed: sessionId is required',
+            });
+        }
+
         try {
-            // Try standard JWT verification first (common for native and web)
-            // Added clockSkew leeway to handle minor clock synchronization issues
-            const decoded = await getClerkClient().verifyToken(clerkToken, { clockSkew: 60 });
-            clerkUserId = decoded.sub;
-            clerkUser = await getClerkClient().users.getUser(clerkUserId);
-        } catch (verifyError) {
-            console.error('Clerk JWT verification failed:', verifyError.message);
-            
-            // Fallback to sessionId verification if verifyToken fails (especially common on Expo Web)
-            if (sessionId) {
-                try {
-                    const session = await getClerkClient().sessions.getSession(sessionId);
-                    if (session && session.status === 'active') {
-                        clerkUserId = session.userId;
-                        clerkUser = await getClerkClient().users.getUser(clerkUserId);
-                        console.log('Successfully verified via sessionId fallback');
-                    } else {
-                        throw new Error(`Session is ${session ? session.status : 'missing'}`);
-                    }
-                } catch (sessionError) {
-                    console.error('Clerk session fallback failed (ERR_S):', sessionError.message);
-                    return res.status(401).json({
-                        success: false,
-                        message: `Authentication failed (ERR_S): ${sessionError.message}`,
-                    });
-                }
-            } else {
-                console.error('Clerk JWT verification failed and no sessionId (ERR_T):', verifyError.message);
-                return res.status(401).json({
-                    success: false,
-                    message: `Authentication failed (ERR_T): ${verifyError.message}`,
-                });
+            const session = await getClerkClient().sessions.getSession(sessionId);
+
+            if (!session || session.status !== 'active') {
+                throw new Error(`Session is ${session ? session.status : 'missing'}`);
             }
+
+            clerkUserId = session.userId;
+            clerkUser = await getClerkClient().users.getUser(clerkUserId);
+            console.log('Successfully verified via sessionId');
+        } catch (sessionError) {
+            console.error('Clerk session verification failed:', sessionError.message);
+            return res.status(401).json({
+                success: false,
+                message: `Authentication failed: ${sessionError.message}`,
+            });
         }
 
         // Extract user info from Clerk

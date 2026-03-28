@@ -1,86 +1,78 @@
 import React, { useEffect } from "react";
 import { View, Text, ActivityIndicator, StyleSheet, Pressable, Platform } from "react-native";
-import { useAuth, useSession } from "@clerk/clerk-expo";
+import { useAuth, useSession, useClerk } from "@clerk/expo";
 import { router } from "expo-router";
 import { syncClerkWithBackend } from "../src/api/google-signin";
 import { saveToken, saveUser } from "../src/api/storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function SSOCallbackScreen() {
+  const clerk = useClerk();
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { session } = useSession();
 
   useEffect(() => {
-    let timeout: any;
+    let cancelled = false;
 
-    const handleCallback = async () => {
-      // Wait for Clerk to load
-      if (!isLoaded) return;
-
+    const run = async () => {
       try {
-        if (isSignedIn) {
-          // Get the Clerk session token
-          const clerkToken = await getToken();
+        await clerk.handleRedirectCallback({
+          continueSignUpUrl: "/",
+        });
 
-          if (!clerkToken) {
-            console.error("Failed to get Clerk token in callback");
-            router.replace("/(auth)/login");
-            return;
+        let token: string | null = null;
+
+        for (let i = 0; i < 10; i++) {
+          if (cancelled) return;
+
+          if (isLoaded && isSignedIn) {
+            token = await getToken();
+            if (token) break;
           }
 
-          // Check if there's a pending role from registration
-          const pendingRole = await AsyncStorage.getItem("@digifix_pending_role");
-          const role = pendingRole || "CUSTOMER";
-
-          // Sync with our backend - Pass sessionId for improved verification reliability
-          const response = await syncClerkWithBackend(clerkToken, role, session?.id);
-
-          if (response.success && response.data) {
-            await saveToken(response.data.token);
-            await saveUser(response.data.user);
-
-            // Clear pending role
-            if (pendingRole) {
-              await AsyncStorage.removeItem("@digifix_pending_role");
-            }
-
-            // Redirect based on role
-            const dashboardRoute = response.data.user.role === "SALESMAN" ? "/(salesman)" : "/(customer)";
-            console.log('Sync successful from callback, redirecting to:', dashboardRoute);
-
-            if (Platform.OS === 'web') {
-              router.replace(dashboardRoute as any);
-              // Fallback for web
-              setTimeout(() => {
-                if (window.location.pathname.includes('sso-callback')) {
-                   window.location.href = dashboardRoute;
-                }
-              }, 1000);
-            } else {
-              router.replace(dashboardRoute as any);
-            }
-          } else {
-            console.error("Backend sync failed in callback (ERR_C):", response.message);
-            router.replace("/(auth)/login");
-          }
-        } else {
-          // If not signed in yet, wait a few seconds for Clerk to process the redirect parameters
-          timeout = setTimeout(() => {
-            if (isLoaded && !isSignedIn) {
-              console.log("SSO callback timed out, redirecting to login");
-              router.replace("/(auth)/login");
-            }
-          }, 5000);
+          await new Promise((resolve) => setTimeout(resolve, 300));
         }
+
+        if (!token) {
+          console.error("Failed to get Clerk token in callback");
+          router.replace("/(auth)/login");
+          return;
+        }
+
+        const pendingRole = await AsyncStorage.getItem("@digifix_pending_role");
+        const role = pendingRole || "CUSTOMER";
+
+        const response = await syncClerkWithBackend(token, role, session?.id);
+
+        if (response.success && response.data) {
+          await saveToken(response.data.token);
+          await saveUser(response.data.user);
+
+          if (pendingRole) {
+            await AsyncStorage.removeItem("@digifix_pending_role");
+          }
+
+          const dashboardRoute =
+            response.data.user.role === "SALESMAN" ? "/(salesman)" : "/(customer)";
+
+          router.replace(dashboardRoute as any);
+          return;
+        }
+
+        console.error("Backend sync failed in callback:", response.message);
+        router.replace("/(auth)/login");
       } catch (err) {
         console.error("SSO callback error:", err);
         router.replace("/(auth)/login");
       }
     };
 
-    handleCallback();
-    return () => timeout && clearTimeout(timeout);
-  }, [isLoaded, isSignedIn]);
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clerk, isLoaded, isSignedIn, getToken, session?.id]);
 
   return (
     <View style={styles.container}>
@@ -88,9 +80,9 @@ export default function SSOCallbackScreen() {
         <ActivityIndicator size="large" color="#00002E" />
         <Text style={styles.title}>Completing Sign-In</Text>
         <Text style={styles.subtitle}>Please wait while we sync your account...</Text>
-        
-        <Pressable 
-          style={styles.backButton} 
+
+        <Pressable
+          style={styles.backButton}
           onPress={() => router.replace("/(auth)/login")}
         >
           <Text style={styles.backButtonText}>Back to Login</Text>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth, useUser } from '@clerk/nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
@@ -15,58 +15,40 @@ function SSOCallbackContent() {
     const searchParams = useSearchParams();
     const login = useAuthStore((state) => state.login);
     const [error, setError] = useState<string | null>(null);
-    const [isProcessing, setIsProcessing] = useState(true);
+    // useRef guard prevents double-execution when multiple deps update simultaneously
+    const isProcessingRef = useRef(false);
 
     useEffect(() => {
         const handleCallback = async () => {
             if (!isLoaded) return;
 
+            const isComplete = searchParams.get('complete') === 'true';
+            if (!isComplete) return;
+
+            // Wait for Clerk to fully load the signed-in user AND session
+            if (!isSignedIn || !clerkUser || !sessionId) return;
+
+            // Prevent duplicate calls (effect may fire multiple times as deps settle)
+            if (isProcessingRef.current) return;
+            isProcessingRef.current = true;
+
             try {
-                // Handle the OAuth callback
-                const isComplete = searchParams.get('complete') === 'true';
-
-                if (!isComplete) {
-                    // First redirect - Clerk needs to process the OAuth result
-                    // The AuthenticateWithRedirectCallback handles this automatically
-                    // Just wait for Clerk to process
-                    return;
-                }
-
-                if (!isSignedIn || !clerkUser) {
-                    // Wait for Clerk to finish loading the user
-                    return;
-                }
-
-                // Wait for sessionId to be populated (Clerk may take a moment after OAuth redirect)
-                let resolvedSessionId = sessionId;
-                if (!resolvedSessionId) {
-                    for (let i = 0; i < 6; i++) {
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                        if (sessionId) {
-                            resolvedSessionId = sessionId;
-                            break;
-                        }
-                    }
-                }
-
                 // Get the Clerk session token
                 const clerkToken = await getToken();
 
                 if (!clerkToken) {
                     setError('Failed to get authentication token');
-                    setIsProcessing(false);
+                    isProcessingRef.current = false;
                     return;
                 }
 
-                // Send to our backend to get a JWT
+                // Send clerkToken + sessionId to our backend to get a JWT
                 const response = await fetch(`${API_BASE_URL}/auth/google`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         clerkToken,
-                        sessionId: resolvedSessionId,
+                        sessionId,
                         role: 'CUSTOMER',
                     }),
                 });
@@ -85,17 +67,18 @@ function SSOCallbackContent() {
                     }
                 } else {
                     setError(data.message || 'Google sign-in failed');
-                    setIsProcessing(false);
+                    isProcessingRef.current = false;
                 }
             } catch (err: any) {
                 console.error('SSO callback error:', err);
                 setError('Failed to complete Google sign-in');
-                setIsProcessing(false);
+                isProcessingRef.current = false;
             }
         };
 
         handleCallback();
-    }, [isLoaded, isSignedIn, clerkUser, searchParams]);
+    // sessionId is now a dep so the effect re-runs once Clerk populates it after the OAuth redirect
+    }, [isLoaded, isSignedIn, clerkUser, sessionId, searchParams]);
 
     if (error) {
         return (

@@ -55,29 +55,39 @@ const googleSignIn = async (req, res) => {
         let clerkUser;
         let clerkUserId;
 
-        if (!sessionId) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication failed: sessionId is required',
-            });
-        }
+        if (sessionId) {
+            // Primary path: verify via sessionId (most reliable)
+            try {
+                const session = await getClerkClient().sessions.getSession(sessionId);
 
-        try {
-            const session = await getClerkClient().sessions.getSession(sessionId);
+                if (!session || session.status !== 'active') {
+                    throw new Error(`Session is ${session ? session.status : 'missing'}`);
+                }
 
-            if (!session || session.status !== 'active') {
-                throw new Error(`Session is ${session ? session.status : 'missing'}`);
+                clerkUserId = session.userId;
+                clerkUser = await getClerkClient().users.getUser(clerkUserId);
+                console.log('Successfully verified via sessionId');
+            } catch (sessionError) {
+                console.error('Clerk session verification failed:', sessionError.message);
+                return res.status(401).json({
+                    success: false,
+                    message: `Authentication failed: ${sessionError.message}`,
+                });
             }
-
-            clerkUserId = session.userId;
-            clerkUser = await getClerkClient().users.getUser(clerkUserId);
-            console.log('Successfully verified via sessionId');
-        } catch (sessionError) {
-            console.error('Clerk session verification failed:', sessionError.message);
-            return res.status(401).json({
-                success: false,
-                message: `Authentication failed: ${sessionError.message}`,
-            });
+        } else {
+            // Fallback path: verify via clerkToken (handles timing edge cases after OAuth redirect)
+            try {
+                const tokenPayload = await getClerkClient().verifyToken(clerkToken);
+                clerkUserId = tokenPayload.sub;
+                clerkUser = await getClerkClient().users.getUser(clerkUserId);
+                console.log('Successfully verified via clerkToken fallback');
+            } catch (tokenError) {
+                console.error('Clerk token verification failed:', tokenError.message);
+                return res.status(401).json({
+                    success: false,
+                    message: 'Authentication failed: invalid token',
+                });
+            }
         }
 
         // Extract user info from Clerk

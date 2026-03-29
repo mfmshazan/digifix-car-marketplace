@@ -9,7 +9,7 @@ import { Suspense } from 'react';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 function SSOCallbackContent() {
-    const { isLoaded, isSignedIn, getToken } = useAuth();
+    const { isLoaded, isSignedIn, getToken, sessionId } = useAuth();
     const { user: clerkUser } = useUser();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -37,6 +37,18 @@ function SSOCallbackContent() {
                     return;
                 }
 
+                // Wait for sessionId to be populated (Clerk may take a moment after OAuth redirect)
+                let resolvedSessionId = sessionId;
+                if (!resolvedSessionId) {
+                    for (let i = 0; i < 6; i++) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        if (sessionId) {
+                            resolvedSessionId = sessionId;
+                            break;
+                        }
+                    }
+                }
+
                 // Get the Clerk session token
                 const clerkToken = await getToken();
 
@@ -54,6 +66,7 @@ function SSOCallbackContent() {
                     },
                     body: JSON.stringify({
                         clerkToken,
+                        sessionId: resolvedSessionId,
                         role: 'CUSTOMER',
                     }),
                 });

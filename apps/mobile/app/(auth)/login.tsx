@@ -39,9 +39,13 @@ export default function LoginScreen() {
   const buttonScale = useRef(new Animated.Value(1)).current;
   const googleButtonScale = useRef(new Animated.Value(1)).current;
 
+  // Ref to prevent infinite sync loops
+  const hasAttemptedSyncRef = useRef(false);
+
   useEffect(() => {
     const checkExistingSession = async () => {
-      if (!isLoaded || !isSignedIn || !session || isLoading) return;
+      // Only proceed if Clerk is loaded, a session exists, and we haven't tried syncing yet
+      if (!isLoaded || !isSignedIn || !session || hasAttemptedSyncRef.current) return;
 
       // Avoid auto-sync on web login screen during OAuth redirect flow.
       if (Platform.OS === "web") return;
@@ -49,18 +53,20 @@ export default function LoginScreen() {
       try {
         const clerkToken = await getToken();
         if (clerkToken) {
+          hasAttemptedSyncRef.current = true;
           setIsLoading(true);
-          await handleBackendSync(clerkToken, session.id);
+          await handleBackendSync(clerkToken, session?.id);
         }
       } catch (err) {
         console.error("Auto-sync error:", err);
+        hasAttemptedSyncRef.current = false; // Allow retry on error if needed
       } finally {
         setIsLoading(false);
       }
     };
 
     checkExistingSession();
-  }, [isLoaded, isSignedIn, session, isLoading, getToken]);
+  }, [isLoaded, isSignedIn, session, getToken]);
 
   useEffect(() => {
     Animated.parallel([
@@ -142,6 +148,8 @@ export default function LoginScreen() {
 
       const result = await signInWithGoogle();
 
+      console.log("Google sign-in result:", result);
+
       if (!result.success) {
         if (result.message) {
           setError(result.message);
@@ -149,20 +157,16 @@ export default function LoginScreen() {
         return;
       }
 
-      // On web, Google auth continues through /sso-callback.
-      // Do not try to get Clerk token here.
-      if (Platform.OS === "web") {
+      // On web (and sometimes native), startSSOFlow triggered a full browser
+      // redirect. The browser has navigated away — sso-callback.tsx will
+      // handle the rest when the user returns from Google.
+      if (result.redirected) {
         return;
       }
 
-      // Native flow only
-      const clerkToken = await getToken();
-
-      if (!clerkToken) {
-        return;
-      }
-
-      await handleBackendSync(clerkToken, session?.id);
+      // On native, sso-callback.tsx handles token retrieval & backend sync
+      // after the session is confirmed active via useAuth(). We don't need
+      // to call syncClerkWithBackend here — just let the redirect happen.
     } catch (err: any) {
       console.error("Google sign-in error:", err);
       setError(err.message || "Failed to sign in with Google. Please try again.");
@@ -170,47 +174,44 @@ export default function LoginScreen() {
       setIsLoading(false);
     }
   };
+
   const handleBackendSync = async (clerkToken: string, sessionId?: string) => {
     try {
-      console.log('Finalizing backend sync with sessionId:', sessionId);
-      // Sync with our backend to get our own JWT token
-      const response = await syncClerkWithBackend(clerkToken, 'CUSTOMER', sessionId);
+      console.log("Finalizing backend sync with sessionId:", sessionId);
+
+      const response = await syncClerkWithBackend(
+        clerkToken,
+        "CUSTOMER",
+        sessionId
+      );
+
+      console.log("Backend sync response:", response);
 
       if (response.success && response.data) {
         await saveToken(response.data.token);
         await saveUser(response.data.user);
 
-        // Success - clear error
         setError("");
 
-        // Redirect to dashboard
-        const dashboardRoute = response.data.user.role === "SALESMAN" ? "/(salesman)" : "/(customer)";
+        const dashboardRoute =
+          response.data.user.role === "SALESMAN"
+            ? "/(salesman)"
+            : "/(customer)";
 
-        console.log('Sync successful, redirecting to:', dashboardRoute);
+        console.log("Sync successful, redirecting to:", dashboardRoute);
 
-        if (Platform.OS === 'web') {
-          // On web, a hard redirect via router or window.location can be more reliable
-          router.replace(dashboardRoute as any);
-          // Fallback in case router.replace stalls on web
-          setTimeout(() => {
-            if (window.location.pathname.includes('login')) {
-              window.location.href = dashboardRoute;
-            }
-          }, 1000);
-        } else {
-          router.replace(dashboardRoute as any);
-        }
-      } else {
-        const errorMsg = response.message || "Backend sync failed";
-        console.error('Backend sync failed:', errorMsg);
-        setError(`${errorMsg}`);
+        router.replace(dashboardRoute as any);
+        return;
       }
+
+      const errorMsg = response.message || "Backend sync failed";
+      console.error("Backend sync failed:", errorMsg);
+      setError(errorMsg);
     } catch (syncErr: any) {
       console.error("Backend sync error:", syncErr);
       setError(`Auth Error: ${syncErr.message || "Unknown error"}`);
     }
   };
-
 
   const handleForgotPassword = () => {
     Alert.alert(

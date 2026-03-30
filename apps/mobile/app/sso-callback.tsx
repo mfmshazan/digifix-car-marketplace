@@ -1,5 +1,12 @@
-import React, { useEffect } from "react";
-import { View, Text, ActivityIndicator, StyleSheet, Pressable, Platform } from "react-native";
+import React, { useEffect, useRef } from "react";
+import {
+  View,
+  Text,
+  ActivityIndicator,
+  StyleSheet,
+  Pressable,
+  Platform,
+} from "react-native";
 import { useAuth, useSession, useClerk } from "@clerk/expo";
 import { router } from "expo-router";
 import { syncClerkWithBackend } from "../src/api/google-signin";
@@ -11,40 +18,75 @@ export default function SSOCallbackScreen() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { session } = useSession();
 
+  // Guard prevents duplicate backend sync calls when deps fire multiple times
+  const isProcessingRef = useRef(false);
+  // Track whether handleRedirectCallback has already been called
+  const redirectHandledRef = useRef(false);
+
+  // Step 1: Call handleRedirectCallback on mount so Clerk can process the
+  // OAuth response URL (works for both native deep-link and web redirect).
   useEffect(() => {
-    let cancelled = false;
+    if (redirectHandledRef.current) return;
+    redirectHandledRef.current = true;
+
+    console.log("[SSOCallback] Platform:", Platform.OS);
+    console.log("[SSOCallback] Initial status - isLoaded:", isLoaded, "isSignedIn:", isSignedIn);
+
+    clerk.handleRedirectCallback({
+      continueSignUpUrl: "/sso-callback",
+    }).then(() => {
+      console.log("[SSOCallback] handleRedirectCallback completed successfully");
+    }).catch((err) => {
+      // On web this can throw harmlessly when there are no params – ignore it.
+      if (Platform.OS !== "web") {
+        console.error("[SSOCallback] handleRedirectCallback error:", err);
+      } else {
+        console.log("[SSOCallback] handleRedirectCallback error (web, usually harmless):", err.message);
+      }
+    });
+  }, [clerk]);
+
+  // Step 2: Once Clerk finishes processing the redirect, isSignedIn and
+  // session will be populated. At that point we sync with the backend.
+  useEffect(() => {
+    console.log("[SSOCallback] Dependency change - isLoaded:", isLoaded, "isSignedIn:", isSignedIn, "hasSessionId:", !!session?.id);
+
+    if (!isLoaded) return;
+    if (!isSignedIn || !session) {
+      console.log("[SSOCallback] Waiting for session activation...");
+      return;
+    }
+
+    if (isProcessingRef.current) {
+      console.log("[SSOCallback] Already processing, skipping duplicate...");
+      return;
+    }
+
+    isProcessingRef.current = true;
 
     const run = async () => {
       try {
-        await clerk.handleRedirectCallback({
-          continueSignUpUrl: "/",
-        });
-
-        let token: string | null = null;
-
-        for (let i = 0; i < 10; i++) {
-          if (cancelled) return;
-
-          if (isLoaded && isSignedIn) {
-            token = await getToken();
-            if (token) break;
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 300));
-        }
+        console.log("[SSOCallback] Attempting to get Clerk token...");
+        const token = await getToken();
 
         if (!token) {
-          console.error("Failed to get Clerk token in callback");
-          router.replace("/(auth)/login");
+          console.error("[SSOCallback] Failed to get Clerk token after session activation");
+          isProcessingRef.current = false;
+          // Don't bounce back immediately, let it retry once or twice if needed
           return;
         }
 
+        console.log("[SSOCallback] Clerk token obtained successfully");
+
         const pendingRole = await AsyncStorage.getItem("@digifix_pending_role");
         const role = pendingRole || "CUSTOMER";
+        console.log("[SSOCallback] Syncing with backend - role:", role);
 
-        const response = await syncClerkWithBackend(token, role, session?.id);
+        const response = await syncClerkWithBackend(token, role, session.id);
+        console.log("[SSOCallback] Backend sync result successfully received");
 
         if (response.success && response.data) {
+          console.log("[SSOCallback] Sync successful, saving data and redirecting...");
           await saveToken(response.data.token);
           await saveUser(response.data.user);
 
@@ -53,37 +95,43 @@ export default function SSOCallbackScreen() {
           }
 
           const dashboardRoute =
-            response.data.user.role === "SALESMAN" ? "/(salesman)" : "/(customer)";
+            response.data.user.role === "SALESMAN"
+              ? "/(salesman)"
+              : "/(customer)";
 
+          console.log("[SSOCallback] Redirecting to:", dashboardRoute);
           router.replace(dashboardRoute as any);
           return;
         }
 
-        console.error("Backend sync failed in callback:", response.message);
+        console.error("[SSOCallback] Backend sync failed:", response.message);
+        isProcessingRef.current = false;
         router.replace("/(auth)/login");
       } catch (err) {
-        console.error("SSO callback error:", err);
+        console.error("[SSOCallback] Critical error during sync:", err);
+        isProcessingRef.current = false;
         router.replace("/(auth)/login");
       }
     };
 
     run();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [clerk, isLoaded, isSignedIn, getToken, session?.id]);
+  }, [isLoaded, isSignedIn, session, getToken]);
 
   return (
     <View style={styles.container}>
       <View style={styles.card}>
         <ActivityIndicator size="large" color="#00002E" />
         <Text style={styles.title}>Completing Sign-In</Text>
-        <Text style={styles.subtitle}>Please wait while we sync your account...</Text>
+        <Text style={styles.subtitle}>
+          Please wait while we sync your account...
+        </Text>
 
         <Pressable
           style={styles.backButton}
-          onPress={() => router.replace("/(auth)/login")}
+          onPress={() => {
+            console.log("[SSOCallback] Manual back to login clicked");
+            router.replace("/(auth)/login");
+          }}
         >
           <Text style={styles.backButtonText}>Back to Login</Text>
         </Pressable>

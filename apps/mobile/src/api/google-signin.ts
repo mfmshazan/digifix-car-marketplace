@@ -24,11 +24,19 @@ export const useGoogleSignIn = () => {
             });
 
             if (createdSessionId && setActive) {
+                // Activate the session on native. The Clerk context updates
+                // asynchronously, so callers should not call getToken() right
+                // after this — let sso-callback.tsx handle token retrieval once
+                // the session is confirmed via useAuth().
                 await setActive({ session: createdSessionId });
                 return { success: true, sessionId: createdSessionId };
             }
 
-            return { success: false, message: 'Google sign-in incomplete' };
+            // On web, startSSOFlow triggers a full browser redirect (no
+            // createdSessionId returned). This is expected — the browser
+            // navigates away and lands on /sso-callback which handles the rest.
+            // Return a redirected flag so callers know NOT to call getToken().
+            return { success: true, redirected: true };
         } catch (err: any) {
             if (
                 err?.errors?.[0]?.code === 'session_exists' ||
@@ -58,7 +66,12 @@ export const syncClerkWithBackend = async (
     sessionId?: string
 ) => {
     try {
-        console.log('Syncing with backend, token present:', !!clerkToken, 'sessionId:', sessionId);
+        console.log('Syncing with backend:', {
+            hasClerkToken: !!clerkToken,
+            hasSessionId: !!sessionId,
+            role,
+            apiUrl: `${API_URL}/auth/google`,
+        });
 
         const response = await fetch(`${API_URL}/auth/google`, {
             method: 'POST',
@@ -73,6 +86,9 @@ export const syncClerkWithBackend = async (
         });
 
         const result = await response.json();
+
+        console.log('Backend sync result:', result);
+
         return result;
     } catch (error) {
         console.error('Backend sync error:', error);

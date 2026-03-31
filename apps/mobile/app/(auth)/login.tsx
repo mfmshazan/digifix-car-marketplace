@@ -18,6 +18,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { loginUser } from "../../src/api/auth";
 import { saveToken, saveUser } from "../../src/api/storage";
+import { setOneSignalUserId, setUserRoleTag } from "../../src/config/onesignal.config";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -85,6 +86,10 @@ export default function LoginScreen() {
       if (response.success && response.data) {
         await saveToken(response.data.token);
         await saveUser(response.data.user);
+
+        // Set OneSignal user ID and role for targeted notifications
+        setOneSignalUserId(response.data.user.id);
+        setUserRoleTag(response.data.user.role);
 
         Alert.alert("Success", "Login successful!");
 

@@ -1,97 +1,138 @@
-import React, { useEffect } from "react";
-import { View, Text, ActivityIndicator, StyleSheet, Pressable, Platform } from "react-native";
-import { useAuth, useSession } from "@clerk/clerk-expo";
+import React, { useEffect, useRef } from "react";
+import {
+  View,
+  Text,
+  ActivityIndicator,
+  StyleSheet,
+  Pressable,
+  Platform,
+} from "react-native";
+import { useAuth, useSession, useClerk } from "@clerk/expo";
 import { router } from "expo-router";
 import { syncClerkWithBackend } from "../src/api/google-signin";
 import { saveToken, saveUser } from "../src/api/storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function SSOCallbackScreen() {
+  const clerk = useClerk();
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { session } = useSession();
 
+  // Guard prevents duplicate backend sync calls when deps fire multiple times
+  const isProcessingRef = useRef(false);
+  // Track whether handleRedirectCallback has already been called
+  const redirectHandledRef = useRef(false);
+
+  // Step 1: Call handleRedirectCallback on mount so Clerk can process the
+  // OAuth response URL (works for both native deep-link and web redirect).
   useEffect(() => {
-    let timeout: any;
+    if (redirectHandledRef.current) return;
+    redirectHandledRef.current = true;
 
-    const handleCallback = async () => {
-      // Wait for Clerk to load
-      if (!isLoaded) return;
+    console.log("[SSOCallback] Platform:", Platform.OS);
+    console.log("[SSOCallback] Initial status - isLoaded:", isLoaded, "isSignedIn:", isSignedIn);
 
+    clerk.handleRedirectCallback({
+      continueSignUpUrl: "/sso-callback",
+      continueSignInUrl: "/sso-callback",
+    }).then(() => {
+      console.log("[SSOCallback] handleRedirectCallback completed successfully");
+    }).catch((err) => {
+      // On web this can throw harmlessly when there are no params – ignore it.
+      if (Platform.OS !== "web") {
+        console.error("[SSOCallback] handleRedirectCallback error:", err);
+      } else {
+        console.log("[SSOCallback] handleRedirectCallback error (web, usually harmless):", err.message);
+      }
+    });
+  }, [clerk]);
+
+  // Step 2: Once Clerk finishes processing the redirect, isSignedIn and
+  // session will be populated. At that point we sync with the backend.
+  useEffect(() => {
+    console.log("[SSOCallback] Dependency change - isLoaded:", isLoaded, "isSignedIn:", isSignedIn, "hasSessionId:", !!session?.id);
+
+    if (!isLoaded) return;
+    if (!isSignedIn || !session) {
+      console.log("[SSOCallback] Waiting for session activation...");
+      return;
+    }
+
+    if (isProcessingRef.current) {
+      console.log("[SSOCallback] Already processing, skipping duplicate...");
+      return;
+    }
+
+    isProcessingRef.current = true;
+
+    const run = async () => {
       try {
-        if (isSignedIn) {
-          // Get the Clerk session token
-          const clerkToken = await getToken();
+        console.log("[SSOCallback] Attempting to get Clerk token...");
+        const token = await getToken();
 
-          if (!clerkToken) {
-            console.error("Failed to get Clerk token in callback");
-            router.replace("/(auth)/login");
-            return;
-          }
-
-          // Check if there's a pending role from registration
-          const pendingRole = await AsyncStorage.getItem("@digifix_pending_role");
-          const role = pendingRole || "CUSTOMER";
-
-          // Sync with our backend - Pass sessionId for improved verification reliability
-          const response = await syncClerkWithBackend(clerkToken, role, session?.id);
-
-          if (response.success && response.data) {
-            await saveToken(response.data.token);
-            await saveUser(response.data.user);
-
-            // Clear pending role
-            if (pendingRole) {
-              await AsyncStorage.removeItem("@digifix_pending_role");
-            }
-
-            // Redirect based on role
-            const dashboardRoute = response.data.user.role === "SALESMAN" ? "/(salesman)" : "/(customer)";
-            console.log('Sync successful from callback, redirecting to:', dashboardRoute);
-
-            if (Platform.OS === 'web') {
-              router.replace(dashboardRoute as any);
-              // Fallback for web
-              setTimeout(() => {
-                if (window.location.pathname.includes('sso-callback')) {
-                   window.location.href = dashboardRoute;
-                }
-              }, 1000);
-            } else {
-              router.replace(dashboardRoute as any);
-            }
-          } else {
-            console.error("Backend sync failed in callback (ERR_C):", response.message);
-            router.replace("/(auth)/login");
-          }
-        } else {
-          // If not signed in yet, wait a few seconds for Clerk to process the redirect parameters
-          timeout = setTimeout(() => {
-            if (isLoaded && !isSignedIn) {
-              console.log("SSO callback timed out, redirecting to login");
-              router.replace("/(auth)/login");
-            }
-          }, 5000);
+        if (!token) {
+          console.error("[SSOCallback] Failed to get Clerk token after session activation");
+          isProcessingRef.current = false;
+          // Don't bounce back immediately, let it retry once or twice if needed
+          return;
         }
+
+        console.log("[SSOCallback] Clerk token obtained successfully");
+
+        const pendingRole = await AsyncStorage.getItem("@digifix_pending_role");
+        const role = pendingRole || "CUSTOMER";
+        console.log("[SSOCallback] Syncing with backend - role:", role);
+
+        const response = await syncClerkWithBackend(token, role, session.id);
+        console.log("[SSOCallback] Backend sync result successfully received");
+
+        if (response.success && response.data) {
+          console.log("[SSOCallback] Sync successful, saving data and redirecting...");
+          await saveToken(response.data.token);
+          await saveUser(response.data.user);
+
+          if (pendingRole) {
+            await AsyncStorage.removeItem("@digifix_pending_role");
+          }
+
+          const dashboardRoute =
+            response.data.user.role === "SALESMAN"
+              ? "/(salesman)"
+              : "/(customer)";
+
+          console.log("[SSOCallback] Redirecting to:", dashboardRoute);
+          router.replace(dashboardRoute as any);
+          return;
+        }
+
+        console.error("[SSOCallback] Backend sync failed:", response.message);
+        isProcessingRef.current = false;
+        router.replace("/(auth)/login");
       } catch (err) {
-        console.error("SSO callback error:", err);
+        console.error("[SSOCallback] Critical error during sync:", err);
+        isProcessingRef.current = false;
         router.replace("/(auth)/login");
       }
     };
 
-    handleCallback();
-    return () => timeout && clearTimeout(timeout);
-  }, [isLoaded, isSignedIn]);
+    run();
+  }, [isLoaded, isSignedIn, session, getToken]);
 
   return (
     <View style={styles.container}>
       <View style={styles.card}>
         <ActivityIndicator size="large" color="#00002E" />
         <Text style={styles.title}>Completing Sign-In</Text>
-        <Text style={styles.subtitle}>Please wait while we sync your account...</Text>
-        
-        <Pressable 
-          style={styles.backButton} 
-          onPress={() => router.replace("/(auth)/login")}
+        <Text style={styles.subtitle}>
+          Please wait while we sync your account...
+        </Text>
+
+        <Pressable
+          style={styles.backButton}
+          onPress={() => {
+            console.log("[SSOCallback] Manual back to login clicked");
+            router.replace("/(auth)/login");
+          }}
         >
           <Text style={styles.backButtonText}>Back to Login</Text>
         </Pressable>

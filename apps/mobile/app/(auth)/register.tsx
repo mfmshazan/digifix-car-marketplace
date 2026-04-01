@@ -18,9 +18,8 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { registerUser } from "../../src/api/auth";
-
 import { saveToken, saveUser } from "../../src/api/storage";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth, useSession } from "@clerk/expo";
 import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
 
 export default function RegisterScreen() {
@@ -34,10 +33,39 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const { getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { session } = useSession();
   const { signInWithGoogle } = useGoogleSignIn();
-  
-  // Animation values
+
+  // Ref to prevent infinite sync loops
+  const hasAttemptedSyncRef = useRef(false);
+
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      // Only proceed if Clerk is loaded, a session exists, and we haven't tried syncing yet
+      if (!isLoaded || !isSignedIn || !session || hasAttemptedSyncRef.current) return;
+
+      // Avoid auto-sync on web register screen during OAuth redirect flow.
+      if (Platform.OS === "web") return;
+
+      try {
+        const clerkToken = await getToken();
+        if (clerkToken) {
+          hasAttemptedSyncRef.current = true;
+          setIsLoading(true);
+          await handleBackendSync(clerkToken, session?.id);
+        }
+      } catch (err) {
+        console.error("Auto-sync error:", err);
+        hasAttemptedSyncRef.current = false; // Allow retry on error if needed
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkExistingSession();
+  }, [isLoaded, isSignedIn, session, getToken]);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
@@ -65,7 +93,7 @@ export default function RegisterScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePressIn = (animValue: Animated.Value) => {
@@ -108,7 +136,7 @@ export default function RegisterScreen() {
         name,
         email,
         password,
-        role: role,
+        role,
       });
 
       if (response.success && response.data) {
@@ -116,23 +144,15 @@ export default function RegisterScreen() {
         await saveUser(response.data.user);
 
         const userRole = response.data.user.role;
+        const dashboardRoute =
+          userRole === "SALESMAN" ? "/(salesman)" : "/(customer)";
 
-        Alert.alert(
-          "Success",
-          "Registration successful! Welcome to DIGIFIX!",
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                if (userRole === "SALESMAN") {
-                  router.replace("/(salesman)");
-                } else {
-                  router.replace("/(customer)");
-                }
-              },
-            },
-          ]
-        );
+        // Redirect immediately after successful registration.
+        // Using a blocking Alert button callback can make it look like the
+        // user is not redirected (especially if the user doesn't press "OK").
+        Alert.alert("Success", "Registration successful! Welcome to DIGIFIX!");
+        router.replace(dashboardRoute as any);
+        return;
       } else {
         setError(response.message || "Registration failed");
       }
@@ -149,56 +169,75 @@ export default function RegisterScreen() {
       setIsLoading(true);
       setError("");
 
-      // Save role for the callback to recover after redirect (on web)
-      if (Platform.OS === 'web') {
-        await AsyncStorage.setItem('@digifix_pending_role', role);
-      }
+      // Always persist the role so sso-callback.tsx can read it on any platform
+      await AsyncStorage.setItem("@digifix_pending_role", role);
 
       const result = await signInWithGoogle();
 
-      if (result.success) {
+      console.log("Google sign-up result:", result);
 
-        const clerkToken = await getToken();
-
-        if (!clerkToken) {
-          throw new Error("Failed to get Clerk authentication token");
+      if (!result.success) {
+        if (result.message) {
+          setError(result.message);
         }
-
-        const response = await syncClerkWithBackend(clerkToken, role);
-
-        if (response.success && response.data) {
-          await saveToken(response.data.token);
-          await saveUser(response.data.user);
-
-          const userRole = response.data.user.role;
-
-          Alert.alert(
-            "Success",
-            "Google Registration successful! Welcome to DIGIFIX!",
-            [
-              {
-                text: "OK",
-                onPress: () => {
-                  if (userRole === "SALESMAN") {
-                    router.replace("/(salesman)");
-                  } else {
-                    router.replace("/(customer)");
-                  }
-                },
-              },
-            ]
-          );
-        } else {
-          setError(response.message || "Backend sync failed");
-        }
-      } else if (result.message) {
-        setError(result.message);
+        return;
       }
+
+      // On web (and sometimes native), startSSOFlow triggered a full browser
+      // redirect. The browser has navigated away — sso-callback.tsx will
+      // handle the rest when the user returns from Google.
+      if (result.redirected) {
+        router.replace("/sso-callback");
+        return;
+      }
+
+      // On native, sso-callback.tsx handles token retrieval & backend sync
+      // after the session is confirmed active via useAuth(). We don't need
+      // to call syncClerkWithBackend here — route to callback so it completes.
+      router.replace("/sso-callback");
     } catch (err: any) {
       console.error("Google sign-up error:", err);
       setError(err.message || "Failed to sign up with Google. Please try again.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleBackendSync = async (clerkToken: string, sessionId?: string) => {
+    try {
+      console.log("Finalizing backend sync with sessionId:", sessionId);
+
+      const response = await syncClerkWithBackend(
+        clerkToken,
+        role,
+        sessionId
+      );
+
+      console.log("Backend sync response:", response);
+
+      if (response.success && response.data) {
+        await saveToken(response.data.token);
+        await saveUser(response.data.user);
+
+        setError("");
+
+        const dashboardRoute =
+          response.data.user.role === "SALESMAN"
+            ? "/(salesman)"
+            : "/(customer)";
+
+        console.log("Sync successful, redirecting to:", dashboardRoute);
+
+        router.replace(dashboardRoute as any);
+        return;
+      }
+
+      const errorMsg = response.message || "Backend sync failed";
+      console.error("Backend sync failed:", errorMsg);
+      setError(errorMsg);
+    } catch (syncErr: any) {
+      console.error("Backend sync error:", syncErr);
+      setError(`Auth Error: ${syncErr.message || "Unknown error"}`);
     }
   };
 
@@ -212,39 +251,46 @@ export default function RegisterScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Logo Section with Animation */}
-          <Animated.View 
+          <Animated.View
             style={[
               styles.logoSection,
               {
                 opacity: fadeAnim,
                 transform: [{ scale: scaleAnim }],
-              }
+              },
             ]}
           >
             <View style={styles.logoContainer}>
               <Ionicons name="car-sport" size={64} color="#00002E" />
             </View>
             <Text style={styles.brandName}>DIGIFIX Auto Parts</Text>
-            <Text style={styles.tagline}>Your trusted car parts delivery partner</Text>
+            <Text style={styles.tagline}>
+              Your trusted car parts delivery partner
+            </Text>
           </Animated.View>
 
-          {/* Form Card with Animation */}
-          <Animated.View 
+          <Animated.View
             style={[
               styles.formCard,
               {
                 opacity: fadeAnim,
                 transform: [{ translateY: slideAnim }],
-              }
+              },
             ]}
           >
             <Text style={styles.title}>Create Account</Text>
 
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            {error && !isLoading ? (
+              <Text style={styles.errorText}>{error}</Text>
+            ) : null}
 
             <View style={styles.inputContainer}>
-              <Ionicons name="person-outline" size={20} color="#999" style={styles.inputIcon} />
+              <Ionicons
+                name="person-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
               <TextInput
                 style={styles.input}
                 placeholder="Full Name"
@@ -256,7 +302,12 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
+              <Ionicons
+                name="mail-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
               <TextInput
                 style={styles.input}
                 placeholder="Email Address"
@@ -269,11 +320,12 @@ export default function RegisterScreen() {
               />
             </View>
 
-            {/* Role Selection with Animation */}
             <View style={styles.roleContainer}>
               <Text style={styles.roleLabel}>I want to register as:</Text>
               <View style={styles.roleButtons}>
-                <Animated.View style={[{ flex: 1 }, { transform: [{ scale: customerButtonScale }] }]}>
+                <Animated.View
+                  style={[{ flex: 1 }, { transform: [{ scale: customerButtonScale }] }]}
+                >
                   <Pressable
                     style={[
                       styles.roleButton,
@@ -299,7 +351,9 @@ export default function RegisterScreen() {
                   </Pressable>
                 </Animated.View>
 
-                <Animated.View style={[{ flex: 1 }, { transform: [{ scale: salesmanButtonScale }] }]}>
+                <Animated.View
+                  style={[{ flex: 1 }, { transform: [{ scale: salesmanButtonScale }] }]}
+                >
                   <Pressable
                     style={[
                       styles.roleButton,
@@ -328,7 +382,12 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed-outline" size={20} color="#999" style={styles.inputIcon} />
+              <Ionicons
+                name="lock-closed-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
               <TextInput
                 style={styles.input}
                 placeholder="Password"
@@ -337,20 +396,25 @@ export default function RegisterScreen() {
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
                 style={styles.eyeIcon}
               >
-                <Ionicons 
-                  name={showPassword ? "eye-outline" : "eye-off-outline"} 
-                  size={20} 
-                  color="#999" 
+                <Ionicons
+                  name={showPassword ? "eye-outline" : "eye-off-outline"}
+                  size={20}
+                  color="#999"
                 />
               </TouchableOpacity>
             </View>
 
             <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed-outline" size={20} color="#999" style={styles.inputIcon} />
+              <Ionicons
+                name="lock-closed-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
               <TextInput
                 style={styles.input}
                 placeholder="Confirm Password"
@@ -359,19 +423,18 @@ export default function RegisterScreen() {
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showConfirmPassword}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                 style={styles.eyeIcon}
               >
-                <Ionicons 
-                  name={showConfirmPassword ? "eye-outline" : "eye-off-outline"} 
-                  size={20} 
-                  color="#999" 
+                <Ionicons
+                  name={showConfirmPassword ? "eye-outline" : "eye-off-outline"}
+                  size={20}
+                  color="#999"
                 />
               </TouchableOpacity>
             </View>
 
-            {/* Sign Up Button with Animation */}
             <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
               <Pressable
                 style={[styles.registerButton, isLoading && styles.registerButtonDisabled]}
@@ -388,18 +451,17 @@ export default function RegisterScreen() {
               </Pressable>
             </Animated.View>
 
-            {/* Divider */}
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
               <Text style={styles.dividerText}>or continue with</Text>
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Google Sign Up Button */}
             <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
               <Pressable
                 style={styles.googleButton}
                 onPress={handleGoogleSignUp}
+                disabled={isLoading}
                 onPressIn={() => handlePressIn(googleButtonScale)}
                 onPressOut={() => handlePressOut(googleButtonScale)}
               >
@@ -602,6 +664,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-
-
-

@@ -9,13 +9,16 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { clearAuthData } from "../../src/api/storage";
 import { getSalesmanSalesSummary, SalesmanSalesSummary } from "../../src/api/orders";
+import { useAuth } from "@clerk/expo";
 
 export default function SalesmanDashboard() {
+  const { signOut } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [salesData, setSalesData] = useState<SalesmanSalesSummary | null>(null);
@@ -44,7 +47,23 @@ export default function SalesmanDashboard() {
     fetchSalesData();
   }, [fetchSalesData]);
 
+  const performLogout = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+
+    await clearAuthData();
+    router.replace(Platform.OS === "web" ? "/login" : "/(auth)/login");
+  };
+
   const handleLogout = () => {
+    if (Platform.OS === "web") {
+      void performLogout();
+      return;
+    }
+
     Alert.alert(
       "Logout",
       "Are you sure you want to logout?",
@@ -54,13 +73,7 @@ export default function SalesmanDashboard() {
           text: "Logout",
           style: "destructive",
           onPress: async () => {
-            try {
-              await clearAuthData();
-              router.replace("/(auth)/login");
-            } catch (error) {
-              console.error("Logout error:", error);
-              router.replace("/(auth)/login");
-            }
+            await performLogout();
           },
         },
       ]

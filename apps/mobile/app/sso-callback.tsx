@@ -34,6 +34,7 @@ export default function SSOCallbackScreen() {
 
     clerk.handleRedirectCallback({
       continueSignUpUrl: "/sso-callback",
+      continueSignInUrl: "/sso-callback",
     }).then(() => {
       console.log("[SSOCallback] handleRedirectCallback completed successfully");
     }).catch((err) => {

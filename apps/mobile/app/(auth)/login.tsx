@@ -161,12 +161,14 @@ export default function LoginScreen() {
       // redirect. The browser has navigated away — sso-callback.tsx will
       // handle the rest when the user returns from Google.
       if (result.redirected) {
+        router.replace("/sso-callback");
         return;
       }
 
       // On native, sso-callback.tsx handles token retrieval & backend sync
       // after the session is confirmed active via useAuth(). We don't need
-      // to call syncClerkWithBackend here — just let the redirect happen.
+      // to call syncClerkWithBackend here — route to callback so it completes.
+      router.replace("/sso-callback");
     } catch (err: any) {
       console.error("Google sign-in error:", err);
       setError(err.message || "Failed to sign in with Google. Please try again.");

@@ -1,4 +1,4 @@
-import { createClerkClient } from '@clerk/backend';
+import { createClerkClient, verifyToken } from '@clerk/backend';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
 
@@ -13,14 +13,10 @@ const getClerkClient = () => {
 
         if (!secretKey || secretKey.trim() === '') {
             console.error('CRITICAL: CLERK_SECRET_KEY is missing or empty in environment!');
-            console.log('Available environment variables:', Object.keys(process.env).join(', '));
         }
 
-        clerkClient = createClerkClient({
-            secretKey,
-        });
+        clerkClient = createClerkClient({ secretKey });
     }
-
     return clerkClient;
 };
 
@@ -31,12 +27,8 @@ const generateToken = (userId, role) => {
 
 /**
  * Google Sign-In via Clerk
- * Flow:
- * 1. Frontend authenticates with Clerk (Google OAuth)
- * 2. Frontend sends Clerk sessionId to this endpoint
- * 3. Backend verifies the session with Clerk
- * 4. Find or create user in database
- * 5. Return app JWT
+ * Strategy 1 (Mobile/Expo Go): Verify the short-lived Clerk JWT token directly
+ * Strategy 2 (Web fallback):   Verify via session ID using getSession()
  */
 const googleSignIn = async (req, res) => {
     try {
@@ -48,39 +40,59 @@ const googleSignIn = async (req, res) => {
             role,
         });
 
-        if (!sessionId) {
+        if (!clerkToken && !sessionId) {
             return res.status(400).json({
                 success: false,
-                message: 'Authentication failed: sessionId is required',
+                message: 'Authentication failed: clerkToken or sessionId is required',
             });
         }
 
         let clerkUser;
         let clerkUserId;
+        let verified = false;
 
-        try {
-            const session = await getClerkClient().sessions.getSession(sessionId);
+        // ── Strategy 1: Verify JWT token directly (works for Expo Go / mobile) ──
+        if (clerkToken) {
+            try {
+                const secretKey = process.env.CLERK_SECRET_KEY;
+                const payload = await verifyToken(clerkToken, { secretKey });
 
-            if (!session || session.status !== 'active') {
-                throw new Error(`Session is ${session ? session.status : 'missing'}`);
+                clerkUserId = payload.sub;
+                clerkUser = await getClerkClient().users.getUser(clerkUserId);
+                verified = true;
+                console.log('✅ Verified via Clerk JWT token (mobile/Expo Go)');
+            } catch (tokenError) {
+                console.warn('JWT token verification failed, trying session fallback:', tokenError.message);
             }
+        }
 
-            clerkUserId = session.userId;
-            clerkUser = await getClerkClient().users.getUser(clerkUserId);
+        // ── Strategy 2: Verify via session ID (web fallback) ──
+        if (!verified && sessionId) {
+            try {
+                const session = await getClerkClient().sessions.getSession(sessionId);
 
-            console.log('Successfully verified via sessionId');
-        } catch (sessionError) {
-            console.error('Clerk session verification failed:', sessionError.message);
+                if (!session || session.status !== 'active') {
+                    throw new Error(`Session is ${session ? session.status : 'missing'}`);
+                }
 
+                clerkUserId = session.userId;
+                clerkUser = await getClerkClient().users.getUser(clerkUserId);
+                verified = true;
+                console.log('✅ Verified via Clerk session ID (web)');
+            } catch (sessionError) {
+                console.error('Session verification failed:', sessionError.message);
+            }
+        }
+
+        if (!verified || !clerkUser) {
             return res.status(401).json({
                 success: false,
-                message: `Authentication failed: ${sessionError.message}`,
+                message: 'Authentication failed: could not verify Clerk identity',
             });
         }
 
         const email = clerkUser.emailAddresses?.[0]?.emailAddress;
-        const name =
-            `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || null;
+        const name = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || null;
         const avatar = clerkUser.imageUrl || null;
         const googleId =
             clerkUser.externalAccounts?.find((acc) => acc.provider === 'google')
@@ -94,12 +106,8 @@ const googleSignIn = async (req, res) => {
         }
 
         let user = await prisma.user.findFirst({
-            where: {
-                OR: [{ googleId }, { email }],
-            },
-            include: {
-                store: true,
-            },
+            where: { OR: [{ googleId }, { email }] },
+            include: { store: true },
         });
 
         if (user) {
@@ -112,9 +120,7 @@ const googleSignIn = async (req, res) => {
                         authProvider: 'GOOGLE',
                         name: user.name || name,
                     },
-                    include: {
-                        store: true,
-                    },
+                    include: { store: true },
                 });
             }
         } else {
@@ -128,9 +134,7 @@ const googleSignIn = async (req, res) => {
                     authProvider: 'GOOGLE',
                     isVerified: true,
                 },
-                include: {
-                    store: true,
-                },
+                include: { store: true },
             });
 
             if (role === 'SALESMAN') {
@@ -167,7 +171,6 @@ const googleSignIn = async (req, res) => {
         });
     } catch (error) {
         console.error('Google sign-in error:', error);
-
         return res.status(500).json({
             success: false,
             message: 'Failed to sign in with Google',

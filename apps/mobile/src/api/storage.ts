@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { removeOneSignalUserId } from '../config/onesignal.config';
+
 
 const TOKEN_KEY = '@digifix_auth_token';
 const USER_KEY = '@digifix_user_data';
@@ -69,8 +69,6 @@ export const removeUser = async (): Promise<void> => {
 export const clearAuthData = async (): Promise<void> => {
   try {
     await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
-    // Remove OneSignal user ID on logout
-    removeOneSignalUserId();
   } catch (error) {
     console.error('Error clearing auth data:', error);
     throw error;

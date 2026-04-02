@@ -34,7 +34,6 @@ export default function SSOCallbackScreen() {
 
     clerk.handleRedirectCallback({
       continueSignUpUrl: "/sso-callback",
-      continueSignInUrl: "/sso-callback",
     }).then(() => {
       console.log("[SSOCallback] handleRedirectCallback completed successfully");
     }).catch((err) => {
@@ -45,7 +44,7 @@ export default function SSOCallbackScreen() {
         console.log("[SSOCallback] handleRedirectCallback error (web, usually harmless):", err.message);
       }
     });
-  }, [clerk]);
+  }, [clerk, isLoaded, isSignedIn]);
 
   // Step 2: Once Clerk finishes processing the redirect, isSignedIn and
   // session will be populated. At that point we sync with the backend.
@@ -101,7 +100,7 @@ export default function SSOCallbackScreen() {
               : "/(customer)";
 
           console.log("[SSOCallback] Redirecting to:", dashboardRoute);
-          router.replace(dashboardRoute as any);
+          router.replace(dashboardRoute as any); // Cast as any because dynamic route groups are not perfectly typed by expo-router yet
           return;
         }
 

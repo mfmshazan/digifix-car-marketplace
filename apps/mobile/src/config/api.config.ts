@@ -32,7 +32,7 @@ const API_PORT = 3000;
 const getApiUrl = (): string => {
   // Check if running in Expo Go on a device
   const isExpoGo = Constants.appOwnership === 'expo';
-  
+
   // Check if running in development
   const isDevelopment = __DEV__;
 

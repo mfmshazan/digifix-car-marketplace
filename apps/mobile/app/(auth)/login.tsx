@@ -20,6 +20,7 @@ import { loginUser } from "../../src/api/auth";
 import { saveToken, saveUser } from "../../src/api/storage";
 import { useAuth, useSession } from "@clerk/expo";
 import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
+// import { setOneSignalUserId, setUserRoleTag } from "../../src/config/onesignal.config";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -31,7 +32,6 @@ export default function LoginScreen() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { session } = useSession();
   const { signInWithGoogle } = useGoogleSignIn();
-
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -122,6 +122,10 @@ export default function LoginScreen() {
       if (response.success && response.data) {
         await saveToken(response.data.token);
         await saveUser(response.data.user);
+
+        // Set OneSignal user ID and role for targeted notifications
+        // setOneSignalUserId(response.data.user.id);
+        // setUserRoleTag(response.data.user.role);
 
         Alert.alert("Success", "Login successful!");
 
@@ -214,6 +218,7 @@ export default function LoginScreen() {
       setError(`Auth Error: ${syncErr.message || "Unknown error"}`);
     }
   };
+
 
   const handleForgotPassword = () => {
     Alert.alert(
@@ -357,7 +362,6 @@ export default function LoginScreen() {
                 <Text style={styles.googleButtonText}>Sign in with Google</Text>
               </Pressable>
             </Animated.View>
-
             <View style={styles.footer}>
               <Text style={styles.footerText}>{"Don't have an account? "}</Text>
               <TouchableOpacity onPress={() => router.push("/(auth)/register")}>

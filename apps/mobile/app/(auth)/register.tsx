@@ -21,6 +21,7 @@ import { registerUser } from "../../src/api/auth";
 import { saveToken, saveUser } from "../../src/api/storage";
 import { useAuth, useSession } from "@clerk/expo";
 import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
+// import { setOneSignalUserId, setUserRoleTag } from "../../src/config/onesignal.config";
 
 export default function RegisterScreen() {
   const [name, setName] = useState("");
@@ -147,9 +148,10 @@ export default function RegisterScreen() {
         const dashboardRoute =
           userRole === "SALESMAN" ? "/(salesman)" : "/(customer)";
 
-        // Redirect immediately after successful registration.
-        // Using a blocking Alert button callback can make it look like the
-        // user is not redirected (especially if the user doesn't press "OK").
+        // Set OneSignal user ID and role for targeted notifications
+        // setOneSignalUserId(response.data.user.id);
+        // setUserRoleTag(userRole);
+
         Alert.alert("Success", "Registration successful! Welcome to DIGIFIX!");
         router.replace(dashboardRoute as any);
         return;
@@ -284,41 +286,6 @@ export default function RegisterScreen() {
               <Text style={styles.errorText}>{error}</Text>
             ) : null}
 
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Full Name"
-                placeholderTextColor="#999"
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="mail-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Email Address"
-                placeholderTextColor="#999"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
 
             <View style={styles.roleContainer}>
               <Text style={styles.roleLabel}>I want to register as:</Text>
@@ -382,12 +349,33 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Ionicons
-                name="lock-closed-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
+              <Ionicons name={role === "SALESMAN" ? "storefront-outline" : "person-outline"} size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder={role === "SALESMAN" ? "Shop Name" : "Full Name"}
+                placeholderTextColor="#999"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
               />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email Address"
+                placeholderTextColor="#999"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Ionicons name="lock-closed-outline" size={20} color="#999" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 placeholder="Password"

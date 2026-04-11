@@ -34,7 +34,7 @@ export default function LoginPage() {
         if (user.role === 'SALESMAN') {
           router.push('/dashboard/salesman');
         } else {
-          router.push('/dashboard/customer');
+          router.push('/dashboard/admin');
         }
       } else {
         setError(response.message || 'Login failed');

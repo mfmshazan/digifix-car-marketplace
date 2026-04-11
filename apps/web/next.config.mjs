@@ -1,6 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  async redirects() {
+    return [
+      {
+        source: '/dashboard/customer',
+        destination: '/dashboard/admin',
+        permanent: false,
+      },
+    ];
+  },
   // Enable hot-reload in Docker on Windows
   webpack: (config, { dev }) => {
     if (dev) {

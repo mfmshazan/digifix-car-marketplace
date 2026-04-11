@@ -33,7 +33,7 @@ export default function SalesmanDashboard() {
     if (!isAuthenticated) {
       router.push('/login');
     } else if (user?.role !== 'SALESMAN') {
-      router.push('/dashboard/customer');
+      router.push('/dashboard/admin');
     }
   }, [isAuthenticated, user, router]);
 

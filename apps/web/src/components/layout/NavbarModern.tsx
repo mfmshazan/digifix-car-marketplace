@@ -32,7 +32,7 @@ export default function NavbarModern() {
     { href: '/contact', label: 'Contact' },
   ];
 
-  const dashboardLink = user?.role === 'SALESMAN' ? '/dashboard/salesman' : '/dashboard/customer';
+  const dashboardLink = user?.role === 'SALESMAN' ? '/dashboard/salesman' : '/dashboard/admin';
 
   const handleLogout = () => {
     logout();

@@ -110,8 +110,8 @@ export default function SalesmanDashboard() {
   const monthly = salesData?.monthly;
 
   return (
-    <ScrollView 
-      style={styles.container} 
+    <ScrollView
+      style={styles.container}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#00002E"]} />
@@ -206,7 +206,7 @@ export default function SalesmanDashboard() {
       <View style={styles.quickActionsSection}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.quickActionsGrid}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.quickAction}
             onPress={() => router.push('/(salesman)/add-car-part')}
           >
@@ -215,7 +215,7 @@ export default function SalesmanDashboard() {
             </View>
             <Text style={styles.quickActionText}>Add Part</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.quickAction}
             onPress={() => router.push('/(salesman)/orders')}
           >
@@ -224,7 +224,7 @@ export default function SalesmanDashboard() {
             </View>
             <Text style={styles.quickActionText}>Orders</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.quickAction}
             onPress={() => router.push('/(salesman)/products')}
           >
@@ -264,9 +264,9 @@ export default function SalesmanDashboard() {
                   </View>
                 </View>
                 <Text style={styles.orderTime}>
-                  {new Date(order.createdAt).toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
+                  {new Date(order.createdAt).toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
                   })}
                 </Text>
               </View>
@@ -282,8 +282,8 @@ export default function SalesmanDashboard() {
                   <View key={item.id || item.productName} style={styles.orderItem}>
                     <View style={styles.itemImageContainer}>
                       {item.productImage ? (
-                        <Image 
-                          source={{ uri: item.productImage }} 
+                        <Image
+                          source={{ uri: item.productImage }}
                           style={styles.itemImage}
                           resizeMode="cover"
                         />
@@ -353,8 +353,8 @@ export default function SalesmanDashboard() {
             {salesData.topSellingProducts.map((product) => (
               <View key={product.uniqueId || product.id} style={styles.topProductCard}>
                 {product.images?.[0] ? (
-                  <Image 
-                    source={{ uri: product.images[0] }} 
+                  <Image
+                    source={{ uri: product.images[0] }}
                     style={styles.topProductImage}
                     resizeMode="cover"
                   />

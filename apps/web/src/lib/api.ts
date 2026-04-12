@@ -150,37 +150,6 @@ export const authApi = {
   },
 };
 
-export const cartApi = {
-  // Get cart items
-  getCart: async () => {
-    const response = await api.get('/cart');
-    return response.data;
-  },
-
-  // Add item to cart
-  addToCart: async (productId: string, quantity: number = 1, type: 'product' | 'carpart' = 'carpart') => {
-    const response = await api.post('/cart', { productId, quantity, type });
-    return response.data;
-  },
-
-  // Update cart item
-  updateCartItem: async (itemId: string, quantity: number) => {
-    const response = await api.put(`/cart/${itemId}`, { quantity });
-    return response.data;
-  },
-
-  // Remove from cart
-  removeFromCart: async (itemId: string) => {
-    const response = await api.delete(`/cart/${itemId}`);
-    return response.data;
-  },
-
-  // Clear cart
-  clearCart: async () => {
-    const response = await api.delete('/cart');
-    return response.data;
-  },
-};
 
 export const ordersApi = {
   // Get all salesman orders (filterable by status)

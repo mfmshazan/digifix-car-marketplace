@@ -181,3 +181,23 @@ export const cartApi = {
     return response.data;
   },
 };
+
+export const ordersApi = {
+  // Get all salesman orders (filterable by status)
+  getSalesmanOrders: async (params?: { status?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/orders/salesman/orders', { params });
+    return response.data;
+  },
+
+  // Get salesman sales summary (stats + today's orders + top selling products)
+  getSalesmanSummary: async (date?: string) => {
+    const response = await api.get('/orders/salesman/summary', { params: date ? { date } : undefined });
+    return response.data;
+  },
+
+  // Update order status
+  updateOrderStatus: async (id: string, status: string) => {
+    const response = await api.put(`/orders/${id}/status`, { status });
+    return response.data;
+  },
+};

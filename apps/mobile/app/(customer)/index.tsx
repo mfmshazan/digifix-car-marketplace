@@ -98,7 +98,7 @@ export default function CustomerHomeScreen() {
     try {
       setIsSearching(true);
       const response = await searchPartsByNumberPlate(numberPlateQuery.trim());
-      
+
       if (response.success && response.data) {
         setSearchResults({
           car: response.data.car,
@@ -132,8 +132,8 @@ export default function CustomerHomeScreen() {
     <TouchableOpacity style={styles.productCard}>
       <View style={styles.productImageContainer}>
         {item.images && item.images.length > 0 ? (
-          <Image 
-            source={{ uri: item.images[0] }} 
+          <Image
+            source={{ uri: item.images[0] }}
             style={styles.productImage}
             resizeMode="cover"
           />
@@ -142,8 +142,8 @@ export default function CustomerHomeScreen() {
             <Ionicons name="car-sport" size={40} color="#00002E" />
           </View>
         )}
-        <View style={[styles.conditionBadge, { 
-          backgroundColor: item.condition === 'NEW' ? '#16A34A' : item.condition === 'USED' ? '#00002E' : '#1A1A1A' 
+        <View style={[styles.conditionBadge, {
+          backgroundColor: item.condition === 'NEW' ? '#16A34A' : item.condition === 'USED' ? '#00002E' : '#1A1A1A'
         }]}>
           <Text style={styles.conditionText}>{item.condition}</Text>
         </View>
@@ -163,7 +163,7 @@ export default function CustomerHomeScreen() {
           )}
         </View>
       </View>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.addToCartButton}
         onPress={() => handleAddToCart(item)}
       >
@@ -218,8 +218,8 @@ export default function CustomerHomeScreen() {
                 </View>
               </View>
               {searchResults.car.images && searchResults.car.images.length > 0 && (
-                <Image 
-                  source={{ uri: searchResults.car.images[0] }} 
+                <Image
+                  source={{ uri: searchResults.car.images[0] }}
                   style={styles.carImage}
                   resizeMode="cover"
                 />
@@ -240,8 +240,8 @@ export default function CustomerHomeScreen() {
                 <TouchableOpacity style={styles.partListItem}>
                   <View style={styles.partImageContainer}>
                     {item.images && item.images.length > 0 ? (
-                      <Image 
-                        source={{ uri: item.images[0] }} 
+                      <Image
+                        source={{ uri: item.images[0] }}
                         style={styles.partListImage}
                         resizeMode="cover"
                       />
@@ -254,8 +254,8 @@ export default function CustomerHomeScreen() {
                   <View style={styles.partListInfo}>
                     <View style={styles.partListHeader}>
                       <Text style={styles.partListCategory}>{item.seller.name}</Text>
-                      <View style={[styles.conditionBadgeSmall, { 
-                        backgroundColor: item.condition === 'NEW' ? '#4ECDC4' : item.condition === 'USED' ? '#FF6B35' : '#9B59B6' 
+                      <View style={[styles.conditionBadgeSmall, {
+                        backgroundColor: item.condition === 'NEW' ? '#4ECDC4' : item.condition === 'USED' ? '#FF6B35' : '#9B59B6'
                       }]}>
                         <Text style={styles.conditionTextSmall}>{item.condition}</Text>
                       </View>
@@ -278,15 +278,15 @@ export default function CustomerHomeScreen() {
                       </Text>
                     </View>
                   </View>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.addButton}
                     onPress={() => handleAddToCart(item)}
                     disabled={item.stock <= 0}
                   >
-                    <Ionicons 
-                      name="add-circle" 
-                      size={32} 
-                      color={item.stock > 0 ? "#00002E" : "#CCC"} 
+                    <Ionicons
+                      name="add-circle"
+                      size={32}
+                      color={item.stock > 0 ? "#00002E" : "#CCC"}
                     />
                   </TouchableOpacity>
                 </TouchableOpacity>
@@ -318,7 +318,7 @@ export default function CustomerHomeScreen() {
               autoCapitalize="characters"
               onSubmitEditing={handleSearchByNumberPlate}
             />
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={handleSearchByNumberPlate}
               style={styles.searchButton}
               disabled={isSearching}
@@ -387,60 +387,60 @@ export default function CustomerHomeScreen() {
           )}
         </View>
 
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.quickActionItem} onPress={() => {
-            // Focus on number plate search
-            Alert.alert("Search by Number Plate", "Enter your car number plate above to find compatible parts!");
-          }}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
-              <Ionicons name="car" size={24} color="#00002E" />
-            </View>
-            <Text style={styles.quickActionText}>Find by Plate</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#F3F4F6" }]}>
-              <Ionicons name="barcode" size={24} color="#1A1A1A" />
-            </View>
-            <Text style={styles.quickActionText}>Scan Part Code</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
-              <Ionicons name="location" size={24} color="#00002E" />
-            </View>
-            <Text style={styles.quickActionText}>Track Order</Text>
-          </TouchableOpacity>
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.quickActionItem} onPress={() => {
+              // Focus on number plate search
+              Alert.alert("Search by Number Plate", "Enter your car number plate above to find compatible parts!");
+            }}>
+              <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
+                <Ionicons name="car" size={24} color="#00002E" />
+              </View>
+              <Text style={styles.quickActionText}>Find by Plate</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionItem}>
+              <View style={[styles.quickActionIcon, { backgroundColor: "#F3F4F6" }]}>
+                <Ionicons name="barcode" size={24} color="#1A1A1A" />
+              </View>
+              <Text style={styles.quickActionText}>Scan Part Code</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionItem}>
+              <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
+                <Ionicons name="location" size={24} color="#00002E" />
+              </View>
+              <Text style={styles.quickActionText}>Track Order</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
 
-      {/* Best Sellers */}
-      <View style={[styles.section, styles.lastSection]}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Best Sellers</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAllText}>See All</Text>
-          </TouchableOpacity>
+        {/* Best Sellers */}
+        <View style={[styles.section, styles.lastSection]}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Best Sellers</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#00002E" style={{ marginVertical: 20 }} />
+          ) : (
+            <FlatList
+              data={featuredParts.slice().reverse()}
+              renderItem={renderPartItem}
+              keyExtractor={(item) => `best-${item.id}`}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.productsList}
+            />
+          )}
         </View>
-        {isLoading ? (
-          <ActivityIndicator size="large" color="#00002E" style={{ marginVertical: 20 }} />
-        ) : (
-          <FlatList
-            data={featuredParts.slice().reverse()}
-            renderItem={renderPartItem}
-            keyExtractor={(item) => `best-${item.id}`}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.productsList}
-          />
-        )}
-      </View>
-    </ScrollView>
+      </ScrollView>
 
-    {/* Search Results Modal */}
-    {renderSearchResultsModal()}
-  </View>
+      {/* Search Results Modal */}
+      {renderSearchResultsModal()}
+    </View>
   );
 }
 

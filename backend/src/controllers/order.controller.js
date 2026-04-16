@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+// import { sendNotificationToUser } from '../lib/onesignal.js';
 
 /**
  * Get salesman's sales summary
@@ -440,6 +441,14 @@ export const updateOrderStatus = async (req, res) => {
       }
     });
 
+    // Notify customer
+    // await sendNotificationToUser(
+    //   updatedOrder.customerId,
+    //   'Order Status Updated',
+    //   `Your order ${updatedOrder.orderNumber} status is now ${status}`,
+    //   { screen: '/(customer)/orders', orderId: id }
+    // );
+
     res.json({
       success: true,
       message: 'Order status updated successfully',
@@ -808,6 +817,16 @@ export const createOrder = async (req, res) => {
         })
       }))
     };
+
+    // Notify salesman about the new order(s)
+    // for (const order of createdOrders) {
+    //   await sendNotificationToUser(
+    //     order.salesmanId,
+    //     'New Order Received',
+    //     `You have a new order: ${order.orderNumber} for Rs ${order.total}`,
+    //     { screen: '/(salesman)/orders', orderId: order.id }
+    //   );
+    // }
 
     res.status(201).json({
       success: true,

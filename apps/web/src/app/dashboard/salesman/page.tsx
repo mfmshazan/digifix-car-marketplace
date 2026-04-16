@@ -143,7 +143,7 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
       <button
         onClick={() => setOpen(v => !v)}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${STATUS_META[order.status as OrderStatus]?.bg || 'bg-gray-100'} ${STATUS_META[order.status as OrderStatus]?.color || 'text-gray-700'} hover:opacity-80 transition-colors`}
       >
         {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Clock className="w-3.5 h-3.5" />}
         {STATUS_META[order.status as OrderStatus]?.label ?? order.status}
@@ -180,6 +180,7 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
 
 function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void> }) {
   const [expanded, setExpanded] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
@@ -222,7 +223,9 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
               <div key={item.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
                 <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
                   {item.product?.images?.[0] ? (
-                    <Image src={item.product.images[0]} alt={item.product?.name ?? ''} width={40} height={40} className="object-cover rounded-lg" />
+                    <button onClick={() => setPreviewImage(item.product.images[0])} className="w-full h-full p-0 border-0 bg-transparent rounded-lg hover:opacity-80 transition-opacity">
+                      <Image src={item.product.images[0]} alt={item.product?.name ?? ''} width={40} height={40} className="object-cover w-full h-full rounded-lg" />
+                    </button>
                   ) : (
                     <Package className="w-5 h-5 text-gray-400" />
                   )}
@@ -251,6 +254,21 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
           </div>
         )}
       </div>
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setPreviewImage(null)}>
+          <div className="relative w-full max-w-2xl max-h-[90vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            <Image src={previewImage} alt="Product Preview" width={800} height={800} className="object-contain rounded-xl max-h-[85vh]" />
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute -top-4 -right-4 md:-top-10 md:-right-10 p-2 bg-white/20 hover:bg-white/40 text-white rounded-full transition-colors backdrop-blur-md"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

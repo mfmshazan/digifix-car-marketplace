@@ -212,6 +212,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
       const details = productDetails.find(pd => pd.id === p.productId);
       return {
         ...details,
+        uniqueId: `product-${p.productId}`, // Add unique identifier
         totalSold: p._sum.quantity,
         totalRevenue: p._sum.total
       };
@@ -221,6 +222,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
       const details = carPartDetails.find(pd => pd.id === p.carPartId);
       return {
         ...details,
+        uniqueId: `carpart-${p.carPartId}`, // Add unique identifier
         totalSold: p._sum.quantity,
         totalRevenue: p._sum.total
       };
@@ -241,6 +243,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
         // Handle both product and carPart
         const itemData = item.product || item.carPart;
         return {
+          id: item.id, // Add unique id for React keys
           productName: item.itemName || itemData?.name || 'Unknown Item',
           productImage: itemData?.images?.[0],
           category: itemData?.category?.name,
@@ -684,7 +687,7 @@ export const createOrder = async (req, res) => {
     const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
     const orderPrefix = `ORD-${timestamp}-${randomPart}`;
 
-    // Create orders for each seller in a transaction
+    // Create orders for each seller in a transaction (with extended timeout)
     const createdOrders = await prisma.$transaction(async (tx) => {
       const orders = [];
       let orderIndex = 1;
@@ -771,6 +774,9 @@ export const createOrder = async (req, res) => {
       }
 
       return orders;
+    }, {
+      timeout: 30000, // 30 seconds timeout for complex order creation
+      maxWait: 10000  // Max time to wait for transaction slot
     });
 
     // Format response

@@ -1,70 +1,155 @@
-import React from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+import { getCustomerOrders, Order } from "../../src/api/orders";
 
-const orders = [
-  {
-    id: "ORD-001",
-    date: "Dec 20, 2025",
-    status: "Delivered",
-    total: 104.97,
-    items: 3,
-    statusColor: "#4CAF50",
-  },
-  {
-    id: "ORD-002",
-    date: "Dec 18, 2025",
-    status: "In Transit",
-    total: 58.98,
-    items: 2,
-    statusColor: "#FF9800",
-  },
-  {
-    id: "ORD-003",
-    date: "Dec 15, 2025",
-    status: "Processing",
-    total: 32.99,
-    items: 1,
-    statusColor: "#2196F3",
-  },
-];
+// Status color mapping
+const getStatusColor = (status: string) => {
+  switch (status.toUpperCase()) {
+    case "DELIVERED":
+    case "COMPLETED":
+      return "#4CAF50";
+    case "IN_TRANSIT":
+    case "SHIPPED":
+      return "#FF9800";
+    case "PROCESSING":
+    case "CONFIRMED":
+      return "#2196F3";
+    case "PENDING":
+      return "#9E9E9E";
+    case "CANCELLED":
+      return "#F44336";
+    default:
+      return "#666666";
+  }
+};
+
+// Format status for display
+const formatStatus = (status: string) => {
+  return status
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+// Format date
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
 
 export default function OrdersScreen() {
-  const renderOrder = ({ item }: { item: (typeof orders)[0] }) => (
-    <TouchableOpacity style={styles.orderCard}>
-      <View style={styles.orderHeader}>
-        <View>
-          <Text style={styles.orderId}>{item.id}</Text>
-          <Text style={styles.orderDate}>{item.date}</Text>
-        </View>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: item.statusColor + "20" },
-          ]}
-        >
-          <Text style={[styles.statusText, { color: item.statusColor }]}>
-            {item.status}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.orderDivider} />
-      <View style={styles.orderFooter}>
-        <Text style={styles.orderItems}>{item.items} item(s)</Text>
-        <Text style={styles.orderTotal}>${item.total.toFixed(2)}</Text>
-      </View>
-      <TouchableOpacity style={styles.trackButton}>
-        <Ionicons name="location" size={16} color="#00002E" />
-        <Text style={styles.trackButtonText}>Track Order</Text>
-      </TouchableOpacity>
-    </TouchableOpacity>
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchOrders = async (showRefresh = false) => {
+    try {
+      if (showRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setError(null);
+
+      const response = await getCustomerOrders();
+
+      if (response.success && response.data) {
+        setOrders(response.data.orders || []);
+      } else {
+        setOrders([]);
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch orders:", err);
+      setError(err.message || "Failed to load orders");
+      setOrders([]);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  // Fetch orders when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrders();
+    }, [])
   );
+
+  const onRefresh = () => {
+    fetchOrders(true);
+  };
+
+  const renderOrder = ({ item }: { item: Order }) => {
+    const statusColor = getStatusColor(item.status);
+    const itemCount = item.items?.length || 0;
+
+    return (
+      <TouchableOpacity style={styles.orderCard}>
+        <View style={styles.orderHeader}>
+          <View>
+            <Text style={styles.orderId}>{item.orderNumber || `ORD-${item.id.slice(-6).toUpperCase()}`}</Text>
+            <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
+          </View>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: statusColor + "20" },
+            ]}
+          >
+            <Text style={[styles.statusText, { color: statusColor }]}>
+              {formatStatus(item.status)}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.orderDivider} />
+        <View style={styles.orderFooter}>
+          <Text style={styles.orderItems}>{itemCount} item(s)</Text>
+          <Text style={styles.orderTotal}>Rs. {item.total.toFixed(2)}</Text>
+        </View>
+        <TouchableOpacity style={styles.trackButton}>
+          <Ionicons name="location" size={16} color="#00002E" />
+          <Text style={styles.trackButtonText}>Track Order</Text>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color="#00002E" />
+        <Text style={styles.loadingText}>Loading orders...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.centerContainer}>
+        <Ionicons name="alert-circle-outline" size={60} color="#F44336" />
+        <Text style={styles.errorTitle}>Failed to load orders</Text>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => fetchOrders()}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -75,6 +160,14 @@ export default function OrdersScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={onRefresh}
+              colors={["#00002E"]}
+              tintColor="#00002E"
+            />
+          }
         />
       ) : (
         <View style={styles.emptyContainer}>
@@ -181,6 +274,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#999",
     marginTop: 8,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#666",
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1A1A2E",
+    marginTop: 16,
+  },
+  errorText: {
+    fontSize: 14,
+    color: "#666",
+    marginTop: 8,
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: "#00002E",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
 

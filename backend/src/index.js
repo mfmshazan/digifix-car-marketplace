@@ -8,8 +8,10 @@ import categoryRoutes from './routes/category.routes.js';
 import orderRoutes from './routes/order.routes.js';
 import carPartRoutes from './routes/carPart.routes.js';
 import cartRoutes from './routes/cart.routes.js';
+import clerkRoutes from './routes/clerk.routes.js';
 
-dotenv.config();
+// Load environment variables early - override ensures .env values take precedence over empty docker/shell variables
+dotenv.config({ override: true });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,6 +26,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/auth', clerkRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
@@ -39,6 +42,7 @@ app.get('/health', (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
+
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Internal Server Error',
@@ -47,7 +51,7 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📱 Mobile access: http://10.19.40.60:${PORT}/api`);
+  console.log(`📱 Mobile access: http://10.61.174.60:${PORT}/api`);
 });
 
 export default app;

@@ -3,44 +3,58 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, User, Store } from 'lucide-react';
 import { authApi } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import GoogleSignInButton from '@/components/google-signin-button';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
   const login = useAuthStore((state) => state.login);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const role: 'SALESMAN' = 'SALESMAN';
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!name || !email || !password || !confirmPassword) {
+      setError('Please fill in all fields');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
 
     try {
       setIsLoading(true);
       setError(null);
-      const response = await authApi.login(email, password);
+      const response = await authApi.register({ name, email, password, role });
 
       if (response.success) {
         const { user, token } = response.data;
         login(user, token);
 
-        // Redirect based on user role
         if (user.role === 'SALESMAN') {
           router.push('/dashboard/salesman');
         } else {
           router.push('/dashboard/admin');
         }
       } else {
-        setError(response.message || 'Login failed');
+        setError(response.message || 'Registration failed');
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+      setError(err.response?.data?.message || 'Registration failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -65,17 +79,32 @@ export default function LoginPage() {
                 <span className="text-gray-400">FIX</span>
               </span>
             </Link>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back</h1>
-            <p className="text-gray-500">Sign in to your account to continue</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Account</h1>
+            <p className="text-gray-500">Join DIGIFIX to find the perfect car parts</p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
                 {error}
               </div>
             )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Enter your full name"
+                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
+                  required
+                />
+              </div>
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
@@ -92,6 +121,11 @@ export default function LoginPage() {
               </div>
             </div>
 
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800 flex items-center gap-2">
+              <Store className="w-4 h-4" />
+              New web signups are created as <span className="font-semibold">Salesman</span>.
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
               <div className="relative">
@@ -100,7 +134,7 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
+                  placeholder="Create a password"
                   className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
                   required
                 />
@@ -114,14 +148,26 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-[#00002E] focus:ring-[#00002E]" />
-                <span className="text-sm text-gray-600">Remember me</span>
-              </label>
-              <Link href="/forgot-password" className="text-sm text-[#00002E] hover:underline font-medium">
-                Forgot password?
-              </Link>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm your password"
+                  className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
 
             <button
@@ -133,14 +179,14 @@ export default function LoginPage() {
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
                 <>
-                  Sign In
+                  Create Account
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
-          {/* Google Sign In */}
+          {/* Google Sign Up */}
           <div className="mt-6">
             <div className="relative my-4">
               <div className="absolute inset-0 flex items-center">
@@ -155,24 +201,24 @@ export default function LoginPage() {
 
           <div className="mt-8 text-center">
             <p className="text-gray-600">
-              Don't have an account?{' '}
-              <Link href="/register" className="text-[#00002E] hover:underline font-semibold">
-                Sign up
+              Already have an account?{' '}
+              <Link href="/login" className="text-[#00002E] hover:underline font-semibold">
+                Sign in
               </Link>
             </p>
           </div>
         </div>
       </div>
 
-      {/* Right Side - Image/Branding */}
+      {/* Right Side - Branding */}
       <div className="hidden lg:flex flex-1 bg-[#00002E] items-center justify-center p-12">
         <div className="max-w-lg text-center">
           <div className="mb-8">
             <h2 className="text-4xl font-bold text-white mb-4">
-              Find the Perfect Parts for Your Car
+              Join Our Growing Marketplace
             </h2>
             <p className="text-gray-300 text-lg">
-              Access thousands of quality car parts from verified sellers. Search by your car's number plate to find compatible parts instantly.
+              Whether you&apos;re looking for parts or selling them, DIGIFIX connects you with the right people. Start your journey today.
             </p>
           </div>
           <div className="grid grid-cols-3 gap-6 text-white">

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { authApi } from '@/lib/api';
 
 export interface User {
   id: string;
@@ -24,11 +25,12 @@ interface AuthStore {
   login: (user: User, token: string) => void;
   logout: () => void;
   setLoading: (loading: boolean) => void;
+  refreshProfile: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       isAuthenticated: false,
@@ -56,6 +58,23 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       setLoading: (isLoading) => set({ isLoading }),
+
+      refreshProfile: async () => {
+        const { token, isAuthenticated } = get();
+        if (!token || !isAuthenticated) return;
+
+        try {
+          const response = await authApi.getProfile();
+          if (response.success && response.data) {
+            set({ user: response.data });
+          }
+        } catch (error) {
+          console.error('Failed to refresh profile:', error);
+          // If profile fetch fails with 401, the interceptor will handle logout
+        } finally {
+          set({ isLoading: false });
+        }
+      },
     }),
     {
       name: 'digifix-auth',

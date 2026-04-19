@@ -2,7 +2,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { useSSO, useAuth } from '@clerk/expo';
 import { useCallback } from 'react';
-import { API_URL } from '../config/api.config';
+import { getApiUrl } from '../config/api.config';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -70,10 +70,10 @@ export const syncClerkWithBackend = async (
             hasClerkToken: !!clerkToken,
             hasSessionId: !!sessionId,
             role,
-            apiUrl: `${API_URL}/auth/google`,
+            apiUrl: `${getApiUrl()}/auth/google`,
         });
 
-        const response = await fetch(`${API_URL}/auth/google`, {
+        const response = await fetch(`${getApiUrl()}/auth/google`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

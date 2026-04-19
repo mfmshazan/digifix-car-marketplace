@@ -16,14 +16,16 @@ import {
   CheckCircle,
   Truck,
   ArrowRight,
-  ShoppingCart
+  ShoppingCart,
+  Phone
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useCartStore } from '@/store/cartStore';
+import { resolveMediaUrl } from '@/lib/api';
 
 export default function CustomerDashboard() {
   const router = useRouter();
-  const { user, logout, isAuthenticated } = useAuthStore();
+  const { user, logout, isAuthenticated, refreshProfile } = useAuthStore();
   const cartItems = useCartStore((state) => state.items);
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -32,6 +34,13 @@ export default function CustomerDashboard() {
       router.push('/login');
     }
   }, [isAuthenticated, router]);
+
+  // Sync profile data on mount to ensure mobile updates are reflected
+  useEffect(() => {
+    if (isAuthenticated) {
+      refreshProfile();
+    }
+  }, [isAuthenticated, refreshProfile]);
 
   const handleLogout = () => {
     logout();
@@ -77,6 +86,8 @@ export default function CustomerDashboard() {
     }
   };
 
+  const avatarUrl = resolveMediaUrl(user.avatar);
+
   return (
     <div className="min-h-screen pt-20 pb-16 bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -84,16 +95,26 @@ export default function CustomerDashboard() {
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-[#00002E]/10 rounded-full flex items-center justify-center">
-                {user.avatar ? (
-                  <Image src={user.avatar} alt={user.name || ''} width={64} height={64} className="rounded-full" />
+              <div className="w-16 h-16 bg-[#00002E]/10 rounded-full overflow-hidden flex items-center justify-center shrink-0">
+                {avatarUrl ? (
+                  <Image
+                    src={avatarUrl}
+                    alt=""
+                    width={64}
+                    height={64}
+                    className="rounded-full object-cover w-full h-full"
+                    unoptimized
+                  />
                 ) : (
                   <User className="w-8 h-8 text-[#00002E]" />
                 )}
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Welcome, {user.name || 'Customer'}!</h1>
-                <p className="text-gray-600">{user.email}</p>
+                <div className="flex flex-col text-gray-600 gap-0.5">
+                  <p>{user.email}</p>
+                  {user.phone && <p className="text-sm flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" />{user.phone}</p>}
+                </div>
               </div>
             </div>
             <div className="flex gap-3">
@@ -194,7 +215,7 @@ export default function CustomerDashboard() {
                   <p className="text-sm text-gray-500">Saved items</p>
                 </div>
               </Link>
-              <Link href="/dashboard/customer/settings" className="flex items-center gap-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors">
+              <Link href="/settings" className="flex items-center gap-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors">
                 <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
                   <Settings className="w-5 h-5 text-purple-600" />
                 </div>

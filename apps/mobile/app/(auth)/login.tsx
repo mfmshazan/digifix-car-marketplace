@@ -17,9 +17,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { loginUser } from "../../src/api/auth";
-import { saveToken, saveUser } from "../../src/api/storage";
+import { saveToken, saveUser, getUserPrefs, saveUserPrefs, mergeServerUserAndPrefs } from "../../src/api/storage";
 import { useAuth, useSession } from "@clerk/expo";
 import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
+
+/** RN-web has no native driver — avoids console noise on web. */
+const useNativeDriverForAnim = Platform.OS !== "web";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -74,18 +77,18 @@ export default function LoginScreen() {
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 600,
-        useNativeDriver: true,
+        useNativeDriver: useNativeDriverForAnim,
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 600,
-        useNativeDriver: true,
+        useNativeDriver: useNativeDriverForAnim,
       }),
       Animated.spring(scaleAnim, {
         toValue: 1,
         friction: 8,
         tension: 40,
-        useNativeDriver: true,
+        useNativeDriver: useNativeDriverForAnim,
       }),
     ]).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,7 +98,7 @@ export default function LoginScreen() {
     Animated.spring(animValue, {
       toValue: 0.95,
       friction: 5,
-      useNativeDriver: true,
+      useNativeDriver: useNativeDriverForAnim,
     }).start();
   };
 
@@ -103,7 +106,7 @@ export default function LoginScreen() {
     Animated.spring(animValue, {
       toValue: 1,
       friction: 5,
-      useNativeDriver: true,
+      useNativeDriver: useNativeDriverForAnim,
     }).start();
   };
 
@@ -121,7 +124,20 @@ export default function LoginScreen() {
 
       if (response.success && response.data) {
         await saveToken(response.data.token);
-        await saveUser(response.data.user);
+        // Merge any locally saved profile prefs (name/phone/avatar_local)
+        // that survived logout back into the fresh backend user data.
+        const prefs = await getUserPrefs(response.data.user.email || "");
+        const merged: any = mergeServerUserAndPrefs(response.data.user, prefs);
+
+        // If the backend has a confirmed uploaded avatar, the local fallback
+        // URI is obsolete — clear it so the backend URL is displayed.
+        if (response.data.user.avatar && merged.avatar_local) {
+          merged.avatar_local = null;
+          const em = response.data.user.email || "";
+          if (em) await saveUserPrefs(em, { avatar_local: null });
+        }
+
+        await saveUser(merged);
 
         Alert.alert("Success", "Login successful!");
 
@@ -191,7 +207,20 @@ export default function LoginScreen() {
 
       if (response.success && response.data) {
         await saveToken(response.data.token);
-        await saveUser(response.data.user);
+        // Merge any locally saved profile prefs (name/phone/avatar_local)
+        // that survived logout back into the fresh backend user data.
+        const prefs = await getUserPrefs(response.data.user.email || "");
+        const merged: any = mergeServerUserAndPrefs(response.data.user, prefs);
+
+        // If the backend has a confirmed uploaded avatar, the local fallback
+        // URI is obsolete — clear it so the backend URL is displayed.
+        if (response.data.user.avatar && merged.avatar_local) {
+          merged.avatar_local = null;
+          const em = response.data.user.email || "";
+          if (em) await saveUserPrefs(em, { avatar_local: null });
+        }
+
+        await saveUser(merged);
 
         setError("");
 
@@ -411,11 +440,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
     padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+      },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+      },
+    }),
   },
   title: {
     fontSize: 24,

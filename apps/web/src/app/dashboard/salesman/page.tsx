@@ -20,13 +20,15 @@ import {
   ArrowRight,
   Upload,
   X,
-  Camera
+  Camera,
+  Phone
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import { resolveMediaUrl } from '@/lib/api';
 
 export default function SalesmanDashboard() {
   const router = useRouter();
-  const { user, logout, isAuthenticated } = useAuthStore();
+  const { user, logout, isAuthenticated, refreshProfile } = useAuthStore();
   const [showAddModal, setShowAddModal] = useState(false);
 
   useEffect(() => {
@@ -36,6 +38,13 @@ export default function SalesmanDashboard() {
       router.push('/dashboard/customer');
     }
   }, [isAuthenticated, user, router]);
+
+  // Sync profile data on mount to ensure mobile updates are reflected
+  useEffect(() => {
+    if (isAuthenticated) {
+      refreshProfile();
+    }
+  }, [isAuthenticated, refreshProfile]);
 
   const handleLogout = () => {
     logout();
@@ -49,6 +58,8 @@ export default function SalesmanDashboard() {
       </div>
     );
   }
+
+  const avatarUrl = resolveMediaUrl(user.avatar);
 
   const stats = [
     { label: 'Total Products', value: '24', icon: Package, color: 'bg-blue-100 text-blue-600', change: '+3' },
@@ -86,16 +97,26 @@ export default function SalesmanDashboard() {
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-[#00002E]/10 rounded-full flex items-center justify-center">
-                {user.avatar ? (
-                  <Image src={user.avatar} alt={user.name || ''} width={64} height={64} className="rounded-full" />
+              <div className="w-16 h-16 bg-[#00002E]/5 rounded-full flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
+                {avatarUrl ? (
+                  <Image 
+                    src={avatarUrl} 
+                    alt={user.name || ''} 
+                    width={64} 
+                    height={64} 
+                    className="rounded-full object-cover"
+                    unoptimized
+                  />
                 ) : (
                   <Store className="w-8 h-8 text-[#00002E]" />
                 )}
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">{user.store?.name || `${user.name}'s Store`}</h1>
-                <p className="text-gray-600">Welcome back, {user.name || 'Seller'}!</p>
+                <div className="flex flex-col text-gray-600 gap-0.5">
+                  <p>Welcome back, {user.name || 'Seller'}!</p>
+                  {user.phone && <p className="text-sm flex items-center gap-1.5 font-medium"><Phone className="w-3.5 h-3.5" />{user.phone}</p>}
+                </div>
               </div>
             </div>
             <div className="flex gap-3">

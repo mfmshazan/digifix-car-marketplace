@@ -10,7 +10,7 @@ import {
 import { useAuth, useSession, useClerk } from "@clerk/expo";
 import { router } from "expo-router";
 import { syncClerkWithBackend } from "../src/api/google-signin";
-import { saveToken, saveUser } from "../src/api/storage";
+import { saveToken, saveUser, getUserPrefs, saveUserPrefs, mergeServerUserAndPrefs } from "../src/api/storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function SSOCallbackScreen() {
@@ -88,7 +88,22 @@ export default function SSOCallbackScreen() {
         if (response.success && response.data) {
           console.log("[SSOCallback] Sync successful, saving data and redirecting...");
           await saveToken(response.data.token);
-          await saveUser(response.data.user);
+          // Merge locally-saved profile prefs (name/phone/avatar_local that survive
+          // logout) on top of the backend user so they are never discarded.
+          const email = response.data.user.email || "";
+          const prefs = email ? await getUserPrefs(email) : {};
+          const merged = mergeServerUserAndPrefs(response.data.user, prefs);
+
+          // If the backend now has a real uploaded avatar, the local fallback
+          // URI is no longer needed — clear it so the backend URL is used.
+          if (response.data.user.avatar && merged.avatar_local) {
+            merged.avatar_local = null;
+            if (email) {
+              await saveUserPrefs(email, { avatar_local: null });
+            }
+          }
+
+          await saveUser(merged);
 
           if (pendingRole) {
             await AsyncStorage.removeItem("@digifix_pending_role");

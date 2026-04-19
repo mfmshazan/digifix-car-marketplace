@@ -18,6 +18,13 @@ export default function RootLayout() {
             <Stack.Screen name="(customer)" />
             <Stack.Screen name="(salesman)" />
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen
+              name="edit-profile"
+              options={{
+                headerShown: false,
+                presentation: "card",
+              }}
+            />
           </Stack>
         </PendingOrdersProvider>
       </CartProvider>

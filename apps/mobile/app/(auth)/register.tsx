@@ -18,13 +18,16 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { registerUser } from "../../src/api/auth";
-import { saveToken, saveUser } from "../../src/api/storage";
+import { saveToken, saveUser, getUserPrefs, saveUserPrefs, mergeServerUserAndPrefs } from "../../src/api/storage";
 import { useAuth, useSession } from "@clerk/expo";
 import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
+
+const useNativeDriverForAnim = Platform.OS !== "web";
 
 export default function RegisterScreen() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState<"CUSTOMER" | "SALESMAN">("CUSTOMER");
@@ -79,18 +82,18 @@ export default function RegisterScreen() {
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 600,
-        useNativeDriver: true,
+        useNativeDriver: useNativeDriverForAnim,
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 600,
-        useNativeDriver: true,
+        useNativeDriver: useNativeDriverForAnim,
       }),
       Animated.spring(scaleAnim, {
         toValue: 1,
         friction: 8,
         tension: 40,
-        useNativeDriver: true,
+        useNativeDriver: useNativeDriverForAnim,
       }),
     ]).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,7 +103,7 @@ export default function RegisterScreen() {
     Animated.spring(animValue, {
       toValue: 0.95,
       friction: 5,
-      useNativeDriver: true,
+      useNativeDriver: useNativeDriverForAnim,
     }).start();
   };
 
@@ -108,13 +111,27 @@ export default function RegisterScreen() {
     Animated.spring(animValue, {
       toValue: 1,
       friction: 5,
-      useNativeDriver: true,
+      useNativeDriver: useNativeDriverForAnim,
     }).start();
   };
 
   const handleRegister = async () => {
-    if (!name || !email || !password || !confirmPassword) {
+    if (!name || !email || !phone || !password || !confirmPassword) {
       setError("Please fill in all fields");
+      return;
+    }
+
+    // Phone validation & formatting
+    let formattedPhone = phone.trim();
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '+94' + formattedPhone.substring(1);
+    } else if (!formattedPhone.startsWith('+94')) {
+      formattedPhone = '+94' + formattedPhone;
+    }
+
+    const sriLankaRegex = /^\+94\d{9}$/;
+    if (!sriLankaRegex.test(formattedPhone)) {
+      setError("Please enter a valid Sri Lankan phone number (9 digits after +94)");
       return;
     }
 
@@ -135,6 +152,7 @@ export default function RegisterScreen() {
       const response = await registerUser({
         name,
         email,
+        phone: formattedPhone,
         password,
         role,
       });
@@ -217,7 +235,14 @@ export default function RegisterScreen() {
 
       if (response.success && response.data) {
         await saveToken(response.data.token);
-        await saveUser(response.data.user);
+        const email = response.data.user.email || "";
+        const prefs = email ? await getUserPrefs(email) : {};
+        const merged = mergeServerUserAndPrefs(response.data.user, prefs);
+        if (response.data.user.avatar && merged.avatar_local) {
+          merged.avatar_local = null;
+          if (email) await saveUserPrefs(email, { avatar_local: null });
+        }
+        await saveUser(merged);
 
         setError("");
 
@@ -317,6 +342,27 @@ export default function RegisterScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="call-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <Text style={styles.countryCode}>+94</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="771234567"
+                placeholderTextColor="#999"
+                value={phone}
+                onChangeText={(val) => {
+                  const cleaned = val.replace(/\D/g, "");
+                  if (cleaned.length <= 9) setPhone(cleaned);
+                }}
+                keyboardType="phone-pad"
               />
             </View>
 
@@ -523,11 +569,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
     padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+      },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+      },
+    }),
   },
   title: {
     fontSize: 24,
@@ -553,6 +606,15 @@ const styles = StyleSheet.create({
   },
   inputIcon: {
     marginRight: 12,
+  },
+  countryCode: {
+    fontSize: 16,
+    color: "#666",
+    fontWeight: "600",
+    marginRight: 8,
+    borderRightWidth: 1,
+    borderRightColor: "#E5E7EB",
+    paddingRight: 8,
   },
   input: {
     flex: 1,

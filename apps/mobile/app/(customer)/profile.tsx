@@ -11,8 +11,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { clearAuthData, getToken, saveUser, getUser, getUserPrefs, saveUserPrefs, mergeServerUserAndPrefs, isEphemeralWebAvatarUri } from "../../src/api/storage";
 import { useAuth, useUser } from "@clerk/expo";
 import * as ImagePicker from "expo-image-picker";
@@ -123,9 +122,9 @@ export default function ProfileScreen() {
           await saveUser(merged);
         }
       }
-    } catch (error) {
+    } catch (err) {
       // Backend unavailable — keep cached/Clerk data, don't crash
-      console.log("Backend profile fetch failed, using cached/Clerk data");
+      console.log("Backend profile fetch failed; using cached/Clerk data", err);
     }
   }, []);
 
@@ -253,9 +252,9 @@ export default function ProfileScreen() {
         fetchUserData();
       }
       // If backend failed: local URI is already showing — no alert, no crash
-    } catch (_error) {
+    } catch (err) {
       // Backend unreachable — photo is already displayed from local URI, do nothing
-      console.log("Avatar upload failed; showing local photo instead.");
+      console.log("Avatar upload failed; showing local photo instead:", err);
     } finally {
       setIsUploading(false);
     }

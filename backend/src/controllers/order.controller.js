@@ -687,7 +687,7 @@ export const createOrder = async (req, res) => {
     const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
     const orderPrefix = `ORD-${timestamp}-${randomPart}`;
 
-    // Create orders for each seller in a transaction
+    // Create orders for each seller in a transaction (with extended timeout)
     const createdOrders = await prisma.$transaction(async (tx) => {
       const orders = [];
       let orderIndex = 1;
@@ -774,6 +774,9 @@ export const createOrder = async (req, res) => {
       }
 
       return orders;
+    }, {
+      timeout: 30000, // 30 seconds timeout for complex order creation
+      maxWait: 10000  // Max time to wait for transaction slot
     });
 
     // Format response

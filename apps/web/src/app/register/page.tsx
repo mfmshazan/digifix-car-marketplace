@@ -64,7 +64,7 @@ export default function RegisterPage() {
         if (user.role === 'SALESMAN') {
           router.push('/dashboard/salesman');
         } else {
-          router.push('/dashboard/customer');
+          router.push('/dashboard/admin');
         }
       } else {
         setError(response.message || 'Registration failed');
@@ -167,8 +167,8 @@ export default function RegisterPage() {
                   type="button"
                   onClick={() => setRole('CUSTOMER')}
                   className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 transition-all duration-300 ${role === 'CUSTOMER'
-                      ? 'bg-[#00002E] border-[#00002E] text-white'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                    ? 'bg-[#00002E] border-[#00002E] text-white'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                     }`}
                 >
                   <User className="w-4 h-4" />
@@ -178,8 +178,8 @@ export default function RegisterPage() {
                   type="button"
                   onClick={() => setRole('SALESMAN')}
                   className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 transition-all duration-300 ${role === 'SALESMAN'
-                      ? 'bg-[#00002E] border-[#00002E] text-white'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                    ? 'bg-[#00002E] border-[#00002E] text-white'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                     }`}
                 >
                   <Store className="w-4 h-4" />

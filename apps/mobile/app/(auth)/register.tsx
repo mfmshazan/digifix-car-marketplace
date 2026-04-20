@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { registerUser } from "../../src/api/auth";
 import { saveToken, saveUser, getUserPrefs, saveUserPrefs, mergeServerUserAndPrefs } from "../../src/api/storage";
 import { useAuth, useSession } from "@clerk/expo";
 import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
+// import { setOneSignalUserId, setUserRoleTag } from "../../src/config/onesignal.config";
 
 const useNativeDriverForAnim = Platform.OS !== "web";
 
@@ -42,6 +43,51 @@ export default function RegisterScreen() {
 
   // Ref to prevent infinite sync loops
   const hasAttemptedSyncRef = useRef(false);
+
+  const handleBackendSync = useCallback(async (clerkToken: string, sessionId?: string) => {
+    try {
+      console.log("Finalizing backend sync with sessionId:", sessionId);
+
+      const response = await syncClerkWithBackend(
+        clerkToken,
+        role,
+        sessionId
+      );
+
+      console.log("Backend sync response:", response);
+
+      if (response.success && response.data) {
+        await saveToken(response.data.token);
+        const email = response.data.user.email || "";
+        const prefs = email ? await getUserPrefs(email) : {};
+        const merged = mergeServerUserAndPrefs(response.data.user, prefs);
+        if (response.data.user.avatar && merged.avatar_local) {
+          merged.avatar_local = null;
+          if (email) await saveUserPrefs(email, { avatar_local: null });
+        }
+        await saveUser(merged);
+
+        setError("");
+
+        const dashboardRoute =
+          response.data.user.role === "SALESMAN"
+            ? "/(salesman)"
+            : "/(customer)";
+
+        console.log("Sync successful, redirecting to:", dashboardRoute);
+
+        router.replace(dashboardRoute as any);
+        return;
+      }
+
+      const errorMsg = response.message || "Backend sync failed";
+      console.error("Backend sync failed:", errorMsg);
+      setError(errorMsg);
+    } catch (syncErr: any) {
+      console.error("Backend sync error:", syncErr);
+      setError(`Auth Error: ${syncErr.message || "Unknown error"}`);
+    }
+  }, [role]);
 
   useEffect(() => {
     const checkExistingSession = async () => {
@@ -67,7 +113,7 @@ export default function RegisterScreen() {
     };
 
     checkExistingSession();
-  }, [isLoaded, isSignedIn, session, getToken]);
+  }, [isLoaded, isSignedIn, session, getToken, handleBackendSync]);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -165,9 +211,10 @@ export default function RegisterScreen() {
         const dashboardRoute =
           userRole === "SALESMAN" ? "/(salesman)" : "/(customer)";
 
-        // Redirect immediately after successful registration.
-        // Using a blocking Alert button callback can make it look like the
-        // user is not redirected (especially if the user doesn't press "OK").
+        // Set OneSignal user ID and role for targeted notifications
+        // setOneSignalUserId(response.data.user.id);
+        // setUserRoleTag(userRole);
+
         Alert.alert("Success", "Registration successful! Welcome to DIGIFIX!");
         router.replace(dashboardRoute as any);
         return;
@@ -221,50 +268,7 @@ export default function RegisterScreen() {
     }
   };
 
-  const handleBackendSync = async (clerkToken: string, sessionId?: string) => {
-    try {
-      console.log("Finalizing backend sync with sessionId:", sessionId);
 
-      const response = await syncClerkWithBackend(
-        clerkToken,
-        role,
-        sessionId
-      );
-
-      console.log("Backend sync response:", response);
-
-      if (response.success && response.data) {
-        await saveToken(response.data.token);
-        const email = response.data.user.email || "";
-        const prefs = email ? await getUserPrefs(email) : {};
-        const merged = mergeServerUserAndPrefs(response.data.user, prefs);
-        if (response.data.user.avatar && merged.avatar_local) {
-          merged.avatar_local = null;
-          if (email) await saveUserPrefs(email, { avatar_local: null });
-        }
-        await saveUser(merged);
-
-        setError("");
-
-        const dashboardRoute =
-          response.data.user.role === "SALESMAN"
-            ? "/(salesman)"
-            : "/(customer)";
-
-        console.log("Sync successful, redirecting to:", dashboardRoute);
-
-        router.replace(dashboardRoute as any);
-        return;
-      }
-
-      const errorMsg = response.message || "Backend sync failed";
-      console.error("Backend sync failed:", errorMsg);
-      setError(errorMsg);
-    } catch (syncErr: any) {
-      console.error("Backend sync error:", syncErr);
-      setError(`Auth Error: ${syncErr.message || "Unknown error"}`);
-    }
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -309,41 +313,6 @@ export default function RegisterScreen() {
               <Text style={styles.errorText}>{error}</Text>
             ) : null}
 
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Full Name"
-                placeholderTextColor="#999"
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="mail-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Email Address"
-                placeholderTextColor="#999"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
 
             <View style={styles.inputContainer}>
               <Ionicons
@@ -428,12 +397,33 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Ionicons
-                name="lock-closed-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
+              <Ionicons name={role === "SALESMAN" ? "storefront-outline" : "person-outline"} size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder={role === "SALESMAN" ? "Shop Name" : "Full Name"}
+                placeholderTextColor="#999"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
               />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email Address"
+                placeholderTextColor="#999"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Ionicons name="lock-closed-outline" size={20} color="#999" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 placeholder="Password"

@@ -11,8 +11,20 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
+// ============================================
+// CONFIGURATION - Update these values
+// ============================================
+
+// Your computer's local IP address (for physical device testing)
+// Run 'ipconfig' (Windows) or 'ifconfig' (Mac/Linux) to find this
 export const LOCAL_IP = '10.185.114.60';
+
+// Backend port (should match Docker/backend configuration)
 export const API_PORT = 3000;
+
+// ============================================
+// AUTO-DETECT ENVIRONMENT
+// ============================================
 
 /**
  * Resolves the API base URL at call time (not once at import), so Expo Go picks up

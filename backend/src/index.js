@@ -51,6 +51,7 @@ app.get('/health', (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
+
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Internal Server Error',
@@ -59,7 +60,7 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📱 Mobile access: http://10.185.114.60:${PORT}/api`);
+  console.log(`📱 Mobile access: http://10.61.174.60:${PORT}/api`);
 });
 
 export default app;

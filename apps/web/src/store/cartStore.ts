@@ -8,7 +8,9 @@ export interface CartItem {
   discountPrice?: number;
   quantity: number;
   image?: string;
-  carInfo: string;
+  carInfo?: string;
+  categoryName?: string;
+  type: 'product' | 'carpart';
 }
 
 interface CartStore {
@@ -26,17 +28,17 @@ export const useCartStore = create<CartStore>()(
     (set, get) => ({
       items: [],
 
-      addItem: (item) => {
+      addItem: (newItem) => {
         set((state) => {
-          const existingItem = state.items.find((i) => i.id === item.id);
+          const existingItem = state.items.find((i) => i.id === newItem.id);
           if (existingItem) {
             return {
               items: state.items.map((i) =>
-                i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+                i.id === newItem.id ? { ...i, quantity: i.quantity + 1 } : i
               ),
             };
           }
-          return { items: [...state.items, { ...item, quantity: 1 }] };
+          return { items: [...state.items, { ...newItem, quantity: 1 }] };
         });
       },
 
@@ -48,29 +50,27 @@ export const useCartStore = create<CartStore>()(
 
       updateQuantity: (id, quantity) => {
         set((state) => ({
-          items: state.items.map((i) =>
-            i.id === id ? { ...i, quantity: Math.max(0, quantity) } : i
-          ).filter((i) => i.quantity > 0),
+          items: state.items
+            .map((i) => (i.id === id ? { ...i, quantity: Math.max(0, quantity) } : i))
+            .filter((i) => i.quantity > 0),
         }));
       },
 
       clearCart: () => set({ items: [] }),
 
       getTotalPrice: () => {
-        const { items } = get();
-        return items.reduce(
-          (total, item) => total + (item.discountPrice || item.price) * item.quantity,
-          0
-        );
+        return get().items.reduce((sum, item) => {
+          const price = item.discountPrice || item.price;
+          return sum + price * item.quantity;
+        }, 0);
       },
 
       getTotalItems: () => {
-        const { items } = get();
-        return items.reduce((total, item) => total + item.quantity, 0);
+        return get().items.reduce((sum, item) => sum + item.quantity, 0);
       },
     }),
     {
-      name: 'digifix-cart',
+      name: 'digifix-cart-storage',
     }
   )
 );

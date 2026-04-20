@@ -121,10 +121,10 @@ export default function EditProfileScreen() {
           const backendUser = result.data.user || result.data;
           await saveUser(mergeServerUserAndPrefs(backendUser, updatedLocally));
         }
-      } catch (backendError) {
+      } catch (err) {
         // Backend unavailable — local cache is already updated, so profile
         // will show the correct name when we go back.
-        console.log("Backend sync failed; local profile cache already updated.");
+        console.log("Backend sync failed; local profile cache already updated:", err);
       }
 
       Alert.alert("Success", "Profile updated successfully!", [

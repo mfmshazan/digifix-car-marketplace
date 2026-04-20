@@ -215,8 +215,8 @@ export default function SalesmanProfileScreen() {
         if (em) await saveUserPrefs(em, { avatar_local: null });
         fetchUserData();
       }
-    } catch (_error) {
-      console.log("Avatar upload failed; showing local photo instead.");
+    } catch (err) {
+      console.log("Avatar upload failed; showing local photo instead:", err);
     } finally {
       setIsUploading(false);
     }

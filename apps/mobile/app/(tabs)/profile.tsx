@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -16,7 +17,7 @@ import { useAuth, useUser } from "@clerk/expo";
 import * as ImagePicker from "expo-image-picker";
 import { getApiUrl, resolveAvatarDisplayUri } from "../../src/config/api.config";
 import { getUserProfile } from "../../src/api/auth";
-import { Image } from "react-native";
+
 
 const menuItems = [
   {
@@ -81,7 +82,7 @@ export default function ProfileScreen() {
   const { signOut } = useAuth();
   const { user: clerkUser } = useUser();
   const [userData, setUserData] = React.useState<any>(null);
-  const [isLoading, setIsLoading] = React.useState(true);
+
   const [isUploading, setIsUploading] = React.useState(false);
   // Holds the locally-selected image URI so the photo shows immediately
   // even before (or if) the backend upload succeeds.
@@ -100,7 +101,7 @@ export default function ProfileScreen() {
           setLocalAvatarUri(cached.avatar_local);
         }
       }
-      setIsLoading(false);
+
     };
     loadCachedUser();
   }, []);
@@ -133,9 +134,9 @@ export default function ProfileScreen() {
           await saveUser(merged);
         }
       }
-    } catch (error) {
+    } catch (err) {
       // Backend unavailable — keep cached/Clerk data, don't crash
-      console.log("Backend profile fetch failed, using cached/Clerk data");
+      console.log("Backend profile fetch failed:", err);
     }
   }, []);
 
@@ -168,8 +169,8 @@ export default function ProfileScreen() {
   const performLogout = async () => {
     try {
       await signOut();
-    } catch (error) {
-      console.error("Logout error:", error);
+    } catch (err) {
+      console.error("Logout error:", err);
     }
 
     await clearAuthData();
@@ -287,9 +288,9 @@ export default function ProfileScreen() {
         fetchUserData();
       }
       // If backend failed: local URI is already showing — no alert, no crash
-    } catch (_error) {
+    } catch (err) {
       // Backend unreachable — photo already displayed from local URI, do nothing
-      console.log('Avatar upload failed; showing local photo instead.');
+      console.log('Avatar upload failed; showing local photo instead:', err);
     } finally {
       setIsUploading(false);
     }

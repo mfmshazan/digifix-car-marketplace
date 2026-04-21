@@ -87,12 +87,12 @@ interface SalesSummary {
 const STATUS_FLOW: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
 
 const STATUS_META: Record<OrderStatus, { label: string; color: string; bg: string; icon: React.ElementType }> = {
-  PENDING:    { label: 'Pending',    color: 'text-amber-700',  bg: 'bg-amber-100',   icon: Clock },
-  CONFIRMED:  { label: 'Confirmed',  color: 'text-sky-700',    bg: 'bg-sky-100',     icon: CheckCircle2 },
-  PROCESSING: { label: 'Processing', color: 'text-blue-700',   bg: 'bg-blue-100',    icon: RefreshCw },
-  SHIPPED:    { label: 'Shipped',    color: 'text-purple-700', bg: 'bg-purple-100',  icon: Truck },
-  DELIVERED:  { label: 'Delivered',  color: 'text-green-700',  bg: 'bg-green-100',   icon: CheckCircle2 },
-  CANCELLED:  { label: 'Cancelled',  color: 'text-red-700',    bg: 'bg-red-100',     icon: AlertCircle },
+  PENDING: { label: 'Pending', color: 'text-amber-700', bg: 'bg-amber-100', icon: Clock },
+  CONFIRMED: { label: 'Confirmed', color: 'text-sky-700', bg: 'bg-sky-100', icon: CheckCircle2 },
+  PROCESSING: { label: 'Processing', color: 'text-blue-700', bg: 'bg-blue-100', icon: RefreshCw },
+  SHIPPED: { label: 'Shipped', color: 'text-purple-700', bg: 'bg-purple-100', icon: Truck },
+  DELIVERED: { label: 'Delivered', color: 'text-green-700', bg: 'bg-green-100', icon: CheckCircle2 },
+  CANCELLED: { label: 'Cancelled', color: 'text-red-700', bg: 'bg-red-100', icon: AlertCircle },
 };
 
 function StatusBadge({ status }: { status: OrderStatus }) {
@@ -317,11 +317,10 @@ function CurrentOrdersTab() {
             <button
               key={opt.value}
               onClick={() => setFilterStatus(opt.value)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                filterStatus === opt.value
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${filterStatus === opt.value
                   ? 'bg-[#00002E] text-white'
                   : 'bg-white border border-gray-200 text-gray-600 hover:border-[#00002E]/40'
-              }`}
+                }`}
             >
               {opt.label}
             </button>
@@ -454,12 +453,11 @@ function SalesHistoryTab() {
           <div className="divide-y divide-gray-50">
             {summary!.topSellingProducts.map((product, idx) => (
               <div key={product.uniqueId} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                  idx === 0 ? 'bg-amber-100 text-amber-700' :
-                  idx === 1 ? 'bg-gray-100 text-gray-600' :
-                  idx === 2 ? 'bg-orange-100 text-orange-700' :
-                  'bg-gray-50 text-gray-500'
-                }`}>{idx + 1}</span>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? 'bg-amber-100 text-amber-700' :
+                    idx === 1 ? 'bg-gray-100 text-gray-600' :
+                      idx === 2 ? 'bg-orange-100 text-orange-700' :
+                        'bg-gray-50 text-gray-500'
+                  }`}>{idx + 1}</span>
                 <div className="w-10 h-10 bg-gray-100 rounded-lg shrink-0 flex items-center justify-center overflow-hidden">
                   {product.images?.[0] ? (
                     <Image src={product.images[0]} alt={product.name} width={40} height={40} className="object-cover" />
@@ -567,8 +565,8 @@ export default function SalesmanDashboard() {
   const avatarUrl = resolveMediaUrl(user.avatar);
 
   const tabs = [
-    { id: 'orders' as const,  label: 'Current Orders',  icon: ListOrdered },
-    { id: 'history' as const, label: 'Sales History',   icon: BarChart3 },
+    { id: 'orders' as const, label: 'Current Orders', icon: ListOrdered },
+    { id: 'history' as const, label: 'Sales History', icon: BarChart3 },
   ];
 
   return (
@@ -580,11 +578,11 @@ export default function SalesmanDashboard() {
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
                 {avatarUrl ? (
-                  <Image 
-                    src={avatarUrl} 
-                    alt={user.name || ''} 
-                    width={48} 
-                    height={48} 
+                  <Image
+                    src={avatarUrl}
+                    alt={user.name || ''}
+                    width={48}
+                    height={48}
                     className="rounded-xl object-cover"
                     unoptimized
                   />
@@ -617,11 +615,10 @@ export default function SalesmanDashboard() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as Tab)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                      activeTab === tab.id
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === tab.id
                         ? 'bg-white text-[#00002E] shadow'
                         : 'text-white/70 hover:text-white hover:bg-white/10'
-                    }`}
+                      }`}
                   >
                     <Icon className="w-4 h-4" />
                     {tab.label}
@@ -660,11 +657,10 @@ export default function SalesmanDashboard() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold border-b-2 transition-all ${
-                  activeTab === tab.id
+                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold border-b-2 transition-all ${activeTab === tab.id
                     ? 'border-[#00002E] text-[#00002E]'
                     : 'border-transparent text-gray-500'
-                }`}
+                  }`}
               >
                 <Icon className="w-4 h-4" />
                 {tab.label}
@@ -688,7 +684,7 @@ export default function SalesmanDashboard() {
           </p>
         </div>
 
-        {activeTab === 'orders'  && <CurrentOrdersTab />}
+        {activeTab === 'orders' && <CurrentOrdersTab />}
         {activeTab === 'history' && <SalesHistoryTab />}
       </main>
 
@@ -828,11 +824,10 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
                   key={condition}
                   type="button"
                   onClick={() => setFormData({ ...formData, condition })}
-                  className={`px-4 py-2 rounded-xl font-medium transition-colors ${
-                    formData.condition === condition
+                  className={`px-4 py-2 rounded-xl font-medium transition-colors ${formData.condition === condition
                       ? 'bg-[#00002E] text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   {condition}
                 </button>

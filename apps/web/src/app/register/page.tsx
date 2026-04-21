@@ -64,7 +64,7 @@ export default function RegisterPage() {
         if (user.role === 'SALESMAN') {
           router.push('/dashboard/salesman');
         } else {
-          router.push('/dashboard/admin');
+          router.push('/');
         }
       } else {
         setError(response.message || 'Registration failed');

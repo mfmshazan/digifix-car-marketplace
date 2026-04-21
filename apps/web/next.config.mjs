@@ -10,11 +10,6 @@ const nextConfig = {
         destination: '/settings',
         permanent: false,
       },
-      {
-        source: '/dashboard/customer',
-        destination: '/dashboard/admin',
-        permanent: false,
-      },
     ];
   },
   // Enable hot-reload in Docker on Windows

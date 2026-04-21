@@ -42,7 +42,4 @@ app-example
 /ios
 /android
 
-# Uploaded files (runtime data, not source code)
-backend/public/uploads/*
-!backend/public/uploads/.gitkeep
 

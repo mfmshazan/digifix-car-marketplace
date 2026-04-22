@@ -3,7 +3,7 @@ import prisma from '../lib/prisma.js';
 // Get user's cart items
 const getCart = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     const cartItems = await prisma.cartItem.findMany({
       where: { userId },
@@ -28,19 +28,6 @@ const getCart = async (req, res) => {
       },
       orderBy: { createdAt: 'desc' },
     });
-
-    // Also get cart items for car parts
-    const carPartCartItems = await prisma.$queryRaw`
-      SELECT cp.*, c.name as category_name, car.make, car.model, car.year, car."numberPlate",
-             u.name as seller_name, u.id as seller_id
-      FROM "CarPart" cp
-      JOIN "Category" c ON cp."categoryId" = c.id
-      JOIN "Car" car ON cp."carId" = car.id
-      JOIN "User" u ON cp."sellerId" = u.id
-      WHERE cp.id IN (
-        SELECT "productId" FROM "CartItem" WHERE "userId" = ${userId}
-      )
-    `;
 
     const total = cartItems.reduce((sum, item) => {
       const price = item.product.discountPrice || item.product.price;
@@ -67,8 +54,8 @@ const getCart = async (req, res) => {
 // Add item to cart
 const addToCart = async (req, res) => {
   try {
-    const userId = req.user.userId;
-    const { productId, quantity = 1, type = 'product' } = req.body;
+    const userId = req.user.id;
+    const { productId, quantity = 1 } = req.body;
 
     if (!productId) {
       return res.status(400).json({
@@ -77,122 +64,82 @@ const addToCart = async (req, res) => {
       });
     }
 
-    // Check if product exists and has stock (for regular products)
-    if (type === 'product') {
-      const product = await prisma.product.findUnique({
-        where: { id: productId },
-      });
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+    });
 
-      if (!product) {
-        return res.status(404).json({
-          success: false,
-          message: 'Product not found',
-        });
-      }
-
-      if (product.stock < quantity) {
-        return res.status(400).json({
-          success: false,
-          message: 'Insufficient stock',
-          availableStock: product.stock,
-        });
-      }
-
-      // Check if item already in cart
-      const existingItem = await prisma.cartItem.findUnique({
-        where: {
-          userId_productId: { userId, productId },
-        },
-      });
-
-      let cartItem;
-
-      if (existingItem) {
-        // Check if total quantity exceeds stock
-        const newQuantity = existingItem.quantity + quantity;
-        if (newQuantity > product.stock) {
-          return res.status(400).json({
-            success: false,
-            message: 'Cannot add more items. Stock limit reached.',
-            availableStock: product.stock,
-            currentInCart: existingItem.quantity,
-          });
-        }
-
-        // Update quantity
-        cartItem = await prisma.cartItem.update({
-          where: { id: existingItem.id },
-          data: { quantity: newQuantity },
-          include: {
-            product: {
-              include: {
-                category: true,
-              },
-            },
-          },
-        });
-      } else {
-        // Create new cart item
-        cartItem = await prisma.cartItem.create({
-          data: {
-            userId,
-            productId,
-            quantity,
-          },
-          include: {
-            product: {
-              include: {
-                category: true,
-              },
-            },
-          },
-        });
-      }
-
-      // Reduce stock
-      await prisma.product.update({
-        where: { id: productId },
-        data: { stock: { decrement: quantity } },
-      });
-
-      res.status(201).json({
-        success: true,
-        message: 'Item added to cart',
-        data: cartItem,
-      });
-    } else {
-      // Handle car parts - similar logic
-      const carPart = await prisma.carPart.findUnique({
-        where: { id: productId },
-      });
-
-      if (!carPart) {
-        return res.status(404).json({
-          success: false,
-          message: 'Car part not found',
-        });
-      }
-
-      if (carPart.stock < quantity) {
-        return res.status(400).json({
-          success: false,
-          message: 'Insufficient stock',
-          availableStock: carPart.stock,
-        });
-      }
-
-      // Reduce stock for car parts
-      await prisma.carPart.update({
-        where: { id: productId },
-        data: { stock: { decrement: quantity } },
-      });
-
-      res.status(201).json({
-        success: true,
-        message: 'Car part added to cart',
-        data: { carPart, quantity },
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
       });
     }
+
+    if (product.stock < quantity) {
+      return res.status(400).json({
+        success: false,
+        message: 'Insufficient stock',
+        availableStock: product.stock,
+      });
+    }
+
+    const existingItem = await prisma.cartItem.findUnique({
+      where: {
+        userId_productId: { userId, productId },
+      },
+    });
+
+    let cartItem;
+
+    if (existingItem) {
+      const newQuantity = existingItem.quantity + quantity;
+      if (newQuantity > product.stock) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot add more items. Stock limit reached.',
+          availableStock: product.stock,
+          currentInCart: existingItem.quantity,
+        });
+      }
+
+      cartItem = await prisma.cartItem.update({
+        where: { id: existingItem.id },
+        data: { quantity: newQuantity },
+        include: {
+          product: {
+            include: {
+              category: true,
+            },
+          },
+        },
+      });
+    } else {
+      cartItem = await prisma.cartItem.create({
+        data: {
+          userId,
+          productId,
+          quantity,
+        },
+        include: {
+          product: {
+            include: {
+              category: true,
+            },
+          },
+        },
+      });
+    }
+
+    await prisma.product.update({
+      where: { id: productId },
+      data: { stock: { decrement: quantity } },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Item added to cart',
+      data: cartItem,
+    });
   } catch (error) {
     console.error('Add to cart error:', error);
     res.status(500).json({
@@ -205,7 +152,7 @@ const addToCart = async (req, res) => {
 // Update cart item quantity
 const updateCartItem = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const { id } = req.params;
     const { quantity } = req.body;
 
@@ -255,7 +202,6 @@ const updateCartItem = async (req, res) => {
       },
     });
 
-    // Update stock (increase or decrease)
     await prisma.product.update({
       where: { id: currentItem.productId },
       data: { stock: { decrement: quantityDiff } },
@@ -278,7 +224,7 @@ const updateCartItem = async (req, res) => {
 // Remove item from cart
 const removeFromCart = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const { id } = req.params;
 
     // Get the cart item
@@ -293,7 +239,6 @@ const removeFromCart = async (req, res) => {
       });
     }
 
-    // Restore stock
     await prisma.product.update({
       where: { id: cartItem.productId },
       data: { stock: { increment: cartItem.quantity } },
@@ -320,7 +265,7 @@ const removeFromCart = async (req, res) => {
 // Clear cart
 const clearCart = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     // Get all cart items to restore stock
     const cartItems = await prisma.cartItem.findMany({

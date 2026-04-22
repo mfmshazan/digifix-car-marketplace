@@ -5,23 +5,26 @@ const CART_STORAGE_KEY = 'digifix_cart';
 
 export interface CartItem {
   id: string;
+  productId: string;
+  itemType: 'PRODUCT' | 'CAR_PART';
   name: string;
   price: number;
   discountPrice?: number;
   quantity: number;
   image?: string;
-  carInfo: string;
+  carInfo?: string;
   categoryName?: string;
 }
 
 interface CartContextType {
   items: CartItem[];
-  addItem: (item: Omit<CartItem, 'quantity'>) => void;
-  removeItem: (id: string) => void;
-  updateQuantity: (id: string, quantity: number) => void;
-  clearCart: () => void;
+  addItem: (item: Omit<CartItem, 'id' | 'quantity'>) => Promise<void>;
+  removeItem: (id: string) => Promise<void>;
+  updateQuantity: (id: string, quantity: number) => Promise<void>;
+  clearCart: () => Promise<void>;
   getTotalPrice: () => number;
   getTotalItems: () => number;
+  refreshCart: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -31,66 +34,82 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load cart from storage on mount
-  useEffect(() => {
-    loadCart();
-  }, []);
-
-  // Save cart to storage whenever items change
-  useEffect(() => {
-    if (!isLoading) {
-      saveCart(items);
-    }
-  }, [items, isLoading]);
-
-  const loadCart = async () => {
+  const loadCart = useCallback(async () => {
     try {
       const stored = await AsyncStorage.getItem(CART_STORAGE_KEY);
       if (stored) {
         setItems(JSON.parse(stored));
+      } else {
+        setItems([]);
       }
     } catch (error) {
-      console.error('Failed to load cart:', error);
+      console.error('Failed to load local cart:', error);
+      setItems([]);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const saveCart = async (cartItems: CartItem[]) => {
+  const saveCart = useCallback(async (cartItems: CartItem[]) => {
     try {
       await AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
     } catch (error) {
-      console.error('Failed to save cart:', error);
+      console.error('Failed to save local cart:', error);
     }
-  };
-
-  const addItem = useCallback((item: Omit<CartItem, 'quantity'>) => {
-    setItems((currentItems) => {
-      const existingItem = currentItems.find((i) => i.id === item.id);
-      if (existingItem) {
-        return currentItems.map((i) =>
-          i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
-        );
-      }
-      return [...currentItems, { ...item, quantity: 1 }];
-    });
   }, []);
 
-  const removeItem = useCallback((id: string) => {
-    setItems((currentItems) => currentItems.filter((i) => i.id !== id));
-  }, []);
+  useEffect(() => {
+    loadCart();
+  }, [loadCart]);
 
-  const updateQuantity = useCallback((id: string, quantity: number) => {
-    setItems((currentItems) =>
-      currentItems
-        .map((i) => (i.id === id ? { ...i, quantity: Math.max(0, quantity) } : i))
-        .filter((i) => i.quantity > 0)
-    );
-  }, []);
+  const addItem = useCallback(
+    async (item: Omit<CartItem, 'id' | 'quantity'>) => {
+      const localId = `${item.itemType}:${item.productId}`;
 
-  const clearCart = useCallback(() => {
+      setItems((currentItems) => {
+        const existingItem = currentItems.find((i) => i.id === localId);
+        const nextItems = existingItem
+          ? currentItems.map((i) =>
+              i.id === localId ? { ...i, quantity: i.quantity + 1 } : i
+            )
+          : [...currentItems, { ...item, id: localId, quantity: 1 }];
+
+        saveCart(nextItems);
+        return nextItems;
+      });
+    },
+    [saveCart]
+  );
+
+  const removeItem = useCallback(
+    async (id: string) => {
+      setItems((currentItems) => {
+        const nextItems = currentItems.filter((i) => i.id !== id);
+        saveCart(nextItems);
+        return nextItems;
+      });
+    },
+    [saveCart]
+  );
+
+  const updateQuantity = useCallback(
+    async (id: string, quantity: number) => {
+      setItems((currentItems) => {
+        const nextItems = currentItems
+          .map((i) => (i.id === id ? { ...i, quantity: Math.max(0, quantity) } : i))
+          .filter((i) => i.quantity > 0);
+
+        saveCart(nextItems);
+        return nextItems;
+      });
+    },
+    [saveCart]
+  );
+
+  const clearCart = useCallback(async () => {
     setItems([]);
-  }, []);
+    await saveCart([]);
+  }, [saveCart]);
 
   const getTotalPrice = useCallback(() => {
     return items.reduce((sum, item) => {
@@ -113,6 +132,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         clearCart,
         getTotalPrice,
         getTotalItems,
+        refreshCart: loadCart,
         isLoading,
       }}
     >

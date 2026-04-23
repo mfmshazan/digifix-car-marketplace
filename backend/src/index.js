@@ -51,7 +51,8 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📱 Mobile access: http://10.61.174.60:${PORT}/api`);
+  console.log(`📱 Mobile access: http://10.241.244.60:${PORT}/api`);
+  console.log(`🛒 Cart API ready at: http://10.241.244.60:${PORT}/api/cart`);
 });
 
 export default app;

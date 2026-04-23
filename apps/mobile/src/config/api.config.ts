@@ -1,68 +1,64 @@
 /**
  * API Configuration for DIGIFIX Mobile App
- * 
+ *
  * This file handles API URL configuration for different environments:
  * - Android Emulator: Uses 10.0.2.2 (maps to host's localhost)
  * - iOS Simulator: Uses localhost
- * - Physical Device: Uses your computer's actual IP address
+ * - Physical Device: Uses EXPO_PUBLIC_API_HOST env variable (your computer's IP)
  * - Web: Uses localhost
+ *
+ * ⚠️  Set your computer's IP in apps/mobile/.env:
+ *       EXPO_PUBLIC_API_HOST=10.241.244.60
  */
 
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 // ============================================
-// CONFIGURATION - Update these values
+// CONFIGURATION - pulled from .env or auto-detected
 // ============================================
 
-// Your computer's local IP address (for physical device testing)
-// Run 'ipconfig' (Windows) or 'ifconfig' (Mac/Linux) to find this
-const LOCAL_IP = '10.241.244.60';
+// Helper to extract the local IP address if running in Expo Go
+const getExpoGoHostIp = (): string | null => {
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    // hostUri usually looks like "192.168.x.x:8081"
+    return hostUri.split(':')[0];
+  }
+  return null;
+};
 
-// Backend port (should match Docker/backend configuration)
+// 1. Prioritize .env variable (EXPO_PUBLIC_API_HOST)
+// 2. Fallback to dynamically detecting the Expo Go host machine IP
+// 3. Last resort fallback to a hardcoded local IP
+const FALLBACK_LOCAL_IP = '10.241.244.60';
+const LOCAL_IP: string =
+  (process.env.EXPO_PUBLIC_API_HOST as string) ||
+  getExpoGoHostIp() ||
+  FALLBACK_LOCAL_IP;
+
+// Backend port (must match the backend server)
 const API_PORT = 3000;
 
 // ============================================
 // AUTO-DETECT ENVIRONMENT
 // ============================================
 
-/**
- * Determines the correct API base URL based on the platform and environment
- */
 const getApiUrl = (): string => {
-  // Check if running in Expo Go on a device
-  const isExpoGo = Constants.appOwnership === 'expo';
-
-  // Check if running in development
   const isDevelopment = __DEV__;
 
   if (!isDevelopment) {
-    // Production URL - replace with your actual production API URL
+    // Production URL — replace with your real production API URL
     return 'https://api.your-production-domain.com/api';
   }
 
-  // Development environment
-  if (Platform.OS === 'android') {
-    // Android Emulator uses 10.0.2.2 to access host's localhost
-    // For physical Android device, use LOCAL_IP
-    if (isExpoGo) {
-      // Running on physical device with Expo Go
-      return `http://${LOCAL_IP}:${API_PORT}/api`;
-    }
-    // Running on Android Emulator
-    return `http://10.0.2.2:${API_PORT}/api`;
+  // Development environment — always use LOCAL_IP for physical devices
+  // (Expo Go on a real phone cannot reach 10.0.2.2 or localhost)
+  if (Platform.OS === 'android' || Platform.OS === 'ios') {
+    return `http://${LOCAL_IP}:${API_PORT}/api`;
   }
 
-  if (Platform.OS === 'ios') {
-    // iOS Simulator can use localhost directly
-    // For physical iOS device, use LOCAL_IP
-    if (isExpoGo) {
-      return `http://${LOCAL_IP}:${API_PORT}/api`;
-    }
-    return `http://localhost:${API_PORT}/api`;
-  }
-
-  // Web platform
+  // Web dev server
   return `http://localhost:${API_PORT}/api`;
 };
 
@@ -72,7 +68,7 @@ const getApiUrl = (): string => {
 
 export const API_URL = getApiUrl();
 
-// API Endpoints
+// Pre-built endpoint helpers
 export const API_ENDPOINTS = {
   // Auth
   AUTH: {
@@ -102,16 +98,19 @@ export const API_ENDPOINTS = {
     BASE: `${API_URL}/orders`,
     BY_ID: (id: string) => `${API_URL}/orders/${id}`,
   },
+  // Cart
+  CART: `${API_URL}/cart`,
   // Health check
-  HEALTH: `http://${Platform.OS === 'android' ? '10.0.2.2' : 'localhost'}:${API_PORT}/health`,
+  HEALTH: `http://${LOCAL_IP}:${API_PORT}/health`,
 };
 
-// Debug logging in development
+// Debug log in dev
 if (__DEV__) {
   console.log('🌐 API Configuration:', {
     platform: Platform.OS,
     apiUrl: API_URL,
-    isExpoGo: Constants.appOwnership === 'expo',
+    localIp: LOCAL_IP,
+    envHost: process.env.EXPO_PUBLIC_API_HOST,
   });
 }
 

@@ -126,8 +126,9 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
   const [loading, setLoading] = useState(false);
   const currentIndex = STATUS_FLOW.indexOf(order.status as OrderStatus);
   const nextStatuses = STATUS_FLOW.slice(currentIndex + 1);
+  const dropdownOptions = [...nextStatuses, 'CANCELLED' as OrderStatus];
 
-  if (order.status === 'DELIVERED' || order.status === 'CANCELLED' || nextStatuses.length === 0) {
+  if (order.status === 'DELIVERED' || order.status === 'CANCELLED') {
     const meta = STATUS_META[order.status as OrderStatus] ?? { label: order.status, color: 'text-gray-700', bg: 'bg-gray-100', icon: Clock };
     const Icon = meta.icon;
     return (
@@ -151,7 +152,7 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
       </button>
       {open && (
         <div className="absolute top-full mt-1 right-0 z-20 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[140px]">
-          {nextStatuses.map(s => {
+          {dropdownOptions.map(s => {
             const meta = STATUS_META[s];
             const Icon = meta.icon;
             return (

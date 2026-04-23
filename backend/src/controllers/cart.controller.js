@@ -174,7 +174,7 @@ const addToCart = async (req, res) => {
     });
   } catch (error) {
     console.error('Add to cart error:', error);
-    res.status(500).json({ success: false, message: 'Failed to add item to cart' });
+    res.status(500).json({ success: false, message: 'Failed to add item to cart', error: error.message });
   }
 };
 

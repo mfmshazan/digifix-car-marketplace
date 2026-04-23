@@ -20,7 +20,7 @@ export default function CartScreen() {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   
   const subtotal = getTotalPrice();
-  const deliveryFee = subtotal > 50 ? 0 : 5.99;
+  const deliveryFee = subtotal > 5000 ? 0 : 300;
   const total = subtotal + deliveryFee;
 
   const handleIncreaseQuantity = async (id: string, currentQty: number) => {
@@ -98,9 +98,15 @@ export default function CartScreen() {
         // Clear local cart after successful order
         await clearCart();
         
+        const orderNum = Array.isArray(orderResponse.data)
+          ? orderResponse.data[0]?.orderNumber
+          : orderResponse.data?.orderNumber || orderResponse.data?.orders?.[0]?.orderNumber;
+        const orderTotal = Array.isArray(orderResponse.data)
+          ? orderResponse.data[0]?.total
+          : orderResponse.data?.total || orderResponse.data?.orders?.[0]?.total;
         Alert.alert(
           "Order Placed! 🎉",
-          `Your order ${orderResponse.data.orderNumber} has been placed successfully!\n\nTotal: $${orderResponse.data.total.toFixed(2)}\n\nSellers have been notified.`,
+          `Your order ${orderNum} has been placed successfully!\n\nTotal: Rs. ${orderTotal?.toLocaleString()}\n\nThe seller has been notified.`,
           [
             { 
               text: "View Orders", 
@@ -142,11 +148,11 @@ export default function CartScreen() {
         <View style={styles.priceRow}>
           {item.discountPrice ? (
             <>
-              <Text style={styles.itemPrice}>${item.discountPrice.toFixed(2)}</Text>
-              <Text style={styles.originalPrice}>${item.price.toFixed(2)}</Text>
+              <Text style={styles.itemPrice}>Rs. {item.discountPrice.toLocaleString()}</Text>
+              <Text style={styles.originalPrice}>Rs. {item.price.toLocaleString()}</Text>
             </>
           ) : (
-            <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
+            <Text style={styles.itemPrice}>Rs. {item.price.toLocaleString()}</Text>
           )}
         </View>
       </View>
@@ -219,22 +225,22 @@ export default function CartScreen() {
           <View style={styles.summaryContainer}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
+              <Text style={styles.summaryValue}>Rs. {subtotal.toLocaleString()}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Delivery</Text>
               <Text style={[styles.summaryValue, deliveryFee === 0 && styles.freeDelivery]}>
-                {deliveryFee === 0 ? "FREE" : `$${deliveryFee.toFixed(2)}`}
+                {deliveryFee === 0 ? "FREE" : `Rs. ${deliveryFee.toLocaleString()}`}
               </Text>
             </View>
             {deliveryFee > 0 && (
               <Text style={styles.freeDeliveryHint}>
-                Add ${(50 - subtotal).toFixed(2)} more for free delivery
+                Add Rs. {(5000 - subtotal).toLocaleString()} more for free delivery
               </Text>
             )}
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
+              <Text style={styles.totalValue}>Rs. {total.toLocaleString()}</Text>
             </View>
             <TouchableOpacity 
               style={[styles.checkoutButton, isCheckingOut && styles.checkoutButtonDisabled]} 

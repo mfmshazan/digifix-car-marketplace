@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Search, ShoppingCart, Heart, User, Menu, X, ChevronDown, LogOut, LayoutDashboard } from 'lucide-react';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
+import { resolveMediaUrl } from '@/lib/api';
 
 export default function NavbarModern() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -14,7 +16,7 @@ export default function NavbarModern() {
   
   const cartItems = useCartStore((state) => state.items);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, isAuthenticated, logout, refreshProfile } = useAuthStore();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -24,6 +26,13 @@ export default function NavbarModern() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Automatically refresh profile on mount to sync with changes from mobile
+  useEffect(() => {
+    if (isAuthenticated) {
+      refreshProfile();
+    }
+  }, [isAuthenticated, refreshProfile]);
+
   const navLinks = [
     { href: '/', label: 'Home' },
     { href: '/parts', label: 'Catalog' },
@@ -32,7 +41,8 @@ export default function NavbarModern() {
     { href: '/contact', label: 'Contact' },
   ];
 
-  const dashboardLink = user?.role === 'SALESMAN' ? '/dashboard/salesman' : '/dashboard/admin';
+  const dashboardLink = user?.role === 'SALESMAN' ? '/dashboard/salesman' : '/dashboard/customer';
+  const avatarUrl = resolveMediaUrl(user?.avatar);
 
   const handleLogout = () => {
     logout();
@@ -130,20 +140,45 @@ export default function NavbarModern() {
                 <div className="relative">
                   <button
                     onClick={() => setShowUserMenu(!showUserMenu)}
-                    className="flex items-center gap-2 p-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                    className="flex items-center gap-2 p-1.5 rounded-full hover:bg-gray-100 transition-colors border border-transparent hover:border-gray-200"
                     aria-label="User menu"
                   >
-                    <User className="w-5 h-5 text-gray-600" />
+                    <div className="w-8 h-8 rounded-full bg-[#00002E]/5 flex items-center justify-center overflow-hidden">
+                      {avatarUrl ? (
+                        <Image 
+                          src={avatarUrl} 
+                          alt={user?.name || ''} 
+                          width={32} 
+                          height={32} 
+                          className="object-cover"
+                          unoptimized
+                        />
+                      ) : (
+                        <User className="w-5 h-5 text-gray-600" />
+                      )}
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showUserMenu ? 'rotate-180' : ''}`} />
                   </button>
 
                   {showUserMenu && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
-                        <div className="px-4 py-3 border-b border-gray-100">
-                          <p className="text-sm font-semibold text-gray-900">{user?.name}</p>
-                          <p className="text-xs text-gray-500">{user?.email}</p>
-                          <span className={`inline-block mt-1 px-2 py-0.5 text-[10px] font-semibold rounded-full ${
+                      <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 overflow-hidden">
+                        <div className="px-4 py-4 bg-gray-50/50 border-b border-gray-100">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center overflow-hidden border border-gray-100">
+                              {avatarUrl ? (
+                                <Image src={avatarUrl} alt={user?.name || ''} width={40} height={40} className="object-cover" unoptimized />
+                              ) : (
+                                <User className="w-6 h-6 text-gray-400" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-gray-900 truncate">{user?.name}</p>
+                              <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                            </div>
+                          </div>
+                          <span className={`inline-block px-2.5 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider ${
                             user?.role === 'SALESMAN' 
                               ? 'bg-blue-100 text-blue-700' 
                               : 'bg-green-100 text-green-700'
@@ -151,21 +186,33 @@ export default function NavbarModern() {
                             {user?.role}
                           </span>
                         </div>
-                        <Link
-                          href={dashboardLink}
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
-                          onClick={() => setShowUserMenu(false)}
-                        >
-                          <LayoutDashboard className="w-4 h-4" />
-                          Dashboard
-                        </Link>
-                        <button
-                          onClick={handleLogout}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
-                        >
-                          <LogOut className="w-4 h-4" />
-                          Sign out
-                        </button>
+                        <div className="py-1">
+                          <Link
+                            href={dashboardLink}
+                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                            onClick={() => setShowUserMenu(false)}
+                          >
+                            <LayoutDashboard className="w-4 h-4 text-gray-400" />
+                            Dashboard
+                          </Link>
+                          <Link
+                            href="/settings"
+                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                            onClick={() => setShowUserMenu(false)}
+                          >
+                            <User className="w-4 h-4 text-gray-400" />
+                            Settings
+                          </Link>
+                        </div>
+                        <div className="border-t border-gray-100 pt-1">
+                          <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <LogOut className="w-4 h-4" />
+                            Sign out
+                          </button>
+                        </div>
                       </div>
                     </>
                   )}
@@ -173,9 +220,11 @@ export default function NavbarModern() {
               ) : (
                 <Link
                   href="/login"
-                  className="flex items-center gap-2 p-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                  className="flex items-center gap-2 p-2.5 rounded-full hover:bg-gray-100 transition-colors group"
                 >
-                  <User className="w-5 h-5 text-gray-600" />
+                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-[#00002E] transition-colors">
+                    <User className="w-5 h-5 text-gray-600 group-hover:text-white" />
+                  </div>
                 </Link>
               )}
 
@@ -197,17 +246,17 @@ export default function NavbarModern() {
 
       {/* Mobile Menu */}
       {isMenuOpen && (
-        <div className="lg:hidden border-t border-gray-100 bg-white">
-          <div className="px-4 py-4 space-y-2">
+        <div className="lg:hidden border-t border-gray-100 bg-white shadow-xl animate-in slide-in-from-top duration-300">
+          <div className="px-4 py-6 space-y-2">
             {/* Mobile Search */}
-            <form onSubmit={handleSearch} className="mb-4">
+            <form onSubmit={handleSearch} className="mb-6">
               <div className="relative">
                 <input
                   type="text"
                   placeholder="Search parts..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-4 pr-10 py-3 bg-gray-100 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+                  className="w-full pl-4 pr-10 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
                 />
                 <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" aria-label="Search">
                   <Search className="w-5 h-5" />
@@ -215,25 +264,29 @@ export default function NavbarModern() {
               </div>
             </form>
 
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="block px-4 py-3 text-gray-600 hover:text-[#00002E] hover:bg-gray-50 rounded-xl font-medium transition-colors"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                {link.label}
-              </Link>
-            ))}
+            <div className="grid grid-cols-1 gap-1">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="block px-4 py-3.5 text-gray-700 hover:text-[#00002E] hover:bg-gray-50 rounded-xl font-semibold transition-colors"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
 
             {!isAuthenticated && (
-              <Link
-                href="/login"
-                className="block px-4 py-3 mt-4 text-center bg-[#00002E] text-white rounded-xl font-semibold hover:bg-[#000050] transition-colors"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Sign In / Register
-              </Link>
+              <div className="pt-4 border-t border-gray-100">
+                <Link
+                  href="/login"
+                  className="block w-full px-4 py-4 text-center bg-[#00002E] text-white rounded-xl font-bold shadow-lg shadow-[#00002E]/20 hover:bg-[#000050] transition-colors"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Sign In / Register
+                </Link>
+              </div>
             )}
           </div>
         </div>

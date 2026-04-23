@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import { ClerkAuthProvider } from "@/components/clerk-provider";
+import NavbarModern from "@/components/layout/NavbarModern";
+import FooterModern from "@/components/layout/FooterModern";
 import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "DIGIFIX Car Marketplace - Premium Auto Parts",
@@ -18,10 +17,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} antialiased`}>
-        <ClerkAuthProvider>{children}</ClerkAuthProvider>
+      <body className="antialiased font-sans bg-gray-50 text-gray-900">
+        <ClerkAuthProvider>
+          <div className="flex flex-col min-h-screen">
+            <NavbarModern />
+            <main className="flex-grow">
+              {children}
+            </main>
+            <FooterModern />
+          </div>
+        </ClerkAuthProvider>
       </body>
     </html>
   );
 }
-

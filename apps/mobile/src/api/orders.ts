@@ -1,4 +1,4 @@
-import { API_URL } from '../config/api.config';
+import { getApiUrl } from '../config/api.config';
 import { getToken } from './storage';
 
 export interface OrderItem {
@@ -72,8 +72,8 @@ export const getSalesmanSalesSummary = async (date?: string): Promise<SalesSumma
     }
 
     const url = date 
-      ? `${API_URL}/orders/salesman/summary?date=${date}`
-      : `${API_URL}/orders/salesman/summary`;
+      ? `${getApiUrl()}/orders/salesman/summary?date=${date}`
+      : `${getApiUrl()}/orders/salesman/summary`;
 
     console.log('Fetching sales summary from:', url);
 
@@ -127,7 +127,7 @@ export const getSalesmanOrders = async (
       throw new Error('Not authenticated');
     }
 
-    let url = `${API_URL}/orders/salesman/orders?page=${page}&limit=${limit}`;
+    let url = `${getApiUrl()}/orders/salesman/orders?page=${page}&limit=${limit}`;
     if (status) {
       url += `&status=${status}`;
     }
@@ -162,7 +162,7 @@ export const updateOrderStatus = async (orderId: string, status: string) => {
       throw new Error('Not authenticated');
     }
 
-    const response = await fetch(`${API_URL}/orders/${orderId}/status`, {
+    const response = await fetch(`${getApiUrl()}/orders/${orderId}/status`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -197,7 +197,7 @@ export const getCustomerOrders = async (
       throw new Error('Not authenticated');
     }
 
-    let url = `${API_URL}/orders?page=${page}&limit=${limit}`;
+    let url = `${getApiUrl()}/orders?page=${page}&limit=${limit}`;
     if (status) {
       url += `&status=${status}`;
     }
@@ -254,7 +254,7 @@ export const createOrder = async (
       orderData.notes = notes;
     }
 
-    const response = await fetch(`${API_URL}/orders`, {
+    const response = await fetch(`${getApiUrl()}/orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

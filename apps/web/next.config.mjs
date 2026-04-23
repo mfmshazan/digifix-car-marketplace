@@ -1,11 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // Canonical account settings URL is /settings. Some Docker/volume setups failed to
+  // register the deep nested route; keep a redirect so old links still work.
   async redirects() {
     return [
       {
-        source: '/dashboard/customer',
-        destination: '/dashboard/admin',
+        source: '/dashboard/customer/settings',
+        destination: '/settings',
         permanent: false,
       },
     ];

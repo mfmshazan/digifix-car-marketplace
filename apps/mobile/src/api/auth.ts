@@ -1,9 +1,10 @@
-import { API_URL } from '../config/api.config';
+import { getApiUrl } from '../config/api.config';
 
 export interface RegisterData {
   email: string;
   password: string;
   name: string;
+  phone: string;
   role?: 'CUSTOMER' | 'SALESMAN';
 }
 
@@ -20,6 +21,7 @@ export interface AuthResponse {
       id: string;
       email: string;
       name: string;
+      phone?: string;
       role: string;
       avatar?: string;
       store?: any;
@@ -31,7 +33,7 @@ export interface AuthResponse {
 // Register new user
 export const registerUser = async (data: RegisterData): Promise<AuthResponse> => {
   try {
-    const response = await fetch(`${API_URL}/auth/register`, {
+    const response = await fetch(`${getApiUrl()}/auth/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -55,7 +57,7 @@ export const registerUser = async (data: RegisterData): Promise<AuthResponse> =>
 // Login user
 export const loginUser = async (data: LoginData): Promise<AuthResponse> => {
   try {
-    const response = await fetch(`${API_URL}/auth/login`, {
+    const response = await fetch(`${getApiUrl()}/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -79,7 +81,7 @@ export const loginUser = async (data: LoginData): Promise<AuthResponse> => {
 // Get user profile (requires token)
 export const getUserProfile = async (token: string) => {
   try {
-    const response = await fetch(`${API_URL}/auth/profile`, {
+    const response = await fetch(`${getApiUrl()}/auth/profile`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -96,6 +98,34 @@ export const getUserProfile = async (token: string) => {
     return result;
   } catch (error) {
     console.error('Get profile error:', error);
+    throw error;
+  }
+};
+
+// Update user profile (requires token)
+export const updateUserProfile = async (
+  token: string,
+  data: { name?: string; phone?: string }
+) => {
+  try {
+    const response = await fetch(`${getApiUrl()}/auth/profile`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to update profile');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Update profile error:', error);
     throw error;
   }
 };

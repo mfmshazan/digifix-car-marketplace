@@ -77,17 +77,22 @@ export default function CategoriesScreen() {
     }
   };
 
-  const handleAddToCart = (part: any) => {
-    addItem({
-      id: part.id,
-      name: part.name,
-      price: part.price,
-      discountPrice: part.discountPrice,
-      image: part.images?.[0],
-      carInfo: `${part.car.make} ${part.car.model} (${part.car.year})`,
-      categoryName: selectedCategory?.name,
-    });
-    Alert.alert("Added to Cart", `${part.name} has been added to your cart.`);
+  const handleAddToCart = async (part: any) => {
+    try {
+      await addItem({
+        productId: part.id,
+        itemType: 'CAR_PART',
+        name: part.name,
+        price: part.price,
+        discountPrice: part.discountPrice,
+        image: part.images?.[0],
+        carInfo: `${part.car.make} ${part.car.model} (${part.car.year})`,
+        categoryName: selectedCategory?.name,
+      });
+      Alert.alert("Added to Cart", `${part.name} has been added to your cart.`);
+    } catch (error: any) {
+      Alert.alert("Add to Cart Failed", error?.message || "Please try again.");
+    }
   };
 
   const getCategoryIcon = (name: string): keyof typeof Ionicons.glyphMap => {

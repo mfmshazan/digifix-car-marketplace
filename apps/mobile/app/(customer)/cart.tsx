@@ -23,22 +23,36 @@ export default function CartScreen() {
   const deliveryFee = subtotal > 50 ? 0 : 5.99;
   const total = subtotal + deliveryFee;
 
-  const handleIncreaseQuantity = (id: string, currentQty: number) => {
-    updateQuantity(id, currentQty + 1);
+  const handleIncreaseQuantity = async (id: string, currentQty: number) => {
+    try {
+      await updateQuantity(id, currentQty + 1);
+    } catch (error: any) {
+      Alert.alert("Update Failed", error?.message || "Please try again.");
+    }
   };
 
-  const handleDecreaseQuantity = (id: string, currentQty: number) => {
+  const handleDecreaseQuantity = async (id: string, currentQty: number) => {
     if (currentQty <= 1) {
       Alert.alert(
         "Remove Item",
         "Are you sure you want to remove this item from cart?",
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Remove", style: "destructive", onPress: () => removeItem(id) },
+          { text: "Remove", style: "destructive", onPress: async () => {
+            try {
+              await removeItem(id);
+            } catch (error: any) {
+              Alert.alert("Remove Failed", error?.message || "Please try again.");
+            }
+          } },
         ]
       );
     } else {
-      updateQuantity(id, currentQty - 1);
+      try {
+        await updateQuantity(id, currentQty - 1);
+      } catch (error: any) {
+        Alert.alert("Update Failed", error?.message || "Please try again.");
+      }
     }
   };
 
@@ -48,7 +62,13 @@ export default function CartScreen() {
       "Are you sure you want to remove this item from cart?",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Remove", style: "destructive", onPress: () => removeItem(id) },
+        { text: "Remove", style: "destructive", onPress: async () => {
+          try {
+            await removeItem(id);
+          } catch (error: any) {
+            Alert.alert("Remove Failed", error?.message || "Please try again.");
+          }
+        } },
       ]
     );
   };
@@ -64,7 +84,7 @@ export default function CartScreen() {
     try {
       // Prepare order items
       const orderItems = items.map(item => ({
-        productId: item.id,
+        productId: item.productId,
         quantity: item.quantity
       }));
 
@@ -76,7 +96,7 @@ export default function CartScreen() {
 
       if (orderResponse.success) {
         // Clear local cart after successful order
-        clearCart();
+        await clearCart();
         
         Alert.alert(
           "Order Placed! 🎉",
@@ -176,7 +196,13 @@ export default function CartScreen() {
                 "Are you sure you want to clear your cart?",
                 [
                   { text: "Cancel", style: "cancel" },
-                  { text: "Clear", style: "destructive", onPress: clearCart },
+                  { text: "Clear", style: "destructive", onPress: async () => {
+                    try {
+                      await clearCart();
+                    } catch (error: any) {
+                      Alert.alert("Clear Cart Failed", error?.message || "Please try again.");
+                    }
+                  } },
                 ]
               );
             }}>

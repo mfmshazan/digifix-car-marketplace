@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { resolveMediaUrl, ordersApi } from '@/lib/api';
+import { connectSocket, disconnectSocket } from '@/lib/socket';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -127,8 +128,9 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
   const [loading, setLoading] = useState(false);
   const currentIndex = STATUS_FLOW.indexOf(order.status as OrderStatus);
   const nextStatuses = STATUS_FLOW.slice(currentIndex + 1);
+  const dropdownOptions = [...nextStatuses, 'CANCELLED' as OrderStatus];
 
-  if (order.status === 'DELIVERED' || order.status === 'CANCELLED' || nextStatuses.length === 0) {
+  if (order.status === 'DELIVERED' || order.status === 'CANCELLED') {
     const meta = STATUS_META[order.status as OrderStatus] ?? { label: order.status, color: 'text-gray-700', bg: 'bg-gray-100', icon: Clock };
     const Icon = meta.icon;
     return (
@@ -144,7 +146,7 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
       <button
         onClick={() => setOpen(v => !v)}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${STATUS_META[order.status as OrderStatus]?.bg || 'bg-gray-100'} ${STATUS_META[order.status as OrderStatus]?.color || 'text-gray-700'} hover:opacity-80 transition-colors`}
       >
         {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Clock className="w-3.5 h-3.5" />}
         {STATUS_META[order.status as OrderStatus]?.label ?? order.status}
@@ -152,7 +154,7 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
       </button>
       {open && (
         <div className="absolute top-full mt-1 right-0 z-20 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[140px]">
-          {nextStatuses.map(s => {
+          {dropdownOptions.map(s => {
             const meta = STATUS_META[s];
             const Icon = meta.icon;
             return (
@@ -181,6 +183,7 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
 
 function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void> }) {
   const [expanded, setExpanded] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
@@ -223,7 +226,9 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
               <div key={item.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
                 <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
                   {item.product?.images?.[0] ? (
-                    <Image src={item.product.images[0]} alt={item.product?.name ?? ''} width={40} height={40} className="object-cover rounded-lg" />
+                    <button onClick={() => setPreviewImage(item.product.images[0])} className="w-full h-full p-0 border-0 bg-transparent rounded-lg hover:opacity-80 transition-opacity">
+                      <Image src={item.product.images[0]} alt={item.product?.name ?? ''} width={40} height={40} className="object-cover w-full h-full rounded-lg" />
+                    </button>
                   ) : (
                     <Package className="w-5 h-5 text-gray-400" />
                   )}
@@ -252,17 +257,33 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
           </div>
         )}
       </div>
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setPreviewImage(null)}>
+          <div className="relative w-full max-w-2xl max-h-[90vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            <Image src={previewImage} alt="Product Preview" width={800} height={800} className="object-contain rounded-xl max-h-[85vh]" />
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute -top-4 -right-4 md:-top-10 md:-right-10 p-2 bg-white/20 hover:bg-white/40 text-white rounded-full transition-colors backdrop-blur-md"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Current Orders Tab ──────────────────────────────────────────────────────
 
-function CurrentOrdersTab() {
+function CurrentOrdersTab({ userId }: { userId: string }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [filterStatus, setFilterStatus] = useState<string>('');
+  const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -285,15 +306,39 @@ function CurrentOrdersTab() {
     loadOrders();
   }, [loadOrders]);
 
-  // Auto-refresh every 30 seconds
+  // ── Real-time socket listeners ──────────────────────────────────────────────
   useEffect(() => {
-    const timer = setInterval(loadOrders, 30000);
-    return () => clearInterval(timer);
-  }, [loadOrders]);
+    if (!userId) return;
+    const socket = connectSocket(userId);
+
+    // A customer placed a new order → pull fresh list and flash an alert
+    const handleNewOrder = (payload: { orderNumber: string }) => {
+      setNewOrderAlert(`🆕 New order received: ${payload.orderNumber}`);
+      loadOrders();
+      setTimeout(() => setNewOrderAlert(null), 6000);
+    };
+
+    // Salesman updated status elsewhere (e.g., another tab) → update in-place
+    const handleStatusUpdate = (payload: { orderId: string; status: OrderStatus }) => {
+      setOrders(prev =>
+        prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o)
+      );
+      setLastRefresh(new Date());
+    };
+
+    socket.on('newOrder', handleNewOrder);
+    socket.on('orderStatusUpdated', handleStatusUpdate);
+
+    return () => {
+      socket.off('newOrder', handleNewOrder);
+      socket.off('orderStatusUpdated', handleStatusUpdate);
+    };
+  }, [userId, loadOrders]);
 
   const handleUpdateStatus = async (id: string, status: OrderStatus) => {
     await ordersApi.updateOrderStatus(id, status);
-    await loadOrders();
+    // Optimistically update UI immediately — socket will confirm shortly too
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
   };
 
   const activeOrders = orders.filter(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED');
@@ -310,6 +355,13 @@ function CurrentOrdersTab() {
 
   return (
     <div>
+      {/* New Order Alert Banner */}
+      {newOrderAlert && (
+        <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2 text-green-800 text-sm font-medium animate-pulse">
+          <span className="text-lg">🔔</span>
+          {newOrderAlert}
+        </div>
+      )}
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
@@ -549,7 +601,18 @@ export default function SalesmanDashboard() {
     }
   }, [isAuthenticated, refreshProfile]);
 
+  // ── Connect socket when user is available, disconnect on logout ──────────────
+  useEffect(() => {
+    if (user?.id) {
+      connectSocket(user.id);
+    }
+    return () => {
+      disconnectSocket();
+    };
+  }, [user?.id]);
+
   const handleLogout = () => {
+    disconnectSocket();
     logout();
     router.push('/login');
   };
@@ -684,7 +747,7 @@ export default function SalesmanDashboard() {
           </p>
         </div>
 
-        {activeTab === 'orders' && <CurrentOrdersTab />}
+        {activeTab === 'orders' && <CurrentOrdersTab userId={user.id} />}
         {activeTab === 'history' && <SalesHistoryTab />}
       </main>
 

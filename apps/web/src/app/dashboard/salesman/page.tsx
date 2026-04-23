@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { ordersApi } from '@/lib/api';
+import { connectSocket, disconnectSocket } from '@/lib/socket';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -276,11 +277,12 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
 
 // ─── Current Orders Tab ──────────────────────────────────────────────────────
 
-function CurrentOrdersTab() {
+function CurrentOrdersTab({ userId }: { userId: string }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [filterStatus, setFilterStatus] = useState<string>('');
+  const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -303,15 +305,39 @@ function CurrentOrdersTab() {
     loadOrders();
   }, [loadOrders]);
 
-  // Auto-refresh every 30 seconds
+  // ── Real-time socket listeners ──────────────────────────────────────────────
   useEffect(() => {
-    const timer = setInterval(loadOrders, 30000);
-    return () => clearInterval(timer);
-  }, [loadOrders]);
+    if (!userId) return;
+    const socket = connectSocket(userId);
+
+    // A customer placed a new order → pull fresh list and flash an alert
+    const handleNewOrder = (payload: { orderNumber: string }) => {
+      setNewOrderAlert(`🆕 New order received: ${payload.orderNumber}`);
+      loadOrders();
+      setTimeout(() => setNewOrderAlert(null), 6000);
+    };
+
+    // Salesman updated status elsewhere (e.g., another tab) → update in-place
+    const handleStatusUpdate = (payload: { orderId: string; status: OrderStatus }) => {
+      setOrders(prev =>
+        prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o)
+      );
+      setLastRefresh(new Date());
+    };
+
+    socket.on('newOrder', handleNewOrder);
+    socket.on('orderStatusUpdated', handleStatusUpdate);
+
+    return () => {
+      socket.off('newOrder', handleNewOrder);
+      socket.off('orderStatusUpdated', handleStatusUpdate);
+    };
+  }, [userId, loadOrders]);
 
   const handleUpdateStatus = async (id: string, status: OrderStatus) => {
     await ordersApi.updateOrderStatus(id, status);
-    await loadOrders();
+    // Optimistically update UI immediately — socket will confirm shortly too
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
   };
 
   const activeOrders = orders.filter(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED');
@@ -328,6 +354,13 @@ function CurrentOrdersTab() {
 
   return (
     <div>
+      {/* New Order Alert Banner */}
+      {newOrderAlert && (
+        <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2 text-green-800 text-sm font-medium animate-pulse">
+          <span className="text-lg">🔔</span>
+          {newOrderAlert}
+        </div>
+      )}
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
@@ -560,7 +593,18 @@ export default function SalesmanDashboard() {
     }
   }, [isAuthenticated, user, router]);
 
+  // ── Connect socket when user is available, disconnect on logout ──────────────
+  useEffect(() => {
+    if (user?.id) {
+      connectSocket(user.id);
+    }
+    return () => {
+      disconnectSocket();
+    };
+  }, [user?.id]);
+
   const handleLogout = () => {
+    disconnectSocket();
     logout();
     router.push('/login');
   };
@@ -674,7 +718,7 @@ export default function SalesmanDashboard() {
           </p>
         </div>
 
-        {activeTab === 'orders'  && <CurrentOrdersTab />}
+        {activeTab === 'orders'  && <CurrentOrdersTab userId={user.id} />}
         {activeTab === 'history' && <SalesHistoryTab />}
       </main>
 

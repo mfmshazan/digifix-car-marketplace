@@ -441,13 +441,24 @@ export const updateOrderStatus = async (req, res) => {
       }
     });
 
-    // Notify customer
-    // await sendNotificationToUser(
-    //   updatedOrder.customerId,
-    //   'Order Status Updated',
-    //   `Your order ${updatedOrder.orderNumber} status is now ${status}`,
-    //   { screen: '/(customer)/orders', orderId: id }
-    // );
+    // 🔌 Emit real-time event to the customer so their mobile app updates instantly
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${updatedOrder.customerId}`).emit('orderStatusUpdated', {
+        orderId: id,
+        orderNumber: updatedOrder.orderNumber,
+        status,
+        updatedAt: updatedOrder.updatedAt,
+      });
+      // Also broadcast to salesmen watching this order (e.g., salesman dashboard)
+      io.to(`user:${salesmanId}`).emit('orderStatusUpdated', {
+        orderId: id,
+        orderNumber: updatedOrder.orderNumber,
+        status,
+        updatedAt: updatedOrder.updatedAt,
+      });
+      console.log(`📡 Emitted orderStatusUpdated for order ${id} → customer ${updatedOrder.customerId}`);
+    }
 
     res.json({
       success: true,
@@ -818,15 +829,24 @@ export const createOrder = async (req, res) => {
       }))
     };
 
-    // Notify salesman about the new order(s)
-    // for (const order of createdOrders) {
-    //   await sendNotificationToUser(
-    //     order.salesmanId,
-    //     'New Order Received',
-    //     `You have a new order: ${order.orderNumber} for Rs ${order.total}`,
-    //     { screen: '/(salesman)/orders', orderId: order.id }
-    //   );
-    // }
+    // 🔌 Emit real-time event to each salesman so their dashboard shows the new order instantly
+    const io = req.app.get('io');
+    if (io) {
+      for (const order of createdOrders) {
+        const orderPayload = {
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          customerId,
+          salesmanId: order.salesmanId,
+          total: order.total,
+          status: order.status,
+          createdAt: order.createdAt,
+        };
+        // Notify the specific salesman's room
+        io.to(`user:${order.salesmanId}`).emit('newOrder', orderPayload);
+        console.log(`📡 Emitted newOrder ${order.orderNumber} → salesman ${order.salesmanId}`);
+      }
+    }
 
     res.status(201).json({
       success: true,

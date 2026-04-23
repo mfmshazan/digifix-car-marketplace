@@ -13,6 +13,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { getCustomerOrders, Order } from "../../src/api/orders";
+import { connectSocket } from "../../src/lib/socket";
+import { getToken } from "../../src/api/storage";
 
 // Status color mapping
 const getStatusColor = (status: string) => {
@@ -92,6 +94,56 @@ export default function OrdersScreen() {
       fetchOrders();
     }, [])
   );
+
+  // ── Real-time socket: listen for order status changes ───────────────────────
+  useEffect(() => {
+    let connected = false;
+
+    const setup = async () => {
+      try {
+        // Decode the user ID from the JWT stored on device
+        const token = await getToken();
+        if (!token) return;
+
+        // Decode payload (middle section of JWT) to extract userId
+        const payloadBase64 = token.split('.')[1];
+        const decoded = JSON.parse(atob(payloadBase64));
+        const userId: string = decoded?.userId || decoded?.id || decoded?.sub;
+        if (!userId) return;
+
+        const socket = connectSocket(userId);
+        connected = true;
+
+        const handleStatusUpdate = (payload: {
+          orderId: string;
+          orderNumber: string;
+          status: string;
+        }) => {
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === payload.orderId ? { ...o, status: payload.status } : o
+            )
+          );
+        };
+
+        socket.on('orderStatusUpdated', handleStatusUpdate);
+
+        // Store cleanup reference
+        return () => {
+          socket.off('orderStatusUpdated', handleStatusUpdate);
+        };
+      } catch (err) {
+        console.warn('Socket setup failed:', err);
+      }
+    };
+
+    let cleanup: (() => void) | undefined;
+    setup().then((fn) => { cleanup = fn; });
+
+    return () => {
+      cleanup?.();
+    };
+  }, []);
 
   const onRefresh = () => {
     fetchOrders(true);

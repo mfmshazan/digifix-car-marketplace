@@ -31,10 +31,12 @@ export default function LoginPage() {
         login(user, token);
 
         // Redirect based on user role
-        if (user.role === 'SALESMAN') {
+        if (user.role === 'ADMIN') {
+          router.push('/dashboard/admin');
+        } else if (user.role === 'SALESMAN') {
           router.push('/dashboard/salesman');
         } else {
-          router.push('/dashboard/admin');
+          router.push('/');
         }
       } else {
         setError(response.message || 'Login failed');
@@ -86,6 +88,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your email"
+                  autoComplete="off"
                   className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
                   required
                 />
@@ -101,6 +104,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
+                  autoComplete="off"
                   className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
                   required
                 />

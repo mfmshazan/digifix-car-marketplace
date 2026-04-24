@@ -97,7 +97,7 @@ export default function AddCarPartScreen() {
       for (const uri of images) {
         const response = await fetch(uri);
         const blob = await response.blob();
-        const fileName = `carpart_${Date.now()}_${Math.floor(Math.random()*10000)}.jpg`;
+        const fileName = `carpart_${Date.now()}_${Math.floor(Math.random() * 10000)}.jpg`;
         const { data, error } = await supabase.storage.from("carpart-images").upload(fileName, blob, {
           cacheControl: "3600",
           upsert: false,

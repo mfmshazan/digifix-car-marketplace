@@ -111,12 +111,17 @@ const googleSignIn = async (req, res) => {
         });
 
         if (user) {
+            // Preserve local uploaded avatar (starts with /uploads/)
+            // Only fill from Clerk if there's absolutely no avatar stored
+            const keepExistingAvatar = user.avatar && user.avatar.startsWith('/uploads/');
+            const avatarToSet = keepExistingAvatar ? user.avatar : (user.avatar || avatar);
+
             if (!user.googleId || !user.avatar) {
                 user = await prisma.user.update({
                     where: { id: user.id },
                     data: {
                         googleId: user.googleId || googleId,
-                        avatar: user.avatar || avatar,
+                        avatar: avatarToSet,
                         authProvider: 'GOOGLE',
                         name: user.name || name,
                     },
@@ -162,6 +167,7 @@ const googleSignIn = async (req, res) => {
                     id: user.id,
                     email: user.email,
                     name: user.name,
+                    phone: user.phone,
                     role: user.role,
                     avatar: user.avatar,
                     store: user.store,

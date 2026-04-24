@@ -1,7 +1,12 @@
 # Docker Compose for DigiFix Car Marketplace
 # Usage:
-#   Development: docker-compose up -d
-#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   Development: docker compose up -d
+#   Production:  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# If backend build fails with "parent snapshot ... does not exist" (BuildKit cache bug):
+#   docker builder prune -f
+#   docker compose build --no-cache backend
+# Or once: DOCKER_BUILDKIT=0 docker compose up --build
 
 services:
   # ================================
@@ -46,6 +51,8 @@ services:
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
     ports:
       - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - ./backend/public/uploads:/app/public/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,6 +75,8 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-3000}/api
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
     ports:
       - "${WEB_PORT:-3001}:3001"
     depends_on:

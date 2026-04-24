@@ -344,6 +344,27 @@ async function seed() {
   });
   console.log(`  ✅ Customer: ${customer.email}`);
 
+  // ADMIN user
+  const adminPassword = await bcrypt.hash('admin@123', 10);
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@digifix.com' },
+    update: {
+      password: adminPassword,
+      name: 'Admin',
+      role: 'ADMIN',
+      isVerified: true,
+    },
+    create: {
+      email: 'admin@digifix.com',
+      password: adminPassword,
+      name: 'Admin',
+      phone: '+94770000000',
+      role: 'ADMIN',
+      isVerified: true,
+    },
+  });
+  console.log(`  ✅ Admin: ${admin.email}`);
+
   // Create cars
   console.log('\nCreating cars...');
   const createdCars = [];
@@ -550,6 +571,10 @@ async function seed() {
 
   console.log('\n🔑 LOGIN CREDENTIALS:');
   console.log('─'.repeat(50));
+  console.log('');
+  console.log('🛡️  ADMIN:');
+  console.log('   Email:    admin@digifix.com');
+  console.log('   Password: admin@123');
   console.log('');
   console.log('🏪 SHOP A SALESMAN:');
   console.log('   Email:    shopa@gmail.com');

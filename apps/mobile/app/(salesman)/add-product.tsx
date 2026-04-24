@@ -67,7 +67,7 @@ export default function AddProductScreen() {
       for (const uri of images) {
         const response = await fetch(uri);
         const blob = await response.blob();
-        const fileName = `product_${Date.now()}_${Math.floor(Math.random()*10000)}.jpg`;
+        const fileName = `product_${Date.now()}_${Math.floor(Math.random() * 10000)}.jpg`;
         const { data, error } = await supabase.storage.from("product-images").upload(fileName, blob, {
           cacheControl: "3600",
           upsert: false,
@@ -195,7 +195,7 @@ export default function AddProductScreen() {
                     style={[
                       styles.categoryOptionText,
                       selectedCategory === category &&
-                        styles.categoryOptionTextSelected,
+                      styles.categoryOptionTextSelected,
                     ]}
                   >
                     {category}

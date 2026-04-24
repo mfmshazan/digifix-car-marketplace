@@ -45,38 +45,18 @@ npm run dev
 
 Server will run on: `http://localhost:3000`
 
-### Step 4: Update API URL (Important!)
+### Step 4: API URL (Now Automatic! 🚀)
 
-**For Expo Go on Physical Device:**
+The app is now configured to **automatically detect** the correct backend URL:
 
-1. Find your computer's IP address:
-   ```bash
-   ipconfig
-   ```
-   Look for "IPv4 Address" (e.g., 192.168.1.105)
+- **Web (Chrome):** Automatically uses `localhost:3000`
+- **Expo Go (Physical Device):** Automatically detects your computer's IP address using `hostUri`. 
+- **Android Emulator:** Automatically uses `10.0.2.2:3000`
+- **iOS Simulator:** Automatically uses `localhost:3000`
 
-2. Open `apps/mobile/src/api/auth.ts`
-
-3. Change line 2 from:
-   ```typescript
-   const API_URL = 'http://localhost:3000/api';
-   ```
-   
-   To:
-   ```typescript
-   const API_URL = 'http://YOUR_IP_ADDRESS:3000/api';
-   // Example: const API_URL = 'http://192.168.1.105:3000/api';
-   ```
-
-**For Android Emulator:**
-```typescript
-const API_URL = 'http://10.0.2.2:3000/api';
-```
-
-**For iOS Simulator or Web:**
-```typescript
-const API_URL = 'http://localhost:3000/api';
-```
+> [!TIP]
+> You no longer need to manually edit `api.config.ts` every time your IP changes! 
+> Just ensure your phone and computer are on the **same Wi-Fi network**.
 
 ### Step 5: Start Mobile App
 

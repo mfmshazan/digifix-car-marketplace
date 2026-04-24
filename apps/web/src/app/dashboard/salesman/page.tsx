@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
@@ -16,6 +16,7 @@ import {
   Store,
   X,
   Camera,
+  Phone,
   Clock,
   CheckCircle2,
   Truck,
@@ -30,7 +31,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
-import { ordersApi } from '@/lib/api';
+import { resolveMediaUrl, ordersApi } from '@/lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,12 +87,12 @@ interface SalesSummary {
 const STATUS_FLOW: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
 
 const STATUS_META: Record<OrderStatus, { label: string; color: string; bg: string; icon: React.ElementType }> = {
-  PENDING:    { label: 'Pending',    color: 'text-amber-700',  bg: 'bg-amber-100',   icon: Clock },
-  CONFIRMED:  { label: 'Confirmed',  color: 'text-sky-700',    bg: 'bg-sky-100',     icon: CheckCircle2 },
-  PROCESSING: { label: 'Processing', color: 'text-blue-700',   bg: 'bg-blue-100',    icon: RefreshCw },
-  SHIPPED:    { label: 'Shipped',    color: 'text-purple-700', bg: 'bg-purple-100',  icon: Truck },
-  DELIVERED:  { label: 'Delivered',  color: 'text-green-700',  bg: 'bg-green-100',   icon: CheckCircle2 },
-  CANCELLED:  { label: 'Cancelled',  color: 'text-red-700',    bg: 'bg-red-100',     icon: AlertCircle },
+  PENDING: { label: 'Pending', color: 'text-amber-700', bg: 'bg-amber-100', icon: Clock },
+  CONFIRMED: { label: 'Confirmed', color: 'text-sky-700', bg: 'bg-sky-100', icon: CheckCircle2 },
+  PROCESSING: { label: 'Processing', color: 'text-blue-700', bg: 'bg-blue-100', icon: RefreshCw },
+  SHIPPED: { label: 'Shipped', color: 'text-purple-700', bg: 'bg-purple-100', icon: Truck },
+  DELIVERED: { label: 'Delivered', color: 'text-green-700', bg: 'bg-green-100', icon: CheckCircle2 },
+  CANCELLED: { label: 'Cancelled', color: 'text-red-700', bg: 'bg-red-100', icon: AlertCircle },
 };
 
 function StatusBadge({ status }: { status: OrderStatus }) {
@@ -316,11 +317,10 @@ function CurrentOrdersTab() {
             <button
               key={opt.value}
               onClick={() => setFilterStatus(opt.value)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                filterStatus === opt.value
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${filterStatus === opt.value
                   ? 'bg-[#00002E] text-white'
                   : 'bg-white border border-gray-200 text-gray-600 hover:border-[#00002E]/40'
-              }`}
+                }`}
             >
               {opt.label}
             </button>
@@ -453,12 +453,11 @@ function SalesHistoryTab() {
           <div className="divide-y divide-gray-50">
             {summary!.topSellingProducts.map((product, idx) => (
               <div key={product.uniqueId} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                  idx === 0 ? 'bg-amber-100 text-amber-700' :
-                  idx === 1 ? 'bg-gray-100 text-gray-600' :
-                  idx === 2 ? 'bg-orange-100 text-orange-700' :
-                  'bg-gray-50 text-gray-500'
-                }`}>{idx + 1}</span>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? 'bg-amber-100 text-amber-700' :
+                    idx === 1 ? 'bg-gray-100 text-gray-600' :
+                      idx === 2 ? 'bg-orange-100 text-orange-700' :
+                        'bg-gray-50 text-gray-500'
+                  }`}>{idx + 1}</span>
                 <div className="w-10 h-10 bg-gray-100 rounded-lg shrink-0 flex items-center justify-center overflow-hidden">
                   {product.images?.[0] ? (
                     <Image src={product.images[0]} alt={product.name} width={40} height={40} className="object-cover" />
@@ -529,8 +528,10 @@ type Tab = 'orders' | 'history';
 
 export default function SalesmanDashboard() {
   const router = useRouter();
-  const { user, logout, isAuthenticated } = useAuthStore();
+  const { user, logout, isAuthenticated, refreshProfile } = useAuthStore();
+
   const [activeTab, setActiveTab] = useState<Tab>('orders');
+
   const [showAddModal, setShowAddModal] = useState(false);
 
   useEffect(() => {
@@ -540,6 +541,13 @@ export default function SalesmanDashboard() {
       router.push('/dashboard/admin');
     }
   }, [isAuthenticated, user, router]);
+
+  // Sync profile data on mount to ensure mobile updates are reflected
+  useEffect(() => {
+    if (isAuthenticated) {
+      refreshProfile();
+    }
+  }, [isAuthenticated, refreshProfile]);
 
   const handleLogout = () => {
     logout();
@@ -554,25 +562,48 @@ export default function SalesmanDashboard() {
     );
   }
 
-  const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: 'orders',  label: 'Current Orders',  icon: ListOrdered },
-    { id: 'history', label: 'Sales History',   icon: BarChart3 },
+  const avatarUrl = resolveMediaUrl(user.avatar);
+
+  const tabs = [
+    { id: 'orders' as const, label: 'Current Orders', icon: ListOrdered },
+    { id: 'history' as const, label: 'Sales History', icon: BarChart3 },
   ];
 
   return (
     <div className="min-h-screen bg-[#f4f6fb]">
-      {/* ── Top Navigation Bar ─────────────────────────────────────────── */}
       <nav className="sticky top-0 z-30 bg-[#00002E] shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-20">
             {/* Brand */}
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center">
-                <Store className="w-5 h-5 text-white" />
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
+                {avatarUrl ? (
+                  <Image
+                    src={avatarUrl}
+                    alt={user.name || ''}
+                    width={48}
+                    height={48}
+                    className="rounded-xl object-cover"
+                    unoptimized
+                  />
+                ) : (
+                  <Store className="w-6 h-6 text-white" />
+                )}
               </div>
               <div>
-                <p className="text-white font-bold leading-tight text-sm">{user.store?.name ?? `${user.name}'s Store`}</p>
-                <p className="text-white/50 text-xs">Salesman Dashboard</p>
+                <p className="text-white font-bold leading-tight text-lg">{user.store?.name ?? `${user.name}'s Store`}</p>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-white/50 text-xs">
+                  <span>Salesman Dashboard</span>
+                  {user.phone && (
+                    <span className="hidden sm:inline">·</span>
+                  )}
+                  {user.phone && (
+                    <span className="flex items-center gap-1 text-white/70 font-medium">
+                      <Phone className="w-3 h-3" />
+                      {user.phone}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -583,12 +614,11 @@ export default function SalesmanDashboard() {
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                      activeTab === tab.id
+                    onClick={() => setActiveTab(tab.id as Tab)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === tab.id
                         ? 'bg-white text-[#00002E] shadow'
                         : 'text-white/70 hover:text-white hover:bg-white/10'
-                    }`}
+                      }`}
                   >
                     <Icon className="w-4 h-4" />
                     {tab.label}
@@ -627,11 +657,10 @@ export default function SalesmanDashboard() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold border-b-2 transition-all ${
-                  activeTab === tab.id
+                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold border-b-2 transition-all ${activeTab === tab.id
                     ? 'border-[#00002E] text-[#00002E]'
                     : 'border-transparent text-gray-500'
-                }`}
+                  }`}
               >
                 <Icon className="w-4 h-4" />
                 {tab.label}
@@ -655,7 +684,7 @@ export default function SalesmanDashboard() {
           </p>
         </div>
 
-        {activeTab === 'orders'  && <CurrentOrdersTab />}
+        {activeTab === 'orders' && <CurrentOrdersTab />}
         {activeTab === 'history' && <SalesHistoryTab />}
       </main>
 
@@ -795,11 +824,10 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
                   key={condition}
                   type="button"
                   onClick={() => setFormData({ ...formData, condition })}
-                  className={`px-4 py-2 rounded-xl font-medium transition-colors ${
-                    formData.condition === condition
+                  className={`px-4 py-2 rounded-xl font-medium transition-colors ${formData.condition === condition
                       ? 'bg-[#00002E] text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   {condition}
                 </button>

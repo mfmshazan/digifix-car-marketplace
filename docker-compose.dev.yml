@@ -71,7 +71,7 @@ services:
       - backend
     networks:
       - digifix-network
-    command: npm run dev
+    command: npm seed && npm run dev
 
 # ================================
 networks:

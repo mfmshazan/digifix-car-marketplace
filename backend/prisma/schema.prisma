@@ -15,6 +15,7 @@ datasource db {
 enum UserRole {
   CUSTOMER
   SALESMAN
+  ADMIN
 }
 
 // Enum for authentication provider

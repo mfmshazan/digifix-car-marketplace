@@ -1,4 +1,4 @@
-import { API_URL } from '../config/api.config';
+import { getApiUrl } from '../config/api.config';
 
 // ================================
 // Type Definitions
@@ -70,7 +70,7 @@ export interface GetCategoryPartsByNameResponse {
  */
 export const getAllCategories = async (): Promise<GetCategoriesResponse> => {
   try {
-    const response = await fetch(`${API_URL}/categories`, {
+    const response = await fetch(`${getApiUrl()}/categories`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -98,7 +98,7 @@ export const getCategoryById = async (
     if (options?.limit) queryParams.append('limit', options.limit.toString());
 
     const queryString = queryParams.toString();
-    const url = `${API_URL}/categories/${categoryId}${queryString ? `?${queryString}` : ''}`;
+    const url = `${getApiUrl()}/categories/${categoryId}${queryString ? `?${queryString}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -128,7 +128,7 @@ export const getPartsByCategoryName = async (
     if (options?.limit) queryParams.append('limit', options.limit.toString());
 
     const queryString = queryParams.toString();
-    const url = `${API_URL}/categories/name/${encodeURIComponent(categoryName)}/parts${queryString ? `?${queryString}` : ''}`;
+    const url = `${getApiUrl()}/categories/name/${encodeURIComponent(categoryName)}/parts${queryString ? `?${queryString}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',

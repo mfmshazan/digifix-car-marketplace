@@ -63,7 +63,7 @@ function SSOCallbackContent() {
                     if (data.data.user.role === 'SALESMAN') {
                         router.push('/dashboard/salesman');
                     } else {
-                        router.push('/dashboard/admin');
+                        router.push('/');
                     }
                 } else {
                     setError(data.message || 'Google sign-in failed');

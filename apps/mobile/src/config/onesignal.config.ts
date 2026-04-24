@@ -1,5 +1,4 @@
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
+
 
 export const initializeOneSignal = (): void => {};
 export const setOneSignalUserId = (userId: string): void => {};

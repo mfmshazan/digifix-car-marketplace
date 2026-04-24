@@ -10,7 +10,7 @@ import {
 import { useAuth, useSession, useClerk } from "@clerk/expo";
 import { router } from "expo-router";
 import { syncClerkWithBackend } from "../src/api/google-signin";
-import { saveToken, saveUser } from "../src/api/storage";
+import { saveToken, saveUser, getUserPrefs, saveUserPrefs, mergeServerUserAndPrefs } from "../src/api/storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function SSOCallbackScreen() {
@@ -34,7 +34,6 @@ export default function SSOCallbackScreen() {
 
     clerk.handleRedirectCallback({
       continueSignUpUrl: "/sso-callback",
-      continueSignInUrl: "/sso-callback",
     }).then(() => {
       console.log("[SSOCallback] handleRedirectCallback completed successfully");
     }).catch((err) => {
@@ -45,7 +44,7 @@ export default function SSOCallbackScreen() {
         console.log("[SSOCallback] handleRedirectCallback error (web, usually harmless):", err.message);
       }
     });
-  }, [clerk]);
+  }, [clerk, isLoaded, isSignedIn]);
 
   // Step 2: Once Clerk finishes processing the redirect, isSignedIn and
   // session will be populated. At that point we sync with the backend.
@@ -89,7 +88,22 @@ export default function SSOCallbackScreen() {
         if (response.success && response.data) {
           console.log("[SSOCallback] Sync successful, saving data and redirecting...");
           await saveToken(response.data.token);
-          await saveUser(response.data.user);
+          // Merge locally-saved profile prefs (name/phone/avatar_local that survive
+          // logout) on top of the backend user so they are never discarded.
+          const email = response.data.user.email || "";
+          const prefs = email ? await getUserPrefs(email) : {};
+          const merged = mergeServerUserAndPrefs(response.data.user, prefs);
+
+          // If the backend now has a real uploaded avatar, the local fallback
+          // URI is no longer needed — clear it so the backend URL is used.
+          if (response.data.user.avatar && merged.avatar_local) {
+            merged.avatar_local = null;
+            if (email) {
+              await saveUserPrefs(email, { avatar_local: null });
+            }
+          }
+
+          await saveUser(merged);
 
           if (pendingRole) {
             await AsyncStorage.removeItem("@digifix_pending_role");
@@ -101,7 +115,7 @@ export default function SSOCallbackScreen() {
               : "/(customer)";
 
           console.log("[SSOCallback] Redirecting to:", dashboardRoute);
-          router.replace(dashboardRoute as any);
+          router.replace(dashboardRoute as any); // Cast as any because dynamic route groups are not perfectly typed by expo-router yet
           return;
         }
 

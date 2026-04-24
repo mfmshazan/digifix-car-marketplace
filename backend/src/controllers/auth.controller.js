@@ -13,7 +13,7 @@ const generateToken = (userId, role) => {
 // Register new user
 const register = async (req, res) => {
   try {
-    const { email, password, name, role = 'CUSTOMER' } = req.body;
+    const { email, password, name, phone, role = 'CUSTOMER' } = req.body;
 
     // Validate input
     if (!email || !password) {
@@ -44,6 +44,7 @@ const register = async (req, res) => {
         email,
         password: hashedPassword,
         name,
+        phone,
         role: role,
         authProvider: 'EMAIL',
       },
@@ -51,6 +52,7 @@ const register = async (req, res) => {
         id: true,
         email: true,
         name: true,
+        phone: true,
         role: true,
         createdAt: true,
       },
@@ -142,6 +144,7 @@ const login = async (req, res) => {
           id: user.id,
           email: user.email,
           name: user.name,
+          phone: user.phone,
           role: user.role,
           avatar: user.avatar,
           store: user.store,
@@ -163,27 +166,52 @@ const getProfile = async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        avatar: true,
-        role: true,
-        isVerified: true,
-        createdAt: true,
-        store: true,
-        _count: {
-          select: {
-            orders: true,
-            wishlist: true,
-            addresses: true,
+    let user;
+
+    // Try the full query with _count first
+    try {
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          phone: true,
+          avatar: true,
+          role: true,
+          isVerified: true,
+          createdAt: true,
+          store: true,
+          _count: {
+            select: {
+              orders: true,
+              wishlist: true,
+              addresses: true,
+            },
           },
         },
-      },
-    });
+      });
+    } catch (countError) {
+      // _count failed (e.g. relation not yet migrated) — fall back to basic query
+      console.warn('Profile count query failed, falling back to basic query:', countError.message);
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          phone: true,
+          avatar: true,
+          role: true,
+          isVerified: true,
+          createdAt: true,
+          store: true,
+        },
+      });
+      if (user) {
+        user._count = { orders: 0, wishlist: 0, addresses: 0 };
+      }
+    }
 
     if (!user) {
       return res.status(404).json({
@@ -201,6 +229,8 @@ const getProfile = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch profile',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
     });
   }
 };
@@ -211,13 +241,21 @@ const updateProfile = async (req, res) => {
     const userId = req.user.userId;
     const { name, phone, avatar } = req.body;
 
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (phone !== undefined) data.phone = phone;
+    if (avatar !== undefined) data.avatar = avatar;
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No fields to update',
+      });
+    }
+
     const user = await prisma.user.update({
       where: { id: userId },
-      data: {
-        name,
-        phone,
-        avatar,
-      },
+      data,
       select: {
         id: true,
         email: true,

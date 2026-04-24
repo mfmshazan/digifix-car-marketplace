@@ -26,7 +26,7 @@
     "expo-font": "~14.0.10",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",
-    "expo-image-picker": "^17.0.10",
+    "expo-image-picker": "~17.0.10",
     "expo-linking": "~8.0.11",
     "expo-router": "~6.0.21",
     "expo-secure-store": "~15.0.8",
@@ -51,5 +51,12 @@
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "expo-auth-session": {
+      "expo-crypto": "$expo-crypto",
+      "expo-linking": "$expo-linking",
+      "expo-web-browser": "$expo-web-browser"
+    }
+  }
 }

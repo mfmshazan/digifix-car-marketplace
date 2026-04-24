@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, User, Store } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, User, Store, Phone } from 'lucide-react';
 import { authApi } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import GoogleSignInButton from '@/components/google-signin-button';
@@ -13,9 +13,10 @@ export default function RegisterPage() {
   const login = useAuthStore((state) => state.login);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const role: 'SALESMAN' = 'SALESMAN';
+  const [role, setRole] = useState<'CUSTOMER' | 'SALESMAN'>('CUSTOMER');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -23,10 +24,25 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !password || !confirmPassword) {
+    if (!name || !email || !phone || !password || !confirmPassword) {
       setError('Please fill in all fields');
       return;
     }
+
+    // Phone validation & formatting
+    let formattedPhone = phone.trim();
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '+94' + formattedPhone.substring(1);
+    } else if (!formattedPhone.startsWith('+94')) {
+      formattedPhone = '+94' + formattedPhone;
+    }
+
+    const sriLankaRegex = /^\+94\d{9}$/;
+    if (!sriLankaRegex.test(formattedPhone)) {
+      setError('Please enter a valid Sri Lankan phone number (9 digits after +94)');
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -39,7 +55,7 @@ export default function RegisterPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await authApi.register({ name, email, password, role });
+      const response = await authApi.register({ name, email, phone: formattedPhone, password, role });
 
       if (response.success) {
         const { user, token } = response.data;
@@ -48,7 +64,7 @@ export default function RegisterPage() {
         if (user.role === 'SALESMAN') {
           router.push('/dashboard/salesman');
         } else {
-          router.push('/dashboard/admin');
+          router.push('/');
         }
       } else {
         setError(response.message || 'Registration failed');
@@ -121,9 +137,55 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800 flex items-center gap-2">
-              <Store className="w-4 h-4" />
-              New web signups are created as <span className="font-semibold">Salesman</span>.
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+              <div className="relative">
+                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <div className="absolute left-12 top-1/2 -translate-y-1/2 text-gray-500 font-medium border-r border-gray-200 pr-2">
+                  +94
+                </div>
+                <input
+                  type="tel"
+                  value={phone.startsWith('+94') ? phone.slice(3) : (phone.startsWith('0') ? phone.slice(1) : phone)}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    if (val.length <= 9) setPhone(val);
+                  }}
+                  placeholder="7xxxxxxxx"
+                  className="w-full pl-24 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
+                  required
+                />
+              </div>
+              <p className="mt-1 text-xs text-gray-500">Enter 9 digits after +94</p>
+            </div>
+
+            {/* Role Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">I want to register as</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRole('CUSTOMER')}
+                  className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 transition-all duration-300 ${role === 'CUSTOMER'
+                    ? 'bg-[#00002E] border-[#00002E] text-white'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}
+                >
+                  <User className="w-4 h-4" />
+                  <span className="font-medium text-sm">Customer</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('SALESMAN')}
+                  className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 transition-all duration-300 ${role === 'SALESMAN'
+                    ? 'bg-[#00002E] border-[#00002E] text-white'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}
+                >
+                  <Store className="w-4 h-4" />
+                  <span className="font-medium text-sm">Shop Owner</span>
+                </button>
+              </div>
             </div>
 
             <div>

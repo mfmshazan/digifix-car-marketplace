@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.middleware.js';
 import prisma from '../lib/prisma.js';
+import upload from '../middleware/upload.middleware.js';
+import fs from 'fs';
+import path from 'path';
 
 const router = Router();
 
@@ -114,6 +117,90 @@ router.get('/wishlist', (req, res) => {
 router.get('/cart', (req, res) => {
   // TODO: Implement
   res.json({ cart: [] });
+});
+
+// Update profile picture (multer errors → 400; web clients often omit filename / extension)
+router.put('/profile-picture', (req, res, next) => {
+  upload.single('avatar')(req, res, (err) => {
+    if (err) {
+      console.error('Multer upload error:', err.message);
+      return res.status(400).json({
+        success: false,
+        message: err.message || 'Invalid or missing image file',
+      });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatar: true },
+    });
+
+    if (currentUser?.avatar && currentUser.avatar.includes('/uploads/')) {
+      const fileName = currentUser.avatar.split('/').pop();
+      const fullOldPath = path.join(process.cwd(), 'public/uploads', fileName);
+
+      if (fs.existsSync(fullOldPath)) {
+        fs.unlinkSync(fullOldPath);
+      }
+    }
+
+    const avatarUrl = `/uploads/${req.file.filename}`;
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { avatar: avatarUrl },
+      select: { id: true, avatar: true },
+    });
+
+    res.json({
+      success: true,
+      message: 'Profile picture updated successfully',
+      data: user,
+    });
+  } catch (error) {
+    console.error('Update profile picture error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update profile picture' });
+  }
+});
+
+// Remove profile picture
+router.delete('/profile-picture', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatar: true }
+    });
+
+    if (currentUser?.avatar && currentUser.avatar.includes('/uploads/')) {
+      const fileName = currentUser.avatar.split('/').pop();
+      const fullOldPath = path.join(process.cwd(), 'public/uploads', fileName);
+      
+      if (fs.existsSync(fullOldPath)) {
+        fs.unlinkSync(fullOldPath);
+      }
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { avatar: null }
+    });
+
+    res.json({ success: true, message: 'Profile picture removed successfully' });
+  } catch (error) {
+    console.error('Remove profile picture error:', error);
+    res.status(500).json({ success: false, message: 'Failed to remove profile picture' });
+  }
 });
 
 export default router;

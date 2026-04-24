@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import MapView, { Marker } from "react-native-maps";
 import { getCustomerOrders, Order } from "../../src/api/orders";
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
@@ -61,6 +62,7 @@ export default function OrdersScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
 
   const fetchOrders = async (showRefresh = false) => {
     try {
@@ -204,7 +206,7 @@ export default function OrdersScreen() {
           <Text style={styles.orderItems}>{itemCount} item(s)</Text>
           <Text style={styles.orderTotal}>Rs. {item.total.toFixed(2)}</Text>
         </View>
-        <TouchableOpacity style={styles.trackButton}>
+        <TouchableOpacity style={styles.trackButton} onPress={() => setTrackingOrder(item)}>
           <Ionicons name="location" size={16} color="#FF6B35" />
           <Text style={styles.trackButtonText}>Track Order</Text>
         </TouchableOpacity>
@@ -283,6 +285,48 @@ export default function OrdersScreen() {
               resizeMode="contain" 
             />
           )}
+        </View>
+      </Modal>
+
+      {/* Tracking Modal */}
+      <Modal
+        visible={!!trackingOrder}
+        animationType="slide"
+        onRequestClose={() => setTrackingOrder(null)}
+      >
+        <View style={styles.trackingModalContainer}>
+          <View style={styles.trackingModalHeader}>
+            <TouchableOpacity onPress={() => setTrackingOrder(null)}>
+              <Ionicons name="close" size={28} color="#1A1A2E" />
+            </TouchableOpacity>
+            <Text style={styles.trackingModalTitle}>Tracking Order</Text>
+            <View style={{ width: 28 }} />
+          </View>
+          
+          <MapView
+            style={styles.map}
+            initialRegion={{
+              latitude: 6.9271, // Colombo default
+              longitude: 79.8612,
+              latitudeDelta: 0.0922,
+              longitudeDelta: 0.0421,
+            }}
+          >
+            <Marker
+              coordinate={{ latitude: 6.9271, longitude: 79.8612 }}
+              title="Rider Location"
+              description="Your rider is here"
+            >
+              <View style={styles.markerContainer}>
+                <Ionicons name="bicycle" size={24} color="#FFF" />
+              </View>
+            </Marker>
+          </MapView>
+          
+          <View style={styles.trackingInfoCard}>
+             <Text style={styles.trackingStatusText}>Rider is on the way!</Text>
+             <Text style={styles.trackingOrderText}>Order {trackingOrder?.orderNumber}</Text>
+          </View>
         </View>
       </Modal>
     </View>
@@ -470,6 +514,59 @@ const styles = StyleSheet.create({
   modalImage: {
     width: "100%",
     height: "80%",
+  },
+  trackingModalContainer: {
+    flex: 1,
+    backgroundColor: "#FFF",
+  },
+  trackingModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+    paddingTop: 50,
+    backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#EEE",
+  },
+  trackingModalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1A1A2E",
+  },
+  map: {
+    flex: 1,
+  },
+  markerContainer: {
+    backgroundColor: "#FF6B35",
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "#FFF",
+  },
+  trackingInfoCard: {
+    position: "absolute",
+    bottom: 40,
+    left: 20,
+    right: 20,
+    backgroundColor: "#FFF",
+    padding: 20,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  trackingStatusText: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1A1A2E",
+    marginBottom: 4,
+  },
+  trackingOrderText: {
+    fontSize: 14,
+    color: "#666",
   },
 });
 

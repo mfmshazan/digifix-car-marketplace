@@ -250,23 +250,7 @@ export default function LoginScreen() {
 
 
   const handleForgotPassword = () => {
-    Alert.alert(
-      "Reset Password",
-      "Please enter your email address to receive a password reset link.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Send",
-          onPress: () => {
-            if (email) {
-              Alert.alert("Email Sent", `Password reset link sent to ${email}`);
-            } else {
-              Alert.alert("Error", "Please enter your email address first");
-            }
-          }
-        },
-      ]
-    );
+    router.push('/(auth)/forgot-password');
   };
 
   return (

@@ -8,6 +8,7 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart, CartItem } from "../../src/store/cartStore";
@@ -18,6 +19,7 @@ export default function CartScreen() {
   const { items, updateQuantity, removeItem, clearCart, getTotalPrice, isLoading } = useCart();
   const router = useRouter();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   
   const subtotal = getTotalPrice();
   const deliveryFee = subtotal > 5000 ? 0 : 300;
@@ -136,7 +138,13 @@ export default function CartScreen() {
     <View style={styles.cartItem}>
       <View style={styles.itemImage}>
         {item.image ? (
-          <Image source={{ uri: item.image }} style={styles.productImage} />
+          <TouchableOpacity
+            style={styles.imageTouchable}
+            activeOpacity={0.9}
+            onPress={() => setSelectedImage(item.image || null)}
+          >
+            <Image source={{ uri: item.image }} style={styles.productImage} />
+          </TouchableOpacity>
         ) : (
           <Ionicons name="car-sport" size={32} color="#00002E" />
         )}
@@ -276,6 +284,39 @@ export default function CartScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      <Modal
+        visible={!!selectedImage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+      >
+        <TouchableOpacity
+          style={styles.imageModalOverlay}
+          activeOpacity={1}
+          onPress={() => setSelectedImage(null)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(event) => event.stopPropagation()}
+            style={styles.imageModalContent}
+          >
+            <TouchableOpacity
+              style={styles.imageModalCloseButton}
+              onPress={() => setSelectedImage(null)}
+            >
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+            {selectedImage && (
+              <Image
+                source={{ uri: selectedImage }}
+                style={styles.imageModalImage}
+                resizeMode="contain"
+              />
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -342,6 +383,10 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     resizeMode: "cover",
+  },
+  imageTouchable: {
+    width: "100%",
+    height: "100%",
   },
   itemInfo: {
     flex: 1,
@@ -508,6 +553,30 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  imageModalContent: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageModalCloseButton: {
+    position: "absolute",
+    top: 40,
+    right: 8,
+    zIndex: 2,
+    padding: 8,
+  },
+  imageModalImage: {
+    width: "100%",
+    height: "85%",
   },
 });
 

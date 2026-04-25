@@ -49,7 +49,7 @@ function SSOCallbackContent() {
                     body: JSON.stringify({
                         clerkToken,
                         sessionId,
-                        role: 'CUSTOMER',
+                        role: 'SALESMAN',
                     }),
                 });
 
@@ -59,12 +59,8 @@ function SSOCallbackContent() {
                     // Login with our JWT (same as email/password login)
                     login(data.data.user, data.data.token);
 
-                    // Redirect based on role
-                    if (data.data.user.role === 'SALESMAN') {
-                        router.push('/dashboard/salesman');
-                    } else {
-                        router.push('/');
-                    }
+                    // Redirect to salesman dashboard
+                    router.push('/dashboard/salesman');
                 } else {
                     setError(data.message || 'Google sign-in failed');
                     isProcessingRef.current = false;

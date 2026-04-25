@@ -52,21 +52,26 @@ export default function CustomerHomeScreen() {
   const { addItem } = useCart();
 
   // Handle adding item to cart
-  const handleAddToCart = (part: CarPart) => {
-    addItem({
-      id: part.id,
-      name: part.name,
-      price: part.price,
-      discountPrice: part.discountPrice,
-      image: part.images?.[0],
-      carInfo: `${part.car.make} ${part.car.model} (${part.car.year})`,
-      categoryName: part.category.name,
-    });
-    Alert.alert(
-      "Added to Cart",
-      `${part.name} has been added to your cart.`,
-      [{ text: "OK" }]
-    );
+  const handleAddToCart = async (part: CarPart) => {
+    try {
+      await addItem({
+        productId: part.id,
+        itemType: 'CAR_PART',
+        name: part.name,
+        price: part.price,
+        discountPrice: part.discountPrice,
+        image: part.images?.[0],
+        carInfo: `${part.car.make} ${part.car.model} (${part.car.year})`,
+        categoryName: part.category.name,
+      });
+      Alert.alert(
+        "Added to Cart",
+        `${part.name} has been added to your cart.`,
+        [{ text: "OK" }]
+      );
+    } catch (error: any) {
+      Alert.alert("Add to Cart Failed", error?.message || "Please try again.");
+    }
   };
 
   // Load featured parts on mount

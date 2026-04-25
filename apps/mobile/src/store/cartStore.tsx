@@ -1,97 +1,188 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  fetchCart,
+  addItemToCart,
+  updateCartItemQty,
+  removeCartItem,
+  clearCartApi,
+  BackendCartItem,
+} from '../api/cart';
+import { getToken } from '../api/storage';
 
-const CART_STORAGE_KEY = 'digifix_cart';
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CartItem {
-  id: string;
+  id: string;           // backend CartItem ID (used for API calls)
+  productId: string;    // actual Product or CarPart ID
+  itemType: 'PRODUCT' | 'CAR_PART';
   name: string;
   price: number;
-  discountPrice?: number;
+  discountPrice?: number | null;
   quantity: number;
-  image?: string;
-  carInfo: string;
-  categoryName?: string;
+  image?: string | null;
+  carInfo?: string | null;
+  categoryName?: string | null;
 }
 
 interface CartContextType {
   items: CartItem[];
-  addItem: (item: Omit<CartItem, 'quantity'>) => void;
-  removeItem: (id: string) => void;
-  updateQuantity: (id: string, quantity: number) => void;
-  clearCart: () => void;
+  addItem: (item: Omit<CartItem, 'id' | 'quantity'>) => Promise<void>;
+  removeItem: (id: string) => Promise<void>;
+  updateQuantity: (id: string, quantity: number) => Promise<void>;
+  clearCart: () => Promise<void>;
   getTotalPrice: () => number;
   getTotalItems: () => number;
+  refreshCart: () => Promise<void>;
   isLoading: boolean;
 }
 
+// ─── Context ──────────────────────────────────────────────────────────────────
+
 const CartContext = createContext<CartContextType | undefined>(undefined);
+
+// Local storage key used only as an offline fallback
+const CART_OFFLINE_KEY = 'digifix_cart_offline';
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load cart from storage on mount
-  useEffect(() => {
-    loadCart();
-  }, []);
+  // Convert backend item shape → local CartItem shape
+  const normalizeItem = (item: BackendCartItem): CartItem => ({
+    id: item.id,
+    productId: item.productId,
+    itemType: item.itemType,
+    name: item.name,
+    price: item.price,
+    discountPrice: item.discountPrice ?? undefined,
+    quantity: item.quantity,
+    image: item.image ?? undefined,
+    carInfo: item.carInfo ?? undefined,
+    categoryName: item.categoryName ?? undefined,
+  });
 
-  // Save cart to storage whenever items change
-  useEffect(() => {
-    if (!isLoading) {
-      saveCart(items);
-    }
-  }, [items, isLoading]);
-
-  const loadCart = async () => {
+  // ── Load from backend (or local fallback) ──
+  const loadCart = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const stored = await AsyncStorage.getItem(CART_STORAGE_KEY);
-      if (stored) {
-        setItems(JSON.parse(stored));
+      const token = await getToken();
+
+      if (token) {
+        // Authenticated → fetch from backend
+        const response = await fetchCart();
+        if (response.success && response.data) {
+          const normalized = response.data.items.map(normalizeItem);
+          setItems(normalized);
+          // Keep offline cache in sync
+          await AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(normalized));
+          return;
+        }
       }
+
+      // Not authenticated or backend failed → use offline cache
+      const cached = await AsyncStorage.getItem(CART_OFFLINE_KEY);
+      setItems(cached ? JSON.parse(cached) : []);
     } catch (error) {
       console.error('Failed to load cart:', error);
+      // Fallback to offline cache
+      try {
+        const cached = await AsyncStorage.getItem(CART_OFFLINE_KEY);
+        setItems(cached ? JSON.parse(cached) : []);
+      } catch {
+        setItems([]);
+      }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const saveCart = async (cartItems: CartItem[]) => {
-    try {
-      await AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
-    } catch (error) {
-      console.error('Failed to save cart:', error);
-    }
-  };
+  useEffect(() => {
+    loadCart();
+  }, [loadCart]);
 
-  const addItem = useCallback((item: Omit<CartItem, 'quantity'>) => {
-    setItems((currentItems) => {
-      const existingItem = currentItems.find((i) => i.id === item.id);
-      if (existingItem) {
-        return currentItems.map((i) =>
-          i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
-        );
+  // ── Add item ──
+  const addItem = useCallback(
+    async (item: Omit<CartItem, 'id' | 'quantity'>) => {
+      const token = await getToken();
+
+      if (!token) {
+        throw new Error('You must be logged in to add items to cart.');
       }
-      return [...currentItems, { ...item, quantity: 1 }];
-    });
-  }, []);
 
-  const removeItem = useCallback((id: string) => {
-    setItems((currentItems) => currentItems.filter((i) => i.id !== id));
-  }, []);
+      // Call backend
+      await addItemToCart(item.productId, 1, item.itemType);
 
-  const updateQuantity = useCallback((id: string, quantity: number) => {
-    setItems((currentItems) =>
-      currentItems
-        .map((i) => (i.id === id ? { ...i, quantity: Math.max(0, quantity) } : i))
-        .filter((i) => i.quantity > 0)
-    );
-  }, []);
+      // Refresh cart from backend to get canonical state (with the real cartItemId)
+      await loadCart();
+    },
+    [loadCart]
+  );
 
-  const clearCart = useCallback(() => {
+  // ── Remove item (id = backend CartItem ID) ──
+  const removeItem = useCallback(
+    async (id: string) => {
+      const token = await getToken();
+
+      if (!token) {
+        throw new Error('You must be logged in.');
+      }
+
+      await removeCartItem(id);
+
+      // Optimistic UI update
+      setItems((curr) => {
+        const next = curr.filter((i) => i.id !== id);
+        AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(next));
+        return next;
+      });
+    },
+    []
+  );
+
+  // ── Update quantity (id = backend CartItem ID) ──
+  const updateQuantity = useCallback(
+    async (id: string, quantity: number) => {
+      const token = await getToken();
+
+      if (!token) {
+        throw new Error('You must be logged in.');
+      }
+
+      if (quantity <= 0) {
+        return removeItem(id);
+      }
+
+      await updateCartItemQty(id, quantity);
+
+      // Optimistic UI update
+      setItems((curr) => {
+        const next = curr
+          .map((i) => (i.id === id ? { ...i, quantity } : i))
+          .filter((i) => i.quantity > 0);
+        AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(next));
+        return next;
+      });
+    },
+    [removeItem]
+  );
+
+  // ── Clear cart ──
+  const clearCart = useCallback(async () => {
+    const token = await getToken();
+
+    if (!token) {
+      throw new Error('You must be logged in.');
+    }
+
+    await clearCartApi();
     setItems([]);
+    await AsyncStorage.removeItem(CART_OFFLINE_KEY);
   }, []);
 
+  // ── Price helpers ──
   const getTotalPrice = useCallback(() => {
     return items.reduce((sum, item) => {
       const price = item.discountPrice || item.price;
@@ -113,6 +204,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         clearCart,
         getTotalPrice,
         getTotalItems,
+        refreshCart: loadCart,
         isLoading,
       }}
     >

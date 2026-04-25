@@ -6,20 +6,44 @@
  * `Constants.expoConfig.hostUri` is often undefined on the first evaluation, so the
  * wrong host (e.g. localhost on a physical device) is frozen forever — profile
  * images under /uploads/ then fail while name/phone from prefs still look fine.
+ *
+ * This file handles API URL configuration for different environments:
+ * - Android Emulator: Uses 10.0.2.2 (maps to host's localhost)
+ * - iOS Simulator: Uses localhost
+ * - Physical Device: Uses EXPO_PUBLIC_API_HOST env variable (your computer's IP)
+ * - Web: Uses localhost
+ *
+ * ⚠️  Set your computer's IP in apps/mobile/.env:
+ *       EXPO_PUBLIC_API_HOST=10.241.244.60
  */
 
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 // ============================================
-// CONFIGURATION - Update these values
+// CONFIGURATION - pulled from .env or auto-detected
 // ============================================
 
-// Your computer's local IP address (for physical device testing)
-// Run 'ipconfig' (Windows) or 'ifconfig' (Mac/Linux) to find this
-export const LOCAL_IP = '10.185.114.60';
+// Helper to extract the local IP address if running in Expo Go
+const getExpoGoHostIp = (): string | null => {
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    // hostUri usually looks like "192.168.x.x:8081"
+    return hostUri.split(':')[0];
+  }
+  return null;
+};
 
-// Backend port (should match Docker/backend configuration)
+// 1. Prioritize .env variable (EXPO_PUBLIC_API_HOST)
+// 2. Fallback to dynamically detecting the Expo Go host machine IP
+// 3. Last resort fallback to a hardcoded local IP
+const FALLBACK_LOCAL_IP = '10.185.114.60';
+export const LOCAL_IP: string =
+  (process.env.EXPO_PUBLIC_API_HOST as string) ||
+  getExpoGoHostIp() ||
+  FALLBACK_LOCAL_IP;
+
+// Backend port (must match the backend server)
 export const API_PORT = 3000;
 
 // ============================================
@@ -49,7 +73,7 @@ export function getApiUrl(): string {
 
   // Expo Go: right after dev-server restart, hostUri can be missing briefly — use LAN IP
   if (isExpoGo) {
-    const raw = process.env.EXPO_PUBLIC_LOCAL_IP || LOCAL_IP;
+    const raw = process.env.EXPO_PUBLIC_API_HOST || LOCAL_IP;
     const ip = String(raw)
       .replace(/^https?:\/\//, '')
       .split('/')[0]
@@ -59,8 +83,8 @@ export function getApiUrl(): string {
     }
   }
 
-  if (Platform.OS === 'android') {
-    return `http://10.0.2.2:${API_PORT}/api`;
+  if (Platform.OS === 'android' || Platform.OS === 'ios') {
+    return `http://${LOCAL_IP}:${API_PORT}/api`;
   }
 
   return `http://localhost:${API_PORT}/api`;
@@ -113,7 +137,8 @@ const buildEndpoints = (base: string) => ({
     BASE: `${base}/orders`,
     BY_ID: (id: string) => `${base}/orders/${id}`,
   },
-  HEALTH: `http://${Platform.OS === 'android' ? '10.0.2.2' : 'localhost'}:${API_PORT}/health`,
+  CART: `${base}/cart`,
+  HEALTH: `http://${LOCAL_IP}:${API_PORT}/health`,
 });
 
 /** Endpoints that always track the current `getApiUrl()` — call `getApiEndpoints()` when building URLs. */
@@ -134,11 +159,15 @@ export const API_ENDPOINTS: ReturnType<typeof buildEndpoints> = new Proxy(
   }
 );
 
+export const API_URL = getApiUrl();
+
 if (__DEV__) {
   console.log('🌐 API Configuration:', {
     platform: Platform.OS,
     apiUrl: getApiUrl(),
+    localIp: LOCAL_IP,
     isExpoGo: Constants.appOwnership === 'expo',
+    envHost: process.env.EXPO_PUBLIC_API_HOST,
   });
 }
 

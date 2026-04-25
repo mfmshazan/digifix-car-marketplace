@@ -16,7 +16,7 @@ export default function RegisterPage() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState<'CUSTOMER' | 'SALESMAN'>('CUSTOMER');
+  const role = 'SALESMAN';
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,12 +60,7 @@ export default function RegisterPage() {
       if (response.success) {
         const { user, token } = response.data;
         login(user, token);
-
-        if (user.role === 'SALESMAN') {
-          router.push('/dashboard/salesman');
-        } else {
-          router.push('/');
-        }
+        router.push('/dashboard/salesman');
       } else {
         setError(response.message || 'Registration failed');
       }
@@ -157,35 +152,6 @@ export default function RegisterPage() {
                 />
               </div>
               <p className="mt-1 text-xs text-gray-500">Enter 9 digits after +94</p>
-            </div>
-
-            {/* Role Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">I want to register as</label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRole('CUSTOMER')}
-                  className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 transition-all duration-300 ${role === 'CUSTOMER'
-                    ? 'bg-[#00002E] border-[#00002E] text-white'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                >
-                  <User className="w-4 h-4" />
-                  <span className="font-medium text-sm">Customer</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('SALESMAN')}
-                  className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 transition-all duration-300 ${role === 'SALESMAN'
-                    ? 'bg-[#00002E] border-[#00002E] text-white'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                >
-                  <Store className="w-4 h-4" />
-                  <span className="font-medium text-sm">Shop Owner</span>
-                </button>
-              </div>
             </div>
 
             <div>

@@ -41,6 +41,8 @@ services:
       dockerfile: Dockerfile
     container_name: digifix-backend
     restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: 3000
@@ -53,15 +55,14 @@ services:
       - "${BACKEND_PORT:-3000}:3000"
     volumes:
       - ./backend/public/uploads:/app/public/uploads
+      - ./backend:/app
+      - /app/node_modules
+    command: npm run dev
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - digifix-network
-    # For development - mount source code
-    # volumes:
-    #   - ./backend:/app
-    #   - /app/node_modules
 
   # ================================
   # Web Frontend (Next.js)

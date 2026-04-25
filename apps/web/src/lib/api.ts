@@ -179,6 +179,22 @@ export const authApi = {
     const response = await api.put('/auth/profile', payload);
     return response.data;
   },
+
+  // Forgot Password Flow
+  requestOtp: async (email: string) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+
+  verifyOtp: async (email: string, otp: string) => {
+    const response = await api.post('/auth/verify-otp', { email, otp });
+    return response.data;
+  },
+
+  resetPassword: async (resetToken: string, newPassword: string) => {
+    const response = await api.post('/auth/reset-password', { resetToken, newPassword });
+    return response.data;
+  },
 };
 
 export async function uploadProfilePicture(file: File) {

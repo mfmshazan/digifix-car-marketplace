@@ -387,6 +387,7 @@ export const getSalesmanOrders = async (req, res) => {
 
 /**
  * Update order status
+ * Integrates Wallet Logic for DELIVERED and REFUNDED
  */
 export const updateOrderStatus = async (req, res) => {
   try {
@@ -409,36 +410,101 @@ export const updateOrderStatus = async (req, res) => {
       });
     }
 
-    // Update order status
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: { 
-        status,
-        updatedAt: new Date()
-      },
-      include: {
-        items: {
-          include: {
-            product: true
-          }
+    // Run order update and wallet transfers in one atomic transaction
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      
+      const updated = await tx.order.update({
+        where: { id },
+        data: { 
+          status,
+          updatedAt: new Date()
         },
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            email: true
+        include: {
+          items: {
+            include: {
+              product: true
+            }
+          },
+          customer: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
           }
         }
-      }
-    });
+      });
 
-    // Create tracking entry
-    await prisma.orderTracking.create({
-      data: {
-        orderId: id,
-        status,
-        description: `Order status updated to ${status}`
+      // Create tracking entry
+      await tx.orderTracking.create({
+        data: {
+          orderId: id,
+          status,
+          description: `Order status updated to ${status}`
+        }
+      });
+
+      // ==========================================
+      // WALLET INTEGRATION: RELEASE FUNDS TO SELLER
+      // ==========================================
+      if (status === 'DELIVERED' && order.status !== 'DELIVERED') {
+        if (order.paymentMethod === 'Stripe' || order.paymentMethod === 'WALLET') {
+          // Ensure salesman has a wallet
+          let salesmanWallet = await tx.wallet.findUnique({ where: { userId: salesmanId } });
+          if (!salesmanWallet) {
+            salesmanWallet = await tx.wallet.create({ data: { userId: salesmanId, balance: 0 } });
+          }
+
+          // Credit salesman wallet
+          await tx.wallet.update({
+            where: { id: salesmanWallet.id },
+            data: { balance: { increment: order.total } }
+          });
+
+          // Log the PURCHASE earnings
+          await tx.walletTransaction.create({
+            data: {
+              amount: order.total,
+              type: 'PURCHASE', 
+              receiverWalletId: salesmanWallet.id,
+              orderId: order.id,
+              description: `Earnings released for delivered order ${order.orderNumber}`
+            }
+          });
+        }
       }
+
+      // ==========================================
+      // WALLET INTEGRATION: REFUND TO CUSTOMER
+      // ==========================================
+      if (status === 'REFUNDED' && order.status !== 'REFUNDED') {
+        if (order.paymentMethod === 'Stripe' || order.paymentMethod === 'WALLET') {
+          // Ensure customer has a wallet
+          let customerWallet = await tx.wallet.findUnique({ where: { userId: order.customerId } });
+          if (!customerWallet) {
+            customerWallet = await tx.wallet.create({ data: { userId: order.customerId, balance: 0 } });
+          }
+
+          // Return money to customer
+          await tx.wallet.update({
+            where: { id: customerWallet.id },
+            data: { balance: { increment: order.total } }
+          });
+
+          // Log the REFUND
+          await tx.walletTransaction.create({
+            data: {
+              amount: order.total,
+              type: 'REFUND',
+              receiverWalletId: customerWallet.id,
+              orderId: order.id,
+              description: `Refund for cancelled/refunded order ${order.orderNumber}`
+            }
+          });
+        }
+      }
+
+      return updated;
     });
 
     // 🔌 Emit real-time event to the customer so their mobile app updates instantly
@@ -450,7 +516,7 @@ export const updateOrderStatus = async (req, res) => {
         status,
         updatedAt: updatedOrder.updatedAt,
       });
-      // Also broadcast to salesmen watching this order (e.g., salesman dashboard)
+      // Also broadcast to salesmen watching this order
       io.to(`user:${salesmanId}`).emit('orderStatusUpdated', {
         orderId: id,
         orderNumber: updatedOrder.orderNumber,
@@ -552,8 +618,7 @@ export const getCustomerOrders = async (req, res) => {
 /**
  * Create new order
  * Supports both Product and CarPart items
- * Groups items by seller and creates separate orders
- * Address is optional
+ * Dedcuts wallet balance upfront if paymentMethod === 'WALLET'
  */
 export const createOrder = async (req, res) => {
   try {
@@ -581,7 +646,7 @@ export const createOrder = async (req, res) => {
       }
     }
 
-    // Get item IDs (could be Product IDs or CarPart IDs)
+    // Get item IDs
     const itemIds = items.map(item => item.productId);
     
     // First, try to find items as Products
@@ -627,7 +692,6 @@ export const createOrder = async (req, res) => {
     // Combine both types into a unified format
     const allItems = [];
     
-    // Add products
     products.forEach(product => {
       allItems.push({
         id: product.id,
@@ -642,7 +706,6 @@ export const createOrder = async (req, res) => {
       });
     });
 
-    // Add car parts
     carParts.forEach(part => {
       allItems.push({
         id: part.id,
@@ -702,13 +765,45 @@ export const createOrder = async (req, res) => {
       grandTotal += sellerGroup.subtotal;
     });
 
+    // ==========================================
+    // WALLET INTEGRATION: UPFRONT DEDUCTION
+    // ==========================================
+    if (paymentMethod === 'WALLET') {
+        const customerWallet = await prisma.wallet.findUnique({ where: { userId: customerId } });
+        
+        if (!customerWallet || customerWallet.balance < grandTotal) {
+            return res.status(400).json({ success: false, message: 'Insufficient wallet balance to place this order.' });
+        }
+    }
+
     // Generate order number prefix
     const timestamp = Date.now().toString(36).toUpperCase();
     const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
     const orderPrefix = `ORD-${timestamp}-${randomPart}`;
 
-    // Create orders for each seller in a transaction (with extended timeout)
+    // Create orders for each seller in a transaction 
     const createdOrders = await prisma.$transaction(async (tx) => {
+      
+      // If WALLET, deduct balance now
+      if (paymentMethod === 'WALLET') {
+          const customerWallet = await tx.wallet.findUnique({ where: { userId: customerId } });
+          
+          await tx.wallet.update({
+              where: { id: customerWallet.id },
+              data: { balance: { decrement: grandTotal } }
+          });
+
+          // Log the WalletTransaction
+          await tx.walletTransaction.create({
+              data: {
+                  amount: grandTotal,
+                  type: 'PURCHASE',
+                  senderWalletId: customerWallet.id,
+                  description: 'Paid upfront using Wallet Balance'
+              }
+          });
+      }
+
       const orders = [];
       let orderIndex = 1;
       
@@ -727,7 +822,7 @@ export const createOrder = async (req, res) => {
           paymentMethod,
           notes,
           status: 'PENDING',
-          paymentStatus: 'PENDING',
+          paymentStatus: paymentMethod === 'WALLET' ? 'PAID' : 'PENDING', // Mark paid automatically if Wallet
           items: {
             create: sellerGroup.items.map(item => ({
               productId: item.itemType === 'PRODUCT' ? item.productId : null,
@@ -751,18 +846,10 @@ export const createOrder = async (req, res) => {
             items: {
               include: {
                 product: {
-                  select: {
-                    id: true,
-                    name: true,
-                    images: true
-                  }
+                  select: { id: true, name: true, images: true }
                 },
                 carPart: {
-                  select: {
-                    id: true,
-                    name: true,
-                    images: true
-                  }
+                  select: { id: true, name: true, images: true }
                 }
               }
             },
@@ -770,11 +857,7 @@ export const createOrder = async (req, res) => {
               select: {
                 id: true,
                 name: true,
-                store: {
-                  select: {
-                    name: true
-                  }
-                }
+                store: { select: { name: true } }
               }
             }
           }
@@ -795,8 +878,8 @@ export const createOrder = async (req, res) => {
 
       return orders;
     }, {
-      timeout: 30000, // 30 seconds timeout for complex order creation
-      maxWait: 10000  // Max time to wait for transaction slot
+      timeout: 30000, 
+      maxWait: 10000 
     });
 
     // Format response
@@ -805,7 +888,7 @@ export const createOrder = async (req, res) => {
       total: grandTotal,
       deliveryFee,
       status: 'PENDING',
-      paymentStatus: 'PENDING',
+      paymentStatus: paymentMethod === 'WALLET' ? 'PAID' : 'PENDING',
       createdAt: createdOrders[0]?.createdAt,
       orders: createdOrders.map(order => ({
         id: order.id,
@@ -876,7 +959,7 @@ export const createOrder = async (req, res) => {
 };
 
 /**
- * Get customer orders
+ * Get customer orders (Simple)
  */
 export const getCustomerOrdersSimple = async (req, res) => {
   try {
@@ -981,5 +1064,6 @@ export default {
   getSalesmanOrders,
   updateOrderStatus,
   getCustomerOrders,
-  createOrder
+  createOrder,
+  getCustomerOrdersSimple
 };

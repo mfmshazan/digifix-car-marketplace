@@ -125,12 +125,13 @@ const addToCart = async (req, res) => {
       });
     }
 
-    // Check if already in cart & upsert in one go
-    const existingWhere = isCarPart
-      ? { userId_carPartId: { userId, carPartId: productId } }
-      : { userId_productId: { userId, productId } };
-
-    const existingItem = await prisma.cartItem.findUnique({ where: existingWhere, select: { id: true, quantity: true } });
+    // FIX: Use findFirst instead of findUnique because optional fields (productId/carPartId) 
+    // cannot be queried using compound unique constraints in Prisma.
+    const existingItem = await prisma.cartItem.findFirst({
+      where: isCarPart
+        ? { userId: userId, carPartId: productId }
+        : { userId: userId, productId: productId },
+    });
 
     let cartItem;
     if (existingItem) {

@@ -24,26 +24,11 @@ import Constants from 'expo-constants';
 // CONFIGURATION - pulled from .env or auto-detected
 // ============================================
 
-// Helper to extract the local IP address if running in Expo Go
-const getExpoGoHostIp = (): string | null => {
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (hostUri) {
-    // hostUri usually looks like "192.168.x.x:8081"
-    return hostUri.split(':')[0];
-  }
-  return null;
-};
+// Your computer's local IP address (for physical device testing)
+// Run 'ipconfig' (Windows) or 'ifconfig' (Mac/Linux) to find this
+export const LOCAL_IP = '192.168.43.171';
 
-// 1. Prioritize .env variable (EXPO_PUBLIC_API_HOST)
-// 2. Fallback to dynamically detecting the Expo Go host machine IP
-// 3. Last resort fallback to a hardcoded local IP
-const FALLBACK_LOCAL_IP = '10.185.114.60';
-export const LOCAL_IP: string =
-  (process.env.EXPO_PUBLIC_API_HOST as string) ||
-  getExpoGoHostIp() ||
-  FALLBACK_LOCAL_IP;
-
-// Backend port (must match the backend server)
+// Backend port (should match Docker/backend configuration)
 export const API_PORT = 3000;
 
 // ============================================

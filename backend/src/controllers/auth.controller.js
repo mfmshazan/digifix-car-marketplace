@@ -1,9 +1,20 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
+import stripeController from './stripe.controller.js';
+import { create } from 'node:domain';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+
+const createStripeAccount = async (user) => {
+      stripDetails = await stripeController.createConnectedAccount(user);
+      const stripeAccountId = stripDetails.accountId;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { stripeAccountId },
+      });
+    } 
 
 // Generate JWT token
 const generateToken = (userId, role) => {
@@ -70,7 +81,8 @@ const register = async (req, res) => {
 
     // Generate token
     const token = generateToken(user.id, user.role);
-
+    
+    await createStripeAccount(user);
     res.status(201).json({
       success: true,
       message: 'User registered successfully',

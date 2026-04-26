@@ -9,17 +9,22 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Linking
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart, CartItem } from "../../src/store/cartStore";
 import { useRouter } from "expo-router";
 import { createOrder } from "../../src/api/orders";
+import CustomModal from "@/src/components/modal";
+import { LOCAL_IP, API_PORT } from "../../src/config/api.config";
 
 export default function CartScreen() {
   const { items, updateQuantity, removeItem, clearCart, getTotalPrice, isLoading } = useCart();
   const router = useRouter();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [paymentMethode, setPaymentMethode] = useState("");
+  const [modalVisible, setModalVisible] = useState(false);
   
   const subtotal = getTotalPrice();
   const deliveryFee = subtotal > 5000 ? 0 : 300;
@@ -75,26 +80,16 @@ export default function CartScreen() {
     );
   };
 
-  const handleCheckout = async () => {
-    if (items.length === 0) {
-      Alert.alert("Empty Cart", "Please add items to your cart first.");
-      return;
-    }
-
+  // --- 1. LOCAL CHECKOUT (Wallet & COD) ---
+  const handleLocalCheckout = async (method: string) => {
     setIsCheckingOut(true);
-    
     try {
-      // Prepare order items
       const orderItems = items.map(item => ({
         productId: item.productId,
         quantity: item.quantity
       }));
 
-      // Create the order (no address required)
-      const orderResponse = await createOrder(
-        orderItems,
-        "CASH_ON_DELIVERY" // Default payment method
-      );
+      const orderResponse = await createOrder(orderItems, method);
 
       if (orderResponse.success) {
         // Clear local cart after successful order
@@ -110,14 +105,8 @@ export default function CartScreen() {
           "Order Placed! 🎉",
           `Your order ${orderNum} has been placed successfully!\n\nTotal: Rs. ${orderTotal?.toLocaleString()}\n\nThe seller has been notified.`,
           [
-            { 
-              text: "View Orders", 
-              onPress: () => router.push("/(customer)/orders") 
-            },
-            { 
-              text: "Continue Shopping", 
-              onPress: () => router.push("/(customer)") 
-            }
+            { text: "View Orders", onPress: () => router.push("/(customer)/orders") },
+            { text: "Continue Shopping", onPress: () => router.push("/(customer)") }
           ]
         );
       } else {
@@ -125,13 +114,66 @@ export default function CartScreen() {
       }
     } catch (error: any) {
       console.error("Checkout error:", error);
-      Alert.alert(
-        "Checkout Failed",
-        error.message || "Something went wrong. Please try again."
-      );
+      Alert.alert("Checkout Failed", error.message || "Something went wrong.");
     } finally {
       setIsCheckingOut(false);
     }
+  };
+
+  // --- 2. STRIPE CHECKOUT ---
+  const handleStripeCheckout = async () => {
+    setIsCheckingOut(true);
+    try {
+      // NOTE: Ensure your endpoint matches your backend router exactly
+      const response = await fetch(`http://${LOCAL_IP}:${API_PORT}/api/stripe/create-checkout-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: items, 
+          // Replace "user_123" with the actual ID from Clerk Auth when you hook it up
+          userID: "user_123", 
+          userRole: "customer"
+        }),
+      });
+      
+      const data = await response.json();
+
+      if (data.url) {
+        const supported = await Linking.canOpenURL(data.url);
+        if (supported) {
+          await Linking.openURL(data.url);
+        } else {
+          Alert.alert("Error", "Cannot open Stripe browser.");
+        }
+      } else {
+        Alert.alert("Error", "Could not generate payment link.");
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Connection Error", "Could not connect to the payment gateway.");
+    } finally {
+      setIsCheckingOut(false);
+    }
+  };
+
+  // --- 3. UNIFIED PAYMENT HANDLER ---
+  const handlePaymentSelection = (method: "stripe" | "wallet" | "cod") => {
+    setPaymentMethode(method);
+    setModalVisible(false); // Close the modal
+
+    if (method === "stripe") {
+      handleStripeCheckout();
+    } else {
+      handleLocalCheckout(method);
+    }
+  };
+
+  const openPaymentModal = () => {
+    if (items.length === 0) {
+      Alert.alert("Empty Cart", "Please add items to your cart first.");
+      return;
+    }
+    setModalVisible(true);
   };
 
   const renderCartItem = ({ item }: { item: CartItem }) => (
@@ -250,21 +292,16 @@ export default function CartScreen() {
               <Text style={styles.totalLabel}>Total</Text>
               <Text style={styles.totalValue}>Rs. {total.toLocaleString()}</Text>
             </View>
+            
             <TouchableOpacity 
               style={[styles.checkoutButton, isCheckingOut && styles.checkoutButtonDisabled]} 
-              onPress={handleCheckout}
+              onPress={openPaymentModal}
               disabled={isCheckingOut}
             >
               {isCheckingOut ? (
-                <>
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                  <Text style={[styles.checkoutButtonText, { marginLeft: 8 }]}>Processing...</Text>
-                </>
+                <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <>
-                  <Text style={styles.checkoutButtonText}>Proceed to Checkout</Text>
-                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" style={{ marginLeft: 8 }} />
-                </>
+                <Text style={styles.checkoutButtonText}>Proceed to Checkout</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -273,9 +310,7 @@ export default function CartScreen() {
         <View style={styles.emptyContainer}>
           <Ionicons name="cart-outline" size={80} color="#CCC" />
           <Text style={styles.emptyTitle}>Your cart is empty</Text>
-          <Text style={styles.emptySubtitle}>
-            Add some parts to get started
-          </Text>
+          <Text style={styles.emptySubtitle}>Add some parts to get started</Text>
           <TouchableOpacity 
             style={styles.shopButton}
             onPress={() => router.push("/(customer)")}
@@ -317,6 +352,11 @@ export default function CartScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      <CustomModal 
+        modalVisible={modalVisible} 
+        setModalVisible={setModalVisible} 
+        onSelectMethod={handlePaymentSelection} 
+      />
     </View>
   );
 }

@@ -11,10 +11,21 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ================================
+// Enums
+// ================================
+
 // Enum for user roles
 enum UserRole {
   CUSTOMER
   SALESMAN
+  ADMIN     // Added Admin to hold the "Master System Wallet" for platform fees
+}
+
+// Enum for user account status
+enum UserStatus {
+  ACTIVE
+  DEACTIVATED
 }
 
 // Enum for authentication provider
@@ -23,37 +34,131 @@ enum AuthProvider {
   GOOGLE
 }
 
+// Wallet & Transaction Enums
+enum TransactionType {
+  DEPOSIT           // External money enters app (Sender is null, Receiver is Customer)
+  PURCHASE          // Customer uses wallet balance (Sender = Customer, Receiver = Salesman)
+  PLATFORM_FEE      // App deducts profit (Sender = Salesman, Receiver = Admin System Wallet)
+  DELIVERY_FEE      // Deduction for delivery (Sender = Customer/Salesman, Receiver = Driver/System)
+  PAYOUT            // Salesman withdraws money to bank (Sender = Salesman, Receiver is null)
+  REFUND            // Customer gets money back (Sender = Salesman, Receiver = Customer)
+  COD_REMITTANCE    // Driver hands over cash (Sender = Driver, Receiver = System/Salesman)
+}
+
+enum CodSettlementStatus {
+  PENDING           // Driver has the cash, hasn't paid the platform yet
+  PAID              // Driver paid the platform
+  NOT_APPLICABLE    // Used for non-COD digital transactions
+}
+
+// Order status enum
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+// Payment status enum
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+// ================================
+// Core Models
+// ================================
+
 // User model
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
-  password     String? // Nullable for Google auth users
+  password     String?      // Nullable for Google auth users
   name         String?
   phone        String?
   avatar       String?
   role         UserRole     @default(CUSTOMER)
+  status       UserStatus   @default(ACTIVE) 
   authProvider AuthProvider @default(EMAIL)
   googleId     String?      @unique
+  stripeAccountId String?      @unique
   isVerified   Boolean      @default(false)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
   // Relations
-  addresses Address[]
-  orders    Order[]        @relation("CustomerOrders")
-  cart      CartItem[]
-  wishlist  WishlistItem[]
-  reviews   Review[]
+  wallet       Wallet?
+  addresses    Address[]
+  orders       Order[]        @relation("CustomerOrders")
+  cart         CartItem[]
+  wishlist     WishlistItem[]
+  reviews      Review[]
 
   // Salesman specific relations
-  products    Product[] @relation("SalesmanProducts")
-  salesOrders Order[]   @relation("SalesmanOrders")
-  store       Store?
-  carParts    CarPart[] @relation("SellerCarParts")
+  products     Product[] @relation("SalesmanProducts")
+  salesOrders  Order[]   @relation("SalesmanOrders")
+  store        Store?
+  carParts     CarPart[] @relation("SellerCarParts")
 
   @@index([email])
   @@index([role])
 }
+
+// ================================
+// Financial & Wallet Models
+// ================================
+
+model Wallet {
+  id              String   @id @default(cuid())
+  balance         Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // A wallet can both send and receive money
+  sentTransactions     WalletTransaction[] @relation("SentTransactions")
+  receivedTransactions WalletTransaction[] @relation("ReceivedTransactions")
+}
+
+model WalletTransaction {
+  id                  String              @id @default(cuid())
+  amount              Float               // Always positive. Flow is defined by Sender -> Receiver
+  type                TransactionType
+  
+  // Double-Entry P2P Logic
+  senderWalletId      String?             // Nullable if money comes from outside (e.g., Stripe card deposit)
+  senderWallet        Wallet?             @relation("SentTransactions", fields: [senderWalletId], references: [id])
+
+  receiverWalletId    String?             // Nullable if money goes outside (e.g., Payout to Bank)
+  receiverWallet      Wallet?             @relation("ReceivedTransactions", fields: [receiverWalletId], references: [id])
+  
+  // COD Tracking
+  codSettlementStatus CodSettlementStatus @default(NOT_APPLICABLE)
+  
+  description         String?             
+  createdAt           DateTime            @default(now())
+
+  // Relations
+  orderId             String?
+  order               Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([senderWalletId])
+  @@index([receiverWalletId])
+  @@index([type])
+  @@index([orderId])
+}
+
+// ================================
+// E-commerce & Catalog Models
+// ================================
 
 // Store model for salesmen
 model Store {
@@ -211,26 +316,11 @@ model WishlistItem {
   @@index([userId])
 }
 
-// Order status enum
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PROCESSING
-  SHIPPED
-  DELIVERED
-  CANCELLED
-  REFUNDED
-}
+// ================================
+// Order Management Models
+// ================================
 
-// Payment status enum
-enum PaymentStatus {
-  PENDING
-  PAID
-  FAILED
-  REFUNDED
-}
-
-// Order model - represents a customer order for items from a single seller
+// Order model
 model Order {
   id            String        @id @default(cuid())
   orderNumber   String        @unique @default(cuid())
@@ -255,8 +345,9 @@ model Order {
   addressId String?
   address   Address? @relation(fields: [addressId], references: [id])
 
-  items    OrderItem[]
-  tracking OrderTracking[]
+  items               OrderItem[]
+  tracking            OrderTracking[]
+  walletTransactions  WalletTransaction[] 
 
   @@index([customerId])
   @@index([salesmanId])
@@ -331,18 +422,18 @@ model Review {
 // Car and Car Parts Models
 // ================================
 
-// Car model - represents a vehicle by number plate
+// Car model
 model Car {
   id          String   @id @default(cuid())
-  numberPlate String   @unique // e.g., "CAB-1234", "WP-AB-5678"
-  make        String // e.g., Toyota, Honda, Nissan
-  model       String // e.g., Corolla, Civic, Sunny
-  year        Int // e.g., 2020
-  engineType  String? // e.g., "1.8L Petrol", "2.0L Diesel"
+  numberPlate String   @unique 
+  make        String 
+  model       String 
+  year        Int 
+  engineType  String? 
   color       String?
-  vinNumber   String?  @unique // Vehicle Identification Number
+  vinNumber   String?  @unique 
   description String?
-  images      String[] // Car images
+  images      String[] 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -354,16 +445,16 @@ model Car {
   @@index([year])
 }
 
-// Car Part model - parts available for specific cars
+// Car Part model
 model CarPart {
   id            String   @id @default(cuid())
-  name          String // e.g., "Front Brake Pad Set"
+  name          String 
   description   String?
-  partNumber    String? // Manufacturer part number
+  partNumber    String? 
   price         Float
   discountPrice Float?
   stock         Int      @default(0)
-  condition     String   @default("NEW") // NEW, USED, REFURBISHED
+  condition     String   @default("NEW") 
   images        String[]
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())

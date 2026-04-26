@@ -15,6 +15,14 @@ datasource db {
 enum UserRole {
   CUSTOMER
   SALESMAN
+  ADMIN
+}
+
+// Enum for user status
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
 }
 
 // Enum for authentication provider
@@ -35,6 +43,7 @@ model User {
   authProvider AuthProvider @default(EMAIL)
   googleId     String?      @unique
   isVerified   Boolean      @default(false)
+  status       UserStatus   @default(ACTIVE)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -92,8 +101,8 @@ model Product {
   updatedAt     DateTime @updatedAt
 
   // Relations
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
 
   salesmanId String
   salesman   User   @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)

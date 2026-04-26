@@ -59,8 +59,14 @@ function SSOCallbackContent() {
                     // Login with our JWT (same as email/password login)
                     login(data.data.user, data.data.token);
 
-                    // Redirect to salesman dashboard
-                    router.push('/dashboard/salesman');
+                    // Redirect based on user role
+                    if (data.data.user.role === 'ADMIN') {
+                        router.push('/dashboard/admin');
+                    } else if (data.data.user.role === 'SALESMAN') {
+                        router.push('/dashboard/salesman');
+                    } else {
+                        router.push('/');
+                    }
                 } else {
                     setError(data.message || 'Google sign-in failed');
                     isProcessingRef.current = false;

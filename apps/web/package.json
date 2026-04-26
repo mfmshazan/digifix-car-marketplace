@@ -29,5 +29,10 @@
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
     "typescript": "^5"
-  }
+  },
+  "description": "A modern Next.js 14 web application for the DigiFix Car Marketplace.",
+  "main": "postcss.config.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

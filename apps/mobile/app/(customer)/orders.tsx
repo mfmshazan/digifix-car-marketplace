@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Image,
   Modal,
+  Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
@@ -54,6 +55,113 @@ const formatDate = (dateString: string) => {
     day: "numeric",
     year: "numeric",
   });
+};
+
+const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
+  const steps = [
+    { key: "PENDING", title: "Placed" },
+    { key: "CONFIRMED", title: "Confirmed" },
+    { key: "PROCESSING", title: "Processing" },
+    { key: "SHIPPED", title: "Shipped" },
+    { key: "DELIVERED", title: "Delivered" },
+  ];
+
+  let currentIndex = steps.findIndex((s) => s.key === currentStatus.toUpperCase());
+  if (currentIndex === -1) {
+    if (currentStatus.toUpperCase() === "CANCELLED") currentIndex = 0; // Or handle separately
+    else currentIndex = 0;
+  }
+
+  const pulseAnim = React.useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: false,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 1200,
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
+  }, [pulseAnim]);
+
+  return (
+    <View style={styles.stepperContainer}>
+      {steps.map((step, index) => {
+        const isCompleted = index < currentIndex;
+        const isActive = index === currentIndex;
+        const isInactive = index > currentIndex;
+        const isLast = index === steps.length - 1;
+
+        return (
+          <React.Fragment key={step.key}>
+            {/* Step Circle & Label */}
+            <View style={styles.stepWrapper}>
+              <View
+                style={[
+                  styles.stepCircle,
+                  isCompleted && styles.stepCircleCompleted,
+                  isActive && styles.stepCircleActive,
+                  isInactive && styles.stepCircleInactive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.stepNumber,
+                    isCompleted && styles.stepNumberCompleted,
+                    isActive && styles.stepNumberActive,
+                    isInactive && styles.stepNumberInactive,
+                  ]}
+                >
+                  {index + 1}
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.stepLabel,
+                  (isCompleted || isActive) ? styles.stepLabelActive : styles.stepLabelInactive,
+                ]}
+                numberOfLines={1}
+              >
+                {step.title}
+              </Text>
+            </View>
+
+            {/* Connecting Line */}
+            {!isLast && (
+              <View style={styles.lineWrapper}>
+                <View
+                  style={[
+                    styles.lineBase,
+                    isCompleted ? styles.lineCompleted : styles.lineInactive,
+                  ]}
+                />
+                {isActive && (
+                  <Animated.View
+                    style={[
+                      styles.lineAnimated,
+                      {
+                        width: pulseAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ["0%", "100%"],
+                        }),
+                      },
+                    ]}
+                  />
+                )}
+              </View>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
 };
 
 export default function OrdersScreen() {
@@ -324,8 +432,11 @@ export default function OrdersScreen() {
           </MapView>
           
           <View style={styles.trackingInfoCard}>
-             <Text style={styles.trackingStatusText}>Rider is on the way!</Text>
-             <Text style={styles.trackingOrderText}>Order {trackingOrder?.orderNumber}</Text>
+            <View style={styles.trackingInfoHeader}>
+               <Text style={styles.trackingStatusText}>Order Status</Text>
+               <Text style={styles.trackingOrderText}>Order {trackingOrder?.orderNumber}</Text>
+            </View>
+            <OrderStepper currentStatus={trackingOrder?.status || 'PENDING'} />
           </View>
         </View>
       </Modal>
@@ -562,11 +673,95 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
     color: "#1A1A2E",
-    marginBottom: 4,
   },
   trackingOrderText: {
     fontSize: 14,
     color: "#666",
+  },
+  trackingInfoHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  stepperContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  stepWrapper: {
+    alignItems: "center",
+    width: 44, // Fixed width to center text properly
+  },
+  stepCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    marginBottom: 6,
+    backgroundColor: "#FFF",
+  },
+  stepCircleCompleted: {
+    backgroundColor: "#00002E",
+    borderColor: "#00002E",
+  },
+  stepCircleActive: {
+    borderColor: "#00002E",
+  },
+  stepCircleInactive: {
+    borderColor: "#E0E0E0",
+  },
+  stepNumber: {
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  stepNumberCompleted: {
+    color: "#FFF",
+  },
+  stepNumberActive: {
+    color: "#00002E",
+  },
+  stepNumberInactive: {
+    color: "#999",
+  },
+  stepLabel: {
+    fontSize: 10,
+    textAlign: "center",
+  },
+  stepLabelActive: {
+    color: "#00002E",
+    fontWeight: "600",
+  },
+  stepLabelInactive: {
+    color: "#999",
+    fontWeight: "500",
+  },
+  lineWrapper: {
+    flex: 1,
+    height: 28, // Matches circle height to center vertically
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  lineBase: {
+    height: 3,
+    borderRadius: 2,
+    width: "100%",
+  },
+  lineCompleted: {
+    backgroundColor: "#00002E",
+  },
+  lineInactive: {
+    backgroundColor: "#E0E0E0",
+  },
+  lineAnimated: {
+    position: "absolute",
+    left: 4,
+    height: 3,
+    backgroundColor: "#00002E",
+    borderRadius: 2,
   },
 });
 

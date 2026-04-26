@@ -100,7 +100,7 @@ export const removeUser = async (): Promise<void> => {
   }
 };
 
-// Clear all auth data (token + user cache + OneSignal user) — called on logout
+// Clear all auth data (token + user cache) — called on logout
 export const clearAuthData = async (): Promise<void> => {
   try {
     await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);

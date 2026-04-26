@@ -29,12 +29,84 @@ import {
   CalendarDays,
   Receipt,
   Users,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { resolveMediaUrl, ordersApi } from '@/lib/api';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
+// OneSignal helpers kept for backend-side push (logoutOneSignalUser used on logout)
+import { logoutOneSignalUser } from '@/lib/onesignal';
+
+// ─── Push Notification Hook ───────────────────────────────────────────────────
+
+function useOneSignalPush(_userId: string | undefined) {
+  const getPermission = (): NotificationPermission => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return 'denied';
+    return window.Notification.permission;
+  };
+
+  const [permission, setPermission] = useState<NotificationPermission>('default');
+  const [subscribed, setSubscribed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const isReady = typeof window !== 'undefined' && 'Notification' in window;
+
+  // Sync state from browser on mount
+  useEffect(() => {
+    const perm = getPermission();
+    setPermission(perm);
+    setSubscribed(perm === 'granted');
+  }, []);
+
+  const toggle = async () => {
+    if (!isReady) {
+      alert('Your browser does not support push notifications.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (subscribed) {
+        // Can't programmatically revoke permission — guide user
+        alert(
+          'To disable notifications:\n' +
+          'Click the 🔒 lock icon in the browser URL bar → Notifications → Block.'
+        );
+        setSubscribed(false);
+      } else {
+        // Register service worker first so background delivery works
+        if ('serviceWorker' in navigator) {
+          try {
+            await navigator.serviceWorker.register('/OneSignalSDKWorker.js', { scope: '/' });
+          } catch { /* ignore */ }
+        }
+
+        const perm = await window.Notification.requestPermission();
+        setPermission(perm);
+        if (perm === 'granted') {
+          setSubscribed(true);
+          // Show a test notification
+          new window.Notification('✅ Notifications enabled!', {
+            body: 'You will now receive alerts when customers place orders.',
+            icon: '/favicon.ico',
+          });
+        } else if (perm === 'denied') {
+          alert(
+            'Notifications were blocked.\n\n' +
+            'To fix: Click the 🔒 lock icon in the URL bar → Notifications → Allow.'
+          );
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { subscribed, loading, isReady, permission, toggle };
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
 
 type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
 
@@ -226,7 +298,12 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
               <div key={item.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
                 <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
                   {item.product?.images?.[0] ? (
-                    <button onClick={() => setPreviewImage(item.product.images[0])} className="w-full h-full p-0 border-0 bg-transparent rounded-lg hover:opacity-80 transition-opacity">
+                    <button
+                      onClick={() => setPreviewImage(item.product.images[0])}
+                      className="w-full h-full p-0 border-0 bg-transparent rounded-lg hover:opacity-80 transition-opacity"
+                      aria-label="Preview product image"
+                      title="Preview product image"
+                    >
                       <Image src={item.product.images[0]} alt={item.product?.name ?? ''} width={40} height={40} className="object-cover w-full h-full rounded-lg" />
                     </button>
                   ) : (
@@ -266,6 +343,8 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
             <button
               onClick={() => setPreviewImage(null)}
               className="absolute -top-4 -right-4 md:-top-10 md:-right-10 p-2 bg-white/20 hover:bg-white/40 text-white rounded-full transition-colors backdrop-blur-md"
+              aria-label="Close image preview"
+              title="Close image preview"
             >
               <X className="w-6 h-6" />
             </button>
@@ -311,11 +390,12 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     if (!userId) return;
     const socket = connectSocket(userId);
 
-    // A customer placed a new order → pull fresh list and flash an alert
-    const handleNewOrder = (payload: { orderNumber: string }) => {
+    // A customer placed a new order → refresh list and flash an alert banner
+    // (OneSignal push notification is sent server-side by the backend)
+    const handleNewOrder = (payload: { orderNumber: string; total?: number }) => {
       setNewOrderAlert(`🆕 New order received: ${payload.orderNumber}`);
       loadOrders();
-      setTimeout(() => setNewOrderAlert(null), 6000);
+      setTimeout(() => setNewOrderAlert(null), 10000);
     };
 
     // Salesman updated status elsewhere (e.g., another tab) → update in-place
@@ -583,8 +663,11 @@ export default function SalesmanDashboard() {
   const { user, logout, isAuthenticated, refreshProfile } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState<Tab>('orders');
-
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // ── OneSignal push notifications ─────────────────────────────────────────────
+  const { subscribed: pushEnabled, loading: pushLoading, isReady: pushReady, permission: pushPermission, toggle: togglePush } = useOneSignalPush(user?.id);
+
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -611,7 +694,10 @@ export default function SalesmanDashboard() {
     };
   }, [user?.id]);
 
-  const handleLogout = () => {
+
+
+  const handleLogout = async () => {
+    await logoutOneSignalUser();
     disconnectSocket();
     logout();
     router.push('/login');
@@ -699,6 +785,51 @@ export default function SalesmanDashboard() {
                 <Plus className="w-4 h-4" />
                 Add Product
               </button>
+
+              {/* Push Notification Toggle */}
+              <button
+                id="push-toggle-btn"
+                onClick={togglePush}
+                disabled={pushLoading}
+                title={
+                  !pushReady
+                    ? 'Push not configured — click for setup instructions'
+                    : pushPermission === 'denied'
+                    ? 'Notifications blocked — click the lock icon in URL bar to allow'
+                    : pushEnabled
+                    ? 'Click to disable order notifications'
+                    : 'Click to enable push notifications for new orders'
+                }
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl transition-all ${
+                  pushLoading
+                    ? 'opacity-60 cursor-wait text-white/40'
+                    : !pushReady
+                    ? 'text-yellow-400/70 hover:text-yellow-400 hover:bg-yellow-500/10 border border-yellow-500/20'
+                    : pushEnabled
+                    ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30'
+                    : pushPermission === 'denied'
+                    ? 'text-red-400/70 hover:text-red-400 hover:bg-red-500/10'
+                    : 'text-white/50 hover:text-white/80 hover:bg-white/10'
+                }`}
+              >
+                {pushLoading ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : pushEnabled ? (
+                  <Bell className="w-4 h-4" />
+                ) : (
+                  <BellOff className="w-4 h-4" />
+                )}
+                <span className="hidden sm:inline">
+                  {pushLoading
+                    ? 'Enabling…'
+                    : !pushReady
+                    ? 'Setup Needed'
+                    : pushEnabled
+                    ? 'Notifs On'
+                    : 'Notifs Off'}
+                </span>
+              </button>
+
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-1.5 px-3 py-2 text-white/70 hover:text-red-400 text-sm font-medium rounded-xl transition-all hover:bg-white/10"
@@ -745,6 +876,7 @@ export default function SalesmanDashboard() {
               ? 'Manage and update orders placed by your customers.'
               : 'Track your revenue, completed orders, and top products.'}
           </p>
+
         </div>
 
         {activeTab === 'orders' && <CurrentOrdersTab userId={user.id} />}

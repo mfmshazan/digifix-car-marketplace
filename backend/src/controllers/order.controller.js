@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma.js';
-// import { sendNotificationToUser } from '../lib/onesignal.js';
+import { sendNewOrderNotificationToSalesman } from '../lib/onesignal.js';
 
 /**
  * Get salesman's sales summary
@@ -847,6 +847,18 @@ export const createOrder = async (req, res) => {
         console.log(`📡 Emitted newOrder ${order.orderNumber} → salesman ${order.salesmanId}`);
       }
     }
+
+    // 🔔 OneSignal push notifications (non-blocking — won't delay the response)
+    Promise.all(
+      createdOrders.map(order =>
+        sendNewOrderNotificationToSalesman({
+          salesmanId: order.salesmanId,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          total: order.total,
+        }).catch(err => console.error('OneSignal error:', err.message))
+      )
+    );
 
     res.status(201).json({
       success: true,

@@ -3,6 +3,40 @@ import { io, Socket } from 'socket.io-client';
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3000';
 
 let socket: Socket | null = null;
+let joinedUserId: string | null = null;
+let listenersAttached = false;
+
+const joinUserRoom = (userId?: string | null): void => {
+  if (!userId || !socket?.connected) {
+    return;
+  }
+
+  socket.emit('join', userId);
+};
+
+const attachSocketListeners = (): void => {
+  if (!socket || listenersAttached) {
+    return;
+  }
+
+  listenersAttached = true;
+
+  socket.on('connect', () => {
+    joinUserRoom(joinedUserId);
+  });
+
+  socket.on('reconnect', () => {
+    joinUserRoom(joinedUserId);
+  });
+
+  socket.on('connect_error', (error) => {
+    console.warn('🔌 Socket connection error:', error.message);
+  });
+
+  socket.on('disconnect', (reason) => {
+    console.log('🔌 Socket disconnected:', reason);
+  });
+};
 
 /**
  * Returns a singleton Socket.io client connected to the backend.
@@ -14,6 +48,8 @@ export function getSocket(): Socket {
       transports: ['websocket', 'polling'],
       autoConnect: false,
     });
+
+    attachSocketListeners();
   }
   return socket;
 }
@@ -24,10 +60,13 @@ export function getSocket(): Socket {
  */
 export function connectSocket(userId: string): Socket {
   const s = getSocket();
+  joinedUserId = userId;
+
   if (!s.connected) {
     s.connect();
   }
-  s.emit('join', userId);
+
+  joinUserRoom(userId);
   return s;
 }
 
@@ -38,4 +77,6 @@ export function disconnectSocket(): void {
   if (socket?.connected) {
     socket.disconnect();
   }
+
+  joinedUserId = null;
 }

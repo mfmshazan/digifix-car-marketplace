@@ -6,10 +6,26 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Platform,
+  Image,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { clearAuthData } from "../../src/api/storage";
+import { router, useFocusEffect } from "expo-router";
+import {
+  clearAuthData,
+  getToken,
+  saveUser,
+  getUser,
+  getUserPrefs,
+  saveUserPrefs,
+  mergeServerUserAndPrefs,
+  isEphemeralWebAvatarUri,
+} from "../../src/api/storage";
+import { useAuth, useUser } from "@clerk/expo";
+import * as ImagePicker from "expo-image-picker";
+import { getApiUrl, resolveAvatarDisplayUri } from "../../src/config/api.config";
+import { getUserProfile } from "../../src/api/auth";
 
 const menuItems = [
   {
@@ -17,6 +33,7 @@ const menuItems = [
     icon: "person-outline",
     label: "Edit Profile",
     color: "#00002E",
+    route: "/edit-profile" as const,
   },
   {
     id: "2",
@@ -63,7 +80,184 @@ const menuItems = [
 ];
 
 export default function SalesmanProfileScreen() {
+  const { signOut } = useAuth();
+  const { user: clerkUser } = useUser();
+  const [userData, setUserData] = React.useState<any>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isUploading, setIsUploading] = React.useState(false);
+  const [localAvatarUri, setLocalAvatarUri] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const loadCached = async () => {
+      const cached = await getUser();
+      if (cached) {
+        setUserData(cached);
+        if (cached.avatar_local && !cached.avatar) {
+          setLocalAvatarUri(cached.avatar_local);
+        }
+      }
+      setIsLoading(false);
+    };
+    loadCached();
+  }, []);
+
+  const fetchUserData = React.useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (token) {
+        const result = await getUserProfile(token);
+        if (result.success && result.data) {
+          const email = result.data.email || "";
+          const prefs = email ? await getUserPrefs(email) : {};
+          const merged = mergeServerUserAndPrefs(result.data, prefs);
+          if (result.data.avatar && merged.avatar_local) {
+            merged.avatar_local = null;
+            if (email) await saveUserPrefs(email, { avatar_local: null });
+          }
+          setUserData(merged);
+          await saveUser(merged);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching salesman profile:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchUserData();
+  }, [fetchUserData]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const refreshOnFocus = async () => {
+        const cached = await getUser();
+        if (cached) {
+          setUserData(cached);
+          if (cached.avatar_local && !cached.avatar) {
+            setLocalAvatarUri(cached.avatar_local);
+          }
+        }
+        fetchUserData();
+      };
+      refreshOnFocus();
+    }, [fetchUserData])
+  );
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission Denied",
+        "Camera roll permissions are required to upload a profile picture."
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      const uri = result.assets[0].uri;
+      setLocalAvatarUri(uri);
+      const localUser = await getUser();
+      await saveUser({ ...localUser, avatar_local: uri });
+      const em = localUser?.email || "";
+      if (em) await saveUserPrefs(em, { avatar_local: uri });
+      uploadImage(uri);
+    }
+  };
+
+  const uploadImage = async (uri: string) => {
+    setIsUploading(true);
+    try {
+      const token = await getToken();
+      if (!token) {
+        setIsUploading(false);
+        return;
+      }
+
+      const formData = new FormData();
+      const filename = uri.split("/").pop() || "profile.jpg";
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : "image/jpeg";
+
+      if (Platform.OS === "web") {
+        const res = await fetch(uri);
+        const blob = await res.blob();
+        formData.append("avatar", blob, filename);
+      } else {
+        formData.append("avatar", { uri, name: filename, type } as any);
+      }
+
+      const response = await fetch(`${getApiUrl()}/users/profile-picture`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        body: formData,
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        const serverAvatar = result.data?.avatar as string | undefined;
+        setLocalAvatarUri(null);
+        const localUser = await getUser();
+        const nextUser = {
+          ...localUser,
+          ...(serverAvatar ? { avatar: serverAvatar } : {}),
+          avatar_local: null,
+        };
+        await saveUser(nextUser);
+        setUserData((prev: any) => ({ ...prev, ...nextUser }));
+        const em = localUser?.email || "";
+        if (em) await saveUserPrefs(em, { avatar_local: null });
+        fetchUserData();
+      }
+    } catch (err) {
+      console.log("Avatar upload failed; showing local photo instead:", err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const getAvatarSource = () => {
+    if (localAvatarUri) {
+      return { uri: localAvatarUri };
+    }
+    if (
+      !userData?.avatar &&
+      userData?.avatar_local &&
+      !isEphemeralWebAvatarUri(userData.avatar_local)
+    ) {
+      return { uri: userData.avatar_local };
+    }
+    const resolved = resolveAvatarDisplayUri(userData?.avatar);
+    if (resolved) return { uri: resolved };
+    if (clerkUser?.imageUrl) return { uri: clerkUser.imageUrl };
+    return null;
+  };
+
+  const avatarSource = getAvatarSource();
+
+  const performLogout = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+
+    await clearAuthData();
+    router.replace(Platform.OS === "web" ? "/login" : "/(auth)/login");
+  };
+
   const handleLogout = () => {
+    if (Platform.OS === "web") {
+      void performLogout();
+      return;
+    }
+
     Alert.alert(
       "Logout",
       "Are you sure you want to logout?",
@@ -76,13 +270,7 @@ export default function SalesmanProfileScreen() {
           text: "Logout",
           style: "destructive",
           onPress: async () => {
-            try {
-              await clearAuthData();
-              router.replace("/(auth)/login");
-            } catch (error) {
-              console.error("Logout error:", error);
-              router.replace("/(auth)/login");
-            }
+            await performLogout();
           },
         },
       ]
@@ -94,23 +282,68 @@ export default function SalesmanProfileScreen() {
       {/* Profile Header */}
       <View style={styles.profileHeader}>
         <View style={styles.avatarContainer}>
-          <View style={styles.avatar}>
-            <Ionicons name="storefront" size={40} color="#00002E" />
-          </View>
-          <TouchableOpacity style={styles.editAvatarButton}>
+          <TouchableOpacity onPress={pickImage} disabled={isUploading}>
+            <View style={styles.avatar}>
+              {isUploading && (
+                <View style={styles.uploadingOverlay}>
+                  <ActivityIndicator size="small" color="#00002E" />
+                </View>
+              )}
+              {avatarSource ? (
+                <Image
+                  source={avatarSource}
+                  style={{ width: 100, height: 100, borderRadius: 50 }}
+                />
+              ) : (
+                <Ionicons name="storefront" size={40} color="#00002E" />
+              )}
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.editAvatarButton} onPress={pickImage}>
             <Ionicons name="camera" size={16} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-        <Text style={styles.storeName}>Auto Parts Store</Text>
-        <Text style={styles.ownerEmail}>store@example.com</Text>
-        <View style={styles.roleBadge}>
-          <Ionicons name="storefront" size={14} color="#00002E" />
-          <Text style={styles.roleText}>Salesman</Text>
-        </View>
-        <View style={styles.verifiedBadge}>
-          <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-          <Text style={styles.verifiedText}>Verified Seller</Text>
-        </View>
+        {isLoading ? (
+          <ActivityIndicator color="#00002E" style={{ marginTop: 8 }} />
+        ) : (
+          <>
+            {(() => {
+              const backendEmail = userData?.email || "";
+              const clerkEmail = clerkUser?.emailAddresses[0]?.emailAddress || "";
+              const emailsMatch = backendEmail.toLowerCase() === clerkEmail.toLowerCase();
+              
+              const displayName = userData?.name || (emailsMatch ? clerkUser?.fullName : null) || backendEmail.split('@')[0] || "Guest User";
+              const displayEmail = backendEmail || (emailsMatch ? clerkEmail : "");
+              // Prefer profile name for the headline so Edit Profile updates show immediately.
+              // Stale `store.name` from the API must not override a freshly saved `user.name`.
+              const storeHeadline = userData?.name
+                ? `${userData.name}'s Store`
+                : userData?.store?.name ||
+                  ((emailsMatch && clerkUser?.fullName)
+                    ? `${clerkUser.fullName}'s Store`
+                    : `${displayName}'s Store`);
+
+              return (
+                <>
+                  <Text style={styles.storeName}>
+                    {storeHeadline}
+                  </Text>
+                  <Text style={styles.ownerEmail}>
+                    {displayEmail}
+                  </Text>
+                </>
+              );
+            })()}
+            <View style={styles.roleBadge}>
+              <Ionicons name="storefront" size={14} color="#00002E" />
+              <Text style={styles.roleText}>Salesman</Text>
+            </View>
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+              <Text style={styles.verifiedText}>Verified Seller</Text>
+            </View>
+          </>
+        )}
       </View>
 
       {/* Stats */}
@@ -155,7 +388,13 @@ export default function SalesmanProfileScreen() {
       {/* Menu Items */}
       <View style={styles.menuContainer}>
         {menuItems.map((item) => (
-          <TouchableOpacity key={item.id} style={styles.menuItem}>
+          <TouchableOpacity
+            key={item.id}
+            style={styles.menuItem}
+            onPress={() => {
+              if ("route" in item && item.route) router.push(item.route);
+            }}
+          >
             <View
               style={[
                 styles.menuIconContainer,
@@ -204,6 +443,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#E5E7EB",
     justifyContent: "center",
     alignItems: "center",
+    overflow: "hidden",
+  },
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255,255,255,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1,
+    borderRadius: 50,
   },
   editAvatarButton: {
     position: "absolute",

@@ -17,9 +17,10 @@ const authenticate = (req, res, next) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    // Map userId from JWT to id for consistency across controllers
+    // Map userId from JWT to both id and userId for consistency across controllers
     req.user = {
       id: decoded.userId,
+      userId: decoded.userId,
       role: decoded.role
     };
     next();

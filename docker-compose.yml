@@ -1,7 +1,12 @@
 # Docker Compose for DigiFix Car Marketplace
 # Usage:
-#   Development: docker-compose up -d
-#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   Development: docker compose up -d
+#   Production:  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# If backend build fails with "parent snapshot ... does not exist" (BuildKit cache bug):
+#   docker builder prune -f
+#   docker compose build --no-cache backend
+# Or once: DOCKER_BUILDKIT=0 docker compose up --build
 
 services:
   # ================================
@@ -36,6 +41,8 @@ services:
       dockerfile: Dockerfile
     container_name: digifix-backend
     restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: 3000
@@ -43,17 +50,19 @@ services:
       DIRECT_URL: postgresql://${POSTGRES_USER:-digifix}:${POSTGRES_PASSWORD:-digifix123}@postgres:5432/${POSTGRES_DB:-digifix_db}?schema=public
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
       FRONTEND_URL: ${FRONTEND_URL:-*}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
     ports:
       - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - ./backend/public/uploads:/app/public/uploads
+      - ./backend:/app
+      - /app/node_modules
+    command: npm run dev
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - digifix-network
-    # For development - mount source code
-    # volumes:
-    #   - ./backend:/app
-    #   - /app/node_modules
 
   # ================================
   # Web Frontend (Next.js)
@@ -67,6 +76,8 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-3000}/api
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
     ports:
       - "${WEB_PORT:-3001}:3001"
     depends_on:

@@ -9,13 +9,16 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { clearAuthData } from "../../src/api/storage";
 import { getSalesmanSalesSummary, SalesmanSalesSummary } from "../../src/api/orders";
+import { useAuth } from "@clerk/expo";
 
 export default function SalesmanDashboard() {
+  const { signOut } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [salesData, setSalesData] = useState<SalesmanSalesSummary | null>(null);
@@ -44,7 +47,23 @@ export default function SalesmanDashboard() {
     fetchSalesData();
   }, [fetchSalesData]);
 
+  const performLogout = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+
+    await clearAuthData();
+    router.replace(Platform.OS === "web" ? "/login" : "/(auth)/login");
+  };
+
   const handleLogout = () => {
+    if (Platform.OS === "web") {
+      void performLogout();
+      return;
+    }
+
     Alert.alert(
       "Logout",
       "Are you sure you want to logout?",
@@ -54,13 +73,7 @@ export default function SalesmanDashboard() {
           text: "Logout",
           style: "destructive",
           onPress: async () => {
-            try {
-              await clearAuthData();
-              router.replace("/(auth)/login");
-            } catch (error) {
-              console.error("Logout error:", error);
-              router.replace("/(auth)/login");
-            }
+            await performLogout();
           },
         },
       ]
@@ -97,8 +110,8 @@ export default function SalesmanDashboard() {
   const monthly = salesData?.monthly;
 
   return (
-    <ScrollView 
-      style={styles.container} 
+    <ScrollView
+      style={styles.container}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#00002E"]} />
@@ -193,7 +206,7 @@ export default function SalesmanDashboard() {
       <View style={styles.quickActionsSection}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.quickActionsGrid}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.quickAction}
             onPress={() => router.push('/(salesman)/add-car-part')}
           >
@@ -202,7 +215,7 @@ export default function SalesmanDashboard() {
             </View>
             <Text style={styles.quickActionText}>Add Part</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.quickAction}
             onPress={() => router.push('/(salesman)/orders')}
           >
@@ -211,7 +224,7 @@ export default function SalesmanDashboard() {
             </View>
             <Text style={styles.quickActionText}>Orders</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.quickAction}
             onPress={() => router.push('/(salesman)/products')}
           >
@@ -251,9 +264,9 @@ export default function SalesmanDashboard() {
                   </View>
                 </View>
                 <Text style={styles.orderTime}>
-                  {new Date(order.createdAt).toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
+                  {new Date(order.createdAt).toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
                   })}
                 </Text>
               </View>
@@ -265,12 +278,12 @@ export default function SalesmanDashboard() {
 
               {/* Order Items */}
               <View style={styles.itemsList}>
-                {order.items.map((item, idx) => (
-                  <View key={idx} style={styles.orderItem}>
+                {order.items.map((item) => (
+                  <View key={item.id || item.productName} style={styles.orderItem}>
                     <View style={styles.itemImageContainer}>
                       {item.productImage ? (
-                        <Image 
-                          source={{ uri: item.productImage }} 
+                        <Image
+                          source={{ uri: item.productImage }}
                           style={styles.itemImage}
                           resizeMode="cover"
                         />
@@ -338,10 +351,10 @@ export default function SalesmanDashboard() {
           <Text style={styles.sectionTitle}>Top Selling Products</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {salesData.topSellingProducts.map((product) => (
-              <View key={product.id} style={styles.topProductCard}>
+              <View key={product.uniqueId || product.id} style={styles.topProductCard}>
                 {product.images?.[0] ? (
-                  <Image 
-                    source={{ uri: product.images[0] }} 
+                  <Image
+                    source={{ uri: product.images[0] }}
                     style={styles.topProductImage}
                     resizeMode="cover"
                   />

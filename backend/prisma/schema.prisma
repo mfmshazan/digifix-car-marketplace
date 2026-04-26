@@ -176,16 +176,23 @@ model Address {
 model CartItem {
   id        String   @id @default(cuid())
   quantity  Int      @default(1)
+  itemType  String   @default("PRODUCT") // PRODUCT or CAR_PART
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
   userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Can reference either Product or CarPart
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  carPartId String?
+  carPart   CarPart? @relation(fields: [carPartId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
+  @@unique([userId, carPartId])
   @@index([userId])
 }
 
@@ -372,6 +379,9 @@ model CarPart {
   sellerId String
   seller   User   @relation("SellerCarParts", fields: [sellerId], references: [id], onDelete: Cascade)
 
+  // Cart items containing this car part
+  cartItems  CartItem[]
+
   // Order items containing this car part
   orderItems OrderItem[]
 
@@ -380,4 +390,16 @@ model CarPart {
   @@index([sellerId])
   @@index([name])
   @@index([partNumber])
+}
+
+// OTP for forgot-password flow
+model PasswordResetOtp {
+  id        String   @id @default(cuid())
+  email     String
+  otpHash   String   // bcrypt hash of the 6-digit OTP
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
 }

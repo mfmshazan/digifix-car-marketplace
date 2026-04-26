@@ -13,6 +13,7 @@ import {
   Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { searchPartsByNumberPlate, getAllCarParts, CarPart, Car } from "../../src/api/carParts";
 import { useCart } from "../../src/store/cartStore";
 
@@ -47,26 +48,36 @@ export default function CustomerHomeScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<{ car: Car; parts: CarPart[] } | null>(null);
   const [showResults, setShowResults] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [featuredParts, setFeaturedParts] = useState<CarPart[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
   const { addItem } = useCart();
 
   // Handle adding item to cart
-  const handleAddToCart = (part: CarPart) => {
-    addItem({
-      id: part.id,
-      name: part.name,
-      price: part.price,
-      discountPrice: part.discountPrice,
-      image: part.images?.[0],
-      carInfo: `${part.car.make} ${part.car.model} (${part.car.year})`,
-      categoryName: part.category.name,
-    });
-    Alert.alert(
-      "Added to Cart",
-      `${part.name} has been added to your cart.`,
-      [{ text: "OK" }]
-    );
+  const handleAddToCart = async (part: CarPart) => {
+    try {
+      await addItem({
+        productId: part.id,
+        itemType: 'CAR_PART',
+        name: part.name,
+        price: part.price,
+        discountPrice: part.discountPrice,
+        image: part.images?.[0],
+        carInfo: `${part.car.make} ${part.car.model} (${part.car.year})`,
+        categoryName: part.category.name,
+      });
+      Alert.alert(
+        "Added to Cart",
+        `${part.name} has been added to your cart.`,
+        [
+          { text: "Continue", style: "cancel" },
+          { text: "View Cart", onPress: () => router.push("/(customer)/cart") },
+        ]
+      );
+    } catch (error: any) {
+      Alert.alert("Add to Cart Failed", error?.message || "Please try again.");
+    }
   };
 
   // Load featured parts on mount
@@ -77,7 +88,7 @@ export default function CustomerHomeScreen() {
   const loadFeaturedParts = async () => {
     try {
       setIsLoading(true);
-      const response = await getAllCarParts({ limit: 10 });
+      const response = await getAllCarParts({ limit: 20 });
       if (response.success) {
         setFeaturedParts(response.data.parts);
       }
@@ -98,7 +109,7 @@ export default function CustomerHomeScreen() {
     try {
       setIsSearching(true);
       const response = await searchPartsByNumberPlate(numberPlateQuery.trim());
-      
+
       if (response.success && response.data) {
         setSearchResults({
           car: response.data.car,
@@ -132,24 +143,30 @@ export default function CustomerHomeScreen() {
     <TouchableOpacity style={styles.productCard}>
       <View style={styles.productImageContainer}>
         {item.images && item.images.length > 0 ? (
-          <Image 
-            source={{ uri: item.images[0] }} 
-            style={styles.productImage}
-            resizeMode="cover"
-          />
+          <TouchableOpacity
+            style={styles.productImageTouchable}
+            activeOpacity={0.9}
+            onPress={() => setSelectedImage(item.images[0])}
+          >
+            <Image
+              source={{ uri: item.images[0] }}
+              style={styles.productImage}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
         ) : (
           <View style={styles.productImagePlaceholder}>
             <Ionicons name="car-sport" size={40} color="#00002E" />
           </View>
         )}
-        <View style={[styles.conditionBadge, { 
-          backgroundColor: item.condition === 'NEW' ? '#16A34A' : item.condition === 'USED' ? '#00002E' : '#1A1A1A' 
+        <View pointerEvents="none" style={[styles.conditionBadge, {
+          backgroundColor: item.condition === 'NEW' ? '#16A34A' : item.condition === 'USED' ? '#00002E' : '#1A1A1A'
         }]}>
           <Text style={styles.conditionText}>{item.condition}</Text>
         </View>
       </View>
       <View style={styles.productInfo}>
-        <Text style={styles.productCategory}>{item.category.name}</Text>
+        <Text style={styles.productCategory}>{item.seller.name}</Text>
         <Text style={styles.productName} numberOfLines={2}>
           {item.name}
         </Text>
@@ -163,7 +180,7 @@ export default function CustomerHomeScreen() {
           )}
         </View>
       </View>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.addToCartButton}
         onPress={() => handleAddToCart(item)}
       >
@@ -218,8 +235,8 @@ export default function CustomerHomeScreen() {
                 </View>
               </View>
               {searchResults.car.images && searchResults.car.images.length > 0 && (
-                <Image 
-                  source={{ uri: searchResults.car.images[0] }} 
+                <Image
+                  source={{ uri: searchResults.car.images[0] }}
                   style={styles.carImage}
                   resizeMode="cover"
                 />
@@ -240,11 +257,17 @@ export default function CustomerHomeScreen() {
                 <TouchableOpacity style={styles.partListItem}>
                   <View style={styles.partImageContainer}>
                     {item.images && item.images.length > 0 ? (
-                      <Image 
-                        source={{ uri: item.images[0] }} 
-                        style={styles.partListImage}
-                        resizeMode="cover"
-                      />
+                      <TouchableOpacity
+                        style={styles.partListImageTouchable}
+                        activeOpacity={0.9}
+                        onPress={() => setSelectedImage(item.images[0])}
+                      >
+                        <Image
+                          source={{ uri: item.images[0] }}
+                          style={styles.partListImage}
+                          resizeMode="cover"
+                        />
+                      </TouchableOpacity>
                     ) : (
                       <View style={styles.partListImagePlaceholder}>
                         <Ionicons name="construct" size={24} color="#FF6B35" />
@@ -253,9 +276,9 @@ export default function CustomerHomeScreen() {
                   </View>
                   <View style={styles.partListInfo}>
                     <View style={styles.partListHeader}>
-                      <Text style={styles.partListCategory}>{item.category.name}</Text>
-                      <View style={[styles.conditionBadgeSmall, { 
-                        backgroundColor: item.condition === 'NEW' ? '#4ECDC4' : item.condition === 'USED' ? '#FF6B35' : '#9B59B6' 
+                      <Text style={styles.partListCategory}>{item.seller.name}</Text>
+                      <View style={[styles.conditionBadgeSmall, {
+                        backgroundColor: item.condition === 'NEW' ? '#4ECDC4' : item.condition === 'USED' ? '#FF6B35' : '#9B59B6'
                       }]}>
                         <Text style={styles.conditionTextSmall}>{item.condition}</Text>
                       </View>
@@ -278,15 +301,15 @@ export default function CustomerHomeScreen() {
                       </Text>
                     </View>
                   </View>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.addButton}
                     onPress={() => handleAddToCart(item)}
                     disabled={item.stock <= 0}
                   >
-                    <Ionicons 
-                      name="add-circle" 
-                      size={32} 
-                      color={item.stock > 0 ? "#00002E" : "#CCC"} 
+                    <Ionicons
+                      name="add-circle"
+                      size={32}
+                      color={item.stock > 0 ? "#00002E" : "#CCC"}
                     />
                   </TouchableOpacity>
                 </TouchableOpacity>
@@ -318,7 +341,7 @@ export default function CustomerHomeScreen() {
               autoCapitalize="characters"
               onSubmitEditing={handleSearchByNumberPlate}
             />
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={handleSearchByNumberPlate}
               style={styles.searchButton}
               disabled={isSearching}
@@ -387,60 +410,94 @@ export default function CustomerHomeScreen() {
           )}
         </View>
 
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.quickActionItem} onPress={() => {
-            // Focus on number plate search
-            Alert.alert("Search by Number Plate", "Enter your car number plate above to find compatible parts!");
-          }}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
-              <Ionicons name="car" size={24} color="#00002E" />
-            </View>
-            <Text style={styles.quickActionText}>Find by Plate</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#F3F4F6" }]}>
-              <Ionicons name="barcode" size={24} color="#1A1A1A" />
-            </View>
-            <Text style={styles.quickActionText}>Scan Part Code</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionItem}>
-            <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
-              <Ionicons name="location" size={24} color="#00002E" />
-            </View>
-            <Text style={styles.quickActionText}>Track Order</Text>
-          </TouchableOpacity>
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.quickActionItem} onPress={() => {
+              // Focus on number plate search
+              Alert.alert("Search by Number Plate", "Enter your car number plate above to find compatible parts!");
+            }}>
+              <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
+                <Ionicons name="car" size={24} color="#00002E" />
+              </View>
+              <Text style={styles.quickActionText}>Find by Plate</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionItem}>
+              <View style={[styles.quickActionIcon, { backgroundColor: "#F3F4F6" }]}>
+                <Ionicons name="barcode" size={24} color="#1A1A1A" />
+              </View>
+              <Text style={styles.quickActionText}>Scan Part Code</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionItem}>
+              <View style={[styles.quickActionIcon, { backgroundColor: "#E5E7EB" }]}>
+                <Ionicons name="location" size={24} color="#00002E" />
+              </View>
+              <Text style={styles.quickActionText}>Track Order</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
 
-      {/* Best Sellers */}
-      <View style={[styles.section, styles.lastSection]}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Best Sellers</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAllText}>See All</Text>
-          </TouchableOpacity>
+        {/* Best Sellers */}
+        <View style={[styles.section, styles.lastSection]}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Best Sellers</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#00002E" style={{ marginVertical: 20 }} />
+          ) : (
+            <FlatList
+              data={featuredParts.slice().reverse()}
+              renderItem={renderPartItem}
+              keyExtractor={(item) => `best-${item.id}`}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.productsList}
+            />
+          )}
         </View>
-        {isLoading ? (
-          <ActivityIndicator size="large" color="#00002E" style={{ marginVertical: 20 }} />
-        ) : (
-          <FlatList
-            data={featuredParts.slice().reverse()}
-            renderItem={renderPartItem}
-            keyExtractor={(item) => `best-${item.id}`}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.productsList}
-          />
-        )}
-      </View>
-    </ScrollView>
+      </ScrollView>
 
-    {/* Search Results Modal */}
-    {renderSearchResultsModal()}
-  </View>
+      {/* Search Results Modal */}
+      {renderSearchResultsModal()}
+
+      {/* Image Zoom Modal */}
+      <Modal
+        visible={!!selectedImage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+      >
+        <TouchableOpacity
+          style={styles.imageModalOverlay}
+          activeOpacity={1}
+          onPress={() => setSelectedImage(null)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(event) => event.stopPropagation()}
+            style={styles.imageModalContent}
+          >
+            <TouchableOpacity
+              style={styles.imageModalCloseButton}
+              onPress={() => setSelectedImage(null)}
+            >
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+            {selectedImage && (
+              <Image
+                source={{ uri: selectedImage }}
+                style={styles.imageModalImage}
+                resizeMode="contain"
+              />
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    </View>
   );
 }
 
@@ -589,6 +646,13 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
     width: "100%",
   },
+  productImageTouchable: {
+    width: "100%",
+    height: 120,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: "hidden",
+  },
   productImagePlaceholder: {
     height: 120,
     backgroundColor: "#E5E7EB",
@@ -651,8 +715,8 @@ const styles = StyleSheet.create({
   },
   productCategory: {
     fontSize: 10,
-    color: "#999",
-    textTransform: "uppercase",
+    color: "#00002E",
+    fontWeight: "500",
     marginBottom: 4,
   },
   productName: {
@@ -809,6 +873,12 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 8,
   },
+  partListImageTouchable: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
   partListImagePlaceholder: {
     width: 80,
     height: 80,
@@ -827,8 +897,8 @@ const styles = StyleSheet.create({
   },
   partListCategory: {
     fontSize: 11,
-    color: "#999",
-    textTransform: "uppercase",
+    color: "#00002E",
+    fontWeight: "500",
     marginRight: 8,
   },
   conditionBadgeSmall: {
@@ -876,6 +946,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginLeft: 8,
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  imageModalContent: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageModalCloseButton: {
+    position: "absolute",
+    top: 40,
+    right: 8,
+    zIndex: 2,
+    padding: 8,
+  },
+  imageModalImage: {
+    width: "100%",
+    height: "85%",
   },
 });
 

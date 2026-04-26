@@ -17,7 +17,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { loginUser } from "../../src/api/auth";
-import { saveToken, saveUser } from "../../src/api/storage";
+import { saveToken, saveUser, getUserPrefs, saveUserPrefs, mergeServerUserAndPrefs } from "../../src/api/storage";
+import { useAuth, useSession } from "@clerk/expo";
+import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
+
+
+/** RN-web has no native driver — avoids console noise on web. */
+const useNativeDriverForAnim = Platform.OS !== "web";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -25,7 +31,10 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  
+
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { session } = useSession();
+  const { signInWithGoogle } = useGoogleSignIn();
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -33,33 +42,63 @@ export default function LoginScreen() {
   const buttonScale = useRef(new Animated.Value(1)).current;
   const googleButtonScale = useRef(new Animated.Value(1)).current;
 
+  // Ref to prevent infinite sync loops
+  const hasAttemptedSyncRef = useRef(false);
+
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      // Only proceed if Clerk is loaded, a session exists, and we haven't tried syncing yet
+      if (!isLoaded || !isSignedIn || !session || hasAttemptedSyncRef.current) return;
+
+      // Avoid auto-sync on web login screen during OAuth redirect flow.
+      if (Platform.OS === "web") return;
+
+      try {
+        const clerkToken = await getToken();
+        if (clerkToken) {
+          hasAttemptedSyncRef.current = true;
+          setIsLoading(true);
+          await handleBackendSync(clerkToken, session?.id);
+        }
+      } catch (err) {
+        console.error("Auto-sync error:", err);
+        hasAttemptedSyncRef.current = false; // Allow retry on error if needed
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkExistingSession();
+  }, [isLoaded, isSignedIn, session, getToken]);
+
   useEffect(() => {
     Animated.parallel([
+
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 600,
-        useNativeDriver: true,
+        useNativeDriver: useNativeDriverForAnim,
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 600,
-        useNativeDriver: true,
+        useNativeDriver: useNativeDriverForAnim,
       }),
       Animated.spring(scaleAnim, {
         toValue: 1,
         friction: 8,
         tension: 40,
-        useNativeDriver: true,
+        useNativeDriver: useNativeDriverForAnim,
       }),
     ]).start();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePressIn = (animValue: Animated.Value) => {
     Animated.spring(animValue, {
       toValue: 0.95,
       friction: 5,
-      useNativeDriver: true,
+      useNativeDriver: useNativeDriverForAnim,
     }).start();
   };
 
@@ -67,7 +106,7 @@ export default function LoginScreen() {
     Animated.spring(animValue, {
       toValue: 1,
       friction: 5,
-      useNativeDriver: true,
+      useNativeDriver: useNativeDriverForAnim,
     }).start();
   };
 
@@ -85,7 +124,21 @@ export default function LoginScreen() {
 
       if (response.success && response.data) {
         await saveToken(response.data.token);
-        await saveUser(response.data.user);
+        // Merge any locally saved profile prefs (name/phone/avatar_local)
+        // that survived logout back into the fresh backend user data.
+        const prefs = await getUserPrefs(response.data.user.email || "");
+        const merged: any = mergeServerUserAndPrefs(response.data.user, prefs);
+
+        // If the backend has a confirmed uploaded avatar, the local fallback
+        // URI is obsolete — clear it so the backend URL is displayed.
+        if (response.data.user.avatar && merged.avatar_local) {
+          merged.avatar_local = null;
+          const em = response.data.user.email || "";
+          if (em) await saveUserPrefs(em, { avatar_local: null });
+        }
+
+        await saveUser(merged);
+
 
         Alert.alert("Success", "Login successful!");
 
@@ -105,28 +158,96 @@ export default function LoginScreen() {
     }
   };
 
-  const handleGoogleSignIn = () => {
-    Alert.alert("Coming Soon", "Google Sign-In will be available soon!");
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsLoading(true);
+      setError("");
+
+      const result = await signInWithGoogle();
+
+      console.log("Google sign-in result:", result);
+
+      if (!result.success) {
+        if (result.message) {
+          setError(result.message);
+        }
+        return;
+      }
+
+      // On web (and sometimes native), startSSOFlow triggered a full browser
+      // redirect. The browser has navigated away — sso-callback.tsx will
+      // handle the rest when the user returns from Google.
+      if (result.redirected) {
+        router.replace("/sso-callback");
+        return;
+      }
+
+      // On native, sso-callback.tsx handles token retrieval & backend sync
+      // after the session is confirmed active via useAuth(). We don't need
+      // to call syncClerkWithBackend here — route to callback so it completes.
+      router.replace("/sso-callback");
+    } catch (err: any) {
+      console.error("Google sign-in error:", err);
+      setError(err.message || "Failed to sign in with Google. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
+  const handleBackendSync = async (clerkToken: string, sessionId?: string) => {
+    try {
+      console.log("Finalizing backend sync with sessionId:", sessionId);
+
+      const response = await syncClerkWithBackend(
+        clerkToken,
+        "CUSTOMER",
+        sessionId
+      );
+
+      console.log("Backend sync response:", response);
+
+      if (response.success && response.data) {
+        await saveToken(response.data.token);
+        // Merge any locally saved profile prefs (name/phone/avatar_local)
+        // that survived logout back into the fresh backend user data.
+        const prefs = await getUserPrefs(response.data.user.email || "");
+        const merged: any = mergeServerUserAndPrefs(response.data.user, prefs);
+
+        // If the backend has a confirmed uploaded avatar, the local fallback
+        // URI is obsolete — clear it so the backend URL is displayed.
+        if (response.data.user.avatar && merged.avatar_local) {
+          merged.avatar_local = null;
+          const em = response.data.user.email || "";
+          if (em) await saveUserPrefs(em, { avatar_local: null });
+        }
+
+        await saveUser(merged);
+
+        setError("");
+
+        const dashboardRoute =
+          response.data.user.role === "SALESMAN"
+            ? "/(salesman)"
+            : "/(customer)";
+
+        console.log("Sync successful, redirecting to:", dashboardRoute);
+
+        router.replace(dashboardRoute as any);
+        return;
+      }
+
+      const errorMsg = response.message || "Backend sync failed";
+      console.error("Backend sync failed:", errorMsg);
+      setError(errorMsg);
+    } catch (syncErr: any) {
+      console.error("Backend sync error:", syncErr);
+      setError(`Auth Error: ${syncErr.message || "Unknown error"}`);
+    }
+  };
+
+
   const handleForgotPassword = () => {
-    Alert.alert(
-      "Reset Password",
-      "Please enter your email address to receive a password reset link.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Send", 
-          onPress: () => {
-            if (email) {
-              Alert.alert("Email Sent", `Password reset link sent to ${email}`);
-            } else {
-              Alert.alert("Error", "Please enter your email address first");
-            }
-          }
-        },
-      ]
-    );
+    router.push('/(auth)/forgot-password');
   };
 
   return (
@@ -140,7 +261,7 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {/* Logo Section with Animation */}
-          <Animated.View 
+          <Animated.View
             style={[
               styles.logoSection,
               {
@@ -157,7 +278,7 @@ export default function LoginScreen() {
           </Animated.View>
 
           {/* Form Card with Animation */}
-          <Animated.View 
+          <Animated.View
             style={[
               styles.formCard,
               {
@@ -168,7 +289,7 @@ export default function LoginScreen() {
           >
             <Text style={styles.title}>Welcome Back</Text>
 
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            {error && !isLoading ? <Text style={styles.errorText}>{error}</Text> : null}
 
             <View style={styles.inputContainer}>
               <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
@@ -194,20 +315,20 @@ export default function LoginScreen() {
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
                 style={styles.eyeIcon}
               >
-                <Ionicons 
-                  name={showPassword ? "eye-outline" : "eye-off-outline"} 
-                  size={20} 
-                  color="#999" 
+                <Ionicons
+                  name={showPassword ? "eye-outline" : "eye-off-outline"}
+                  size={20}
+                  color="#999"
                 />
               </TouchableOpacity>
             </View>
 
             {/* Forgot Password */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.forgotPassword}
               onPress={handleForgotPassword}
             >
@@ -243,6 +364,7 @@ export default function LoginScreen() {
               <Pressable
                 style={styles.googleButton}
                 onPress={handleGoogleSignIn}
+                disabled={isLoading}
                 onPressIn={() => handlePressIn(googleButtonScale)}
                 onPressOut={() => handlePressOut(googleButtonScale)}
               >
@@ -250,7 +372,6 @@ export default function LoginScreen() {
                 <Text style={styles.googleButtonText}>Sign in with Google</Text>
               </Pressable>
             </Animated.View>
-
             <View style={styles.footer}>
               <Text style={styles.footerText}>{"Don't have an account? "}</Text>
               <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
@@ -304,11 +425,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
     padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+      },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+      },
+    }),
   },
   title: {
     fontSize: 24,

@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { sendNewOrderNotificationToSalesman } from '../lib/onesignal.js';
 
 /**
  * Get salesman's sales summary
@@ -212,6 +213,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
       const details = productDetails.find(pd => pd.id === p.productId);
       return {
         ...details,
+        uniqueId: `product-${p.productId}`, // Add unique identifier
         totalSold: p._sum.quantity,
         totalRevenue: p._sum.total
       };
@@ -221,6 +223,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
       const details = carPartDetails.find(pd => pd.id === p.carPartId);
       return {
         ...details,
+        uniqueId: `carpart-${p.carPartId}`, // Add unique identifier
         totalSold: p._sum.quantity,
         totalRevenue: p._sum.total
       };
@@ -241,6 +244,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
         // Handle both product and carPart
         const itemData = item.product || item.carPart;
         return {
+          id: item.id, // Add unique id for React keys
           productName: item.itemName || itemData?.name || 'Unknown Item',
           productImage: itemData?.images?.[0],
           category: itemData?.category?.name,
@@ -436,6 +440,25 @@ export const updateOrderStatus = async (req, res) => {
         description: `Order status updated to ${status}`
       }
     });
+
+    // 🔌 Emit real-time event to the customer so their mobile app updates instantly
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${updatedOrder.customerId}`).emit('orderStatusUpdated', {
+        orderId: id,
+        orderNumber: updatedOrder.orderNumber,
+        status,
+        updatedAt: updatedOrder.updatedAt,
+      });
+      // Also broadcast to salesmen watching this order (e.g., salesman dashboard)
+      io.to(`user:${salesmanId}`).emit('orderStatusUpdated', {
+        orderId: id,
+        orderNumber: updatedOrder.orderNumber,
+        status,
+        updatedAt: updatedOrder.updatedAt,
+      });
+      console.log(`📡 Emitted orderStatusUpdated for order ${id} → customer ${updatedOrder.customerId}`);
+    }
 
     res.json({
       success: true,
@@ -684,7 +707,7 @@ export const createOrder = async (req, res) => {
     const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
     const orderPrefix = `ORD-${timestamp}-${randomPart}`;
 
-    // Create orders for each seller in a transaction
+    // Create orders for each seller in a transaction (with extended timeout)
     const createdOrders = await prisma.$transaction(async (tx) => {
       const orders = [];
       let orderIndex = 1;
@@ -771,6 +794,9 @@ export const createOrder = async (req, res) => {
       }
 
       return orders;
+    }, {
+      timeout: 30000, // 30 seconds timeout for complex order creation
+      maxWait: 10000  // Max time to wait for transaction slot
     });
 
     // Format response
@@ -802,6 +828,37 @@ export const createOrder = async (req, res) => {
         })
       }))
     };
+
+    // 🔌 Emit real-time event to each salesman so their dashboard shows the new order instantly
+    const io = req.app.get('io');
+    if (io) {
+      for (const order of createdOrders) {
+        const orderPayload = {
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          customerId,
+          salesmanId: order.salesmanId,
+          total: order.total,
+          status: order.status,
+          createdAt: order.createdAt,
+        };
+        // Notify the specific salesman's room
+        io.to(`user:${order.salesmanId}`).emit('newOrder', orderPayload);
+        console.log(`📡 Emitted newOrder ${order.orderNumber} → salesman ${order.salesmanId}`);
+      }
+    }
+
+    // 🔔 OneSignal push notifications (non-blocking — won't delay the response)
+    Promise.all(
+      createdOrders.map(order =>
+        sendNewOrderNotificationToSalesman({
+          salesmanId: order.salesmanId,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          total: order.total,
+        }).catch(err => console.error('OneSignal error:', err.message))
+      )
+    );
 
     res.status(201).json({
       success: true,

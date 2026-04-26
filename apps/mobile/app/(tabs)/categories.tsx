@@ -11,10 +11,11 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { getAllCategories, getPartsByCategoryName, Category } from "../../src/api/categories";
 import { useCart } from "../../src/store/cartStore";
 
-// Icon mapping for category names
+// We normalize similar backend category labels to one icon so UI stays consistent even if naming varies.
 const categoryIconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
   'Engine Parts': 'cog',
   'Engine': 'cog',
@@ -39,6 +40,8 @@ export default function CategoriesScreen() {
   const [categoryParts, setCategoryParts] = useState<any[]>([]);
   const [isLoadingParts, setIsLoadingParts] = useState(false);
   const [showPartsModal, setShowPartsModal] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const router = useRouter();
   const { addItem } = useCart();
 
   useEffect(() => {
@@ -60,6 +63,7 @@ export default function CategoriesScreen() {
   };
 
   const handleCategoryPress = async (category: Category) => {
+    // Open the modal first so users get immediate feedback before the parts request finishes.
     setSelectedCategory(category);
     setShowPartsModal(true);
     setIsLoadingParts(true);
@@ -77,17 +81,29 @@ export default function CategoriesScreen() {
     }
   };
 
-  const handleAddToCart = (part: any) => {
-    addItem({
-      id: part.id,
-      name: part.name,
-      price: part.price,
-      discountPrice: part.discountPrice,
-      image: part.images?.[0],
-      carInfo: `${part.car.make} ${part.car.model} (${part.car.year})`,
-      categoryName: selectedCategory?.name,
-    });
-    Alert.alert("Added to Cart", `${part.name} has been added to your cart.`);
+  const handleAddToCart = async (part: any) => {
+    try {
+      await addItem({
+        productId: part.id,
+        itemType: 'CAR_PART',
+        name: part.name,
+        price: part.price,
+        discountPrice: part.discountPrice,
+        image: part.images?.[0],
+        carInfo: `${part.car.make} ${part.car.model} (${part.car.year})`,
+        categoryName: selectedCategory?.name,
+      });
+      Alert.alert(
+        "Added to Cart",
+        `${part.name} has been added to your cart.`,
+        [
+          { text: "Continue", style: "cancel" },
+          { text: "View Cart", onPress: () => router.push("/(customer)/cart") },
+        ]
+      );
+    } catch (error: any) {
+      Alert.alert("Add to Cart Failed", error?.message || "Please try again.");
+    }
   };
 
   const getCategoryIcon = (name: string): keyof typeof Ionicons.glyphMap => {
@@ -95,6 +111,7 @@ export default function CategoriesScreen() {
   };
 
   const getPartsCount = (category: Category) => {
+    // Different API endpoints expose counts in different shapes; this fallback avoids showing incorrect zeroes.
     if (category.totalPartsCount !== undefined) return category.totalPartsCount;
     if (category._count) {
       return (category._count.products || 0) + (category._count.carParts || 0);
@@ -122,13 +139,20 @@ export default function CategoriesScreen() {
     <View style={styles.partCard}>
       <View style={styles.partImageContainer}>
         {item.images && item.images.length > 0 ? (
-          <Image source={{ uri: item.images[0] }} style={styles.partImage} />
+          <TouchableOpacity
+            style={styles.partImageTouchable}
+            activeOpacity={0.9}
+            onPress={() => setSelectedImage(item.images[0])}
+          >
+            <Image source={{ uri: item.images[0] }} style={styles.partImage} />
+          </TouchableOpacity>
         ) : (
           <View style={styles.partImagePlaceholder}>
             <Ionicons name="car-sport" size={32} color="#00002E" />
           </View>
         )}
-        <View style={[styles.conditionBadge, {
+        {/* Keep badge non-interactive so image tap-to-zoom works across the full thumbnail area. */}
+        <View pointerEvents="none" style={[styles.conditionBadge, {
           backgroundColor: item.condition === 'NEW' ? '#10B981' : item.condition === 'USED' ? '#00002E' : '#6B7280'
         }]}>
           <Text style={styles.conditionText}>{item.condition}</Text>
@@ -187,7 +211,7 @@ export default function CategoriesScreen() {
         }
       />
 
-      {/* Category Parts Modal */}
+      {/* Use a modal to keep users in category context while browsing parts instead of navigating away. */}
       <Modal
         visible={showPartsModal}
         animationType="slide"
@@ -221,6 +245,41 @@ export default function CategoriesScreen() {
             />
           )}
         </View>
+      </Modal>
+
+      {/* Show images fullscreen so part condition/details can be inspected before adding to cart. */}
+      <Modal
+        visible={!!selectedImage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+      >
+        <TouchableOpacity
+          style={styles.imageModalOverlay}
+          activeOpacity={1}
+          onPress={() => setSelectedImage(null)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            // Prevent overlay close when interacting with the zoomed image area.
+            onPress={(event) => event.stopPropagation()}
+            style={styles.imageModalContent}
+          >
+            <TouchableOpacity
+              style={styles.imageModalCloseButton}
+              onPress={() => setSelectedImage(null)}
+            >
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+            {selectedImage && (
+              <Image
+                source={{ uri: selectedImage }}
+                style={styles.imageModalImage}
+                resizeMode="contain"
+              />
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -333,6 +392,10 @@ const styles = StyleSheet.create({
     height: "100%",
     resizeMode: "cover",
   },
+  partImageTouchable: {
+    width: "100%",
+    height: "100%",
+  },
   partImagePlaceholder: {
     width: "100%",
     height: "100%",
@@ -398,6 +461,30 @@ const styles = StyleSheet.create({
   },
   addButtonDisabled: {
     backgroundColor: "#E5E7EB",
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  imageModalContent: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageModalCloseButton: {
+    position: "absolute",
+    top: 40,
+    right: 8,
+    zIndex: 2,
+    padding: 8,
+  },
+  imageModalImage: {
+    width: "100%",
+    height: "85%",
   },
 });
 

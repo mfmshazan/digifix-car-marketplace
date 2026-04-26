@@ -8,6 +8,7 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart, CartItem } from "../../src/store/cartStore";
@@ -18,27 +19,42 @@ export default function CartScreen() {
   const { items, updateQuantity, removeItem, clearCart, getTotalPrice, isLoading } = useCart();
   const router = useRouter();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   
   const subtotal = getTotalPrice();
-  const deliveryFee = subtotal > 50 ? 0 : 5.99;
+  const deliveryFee = subtotal > 5000 ? 0 : 300;
   const total = subtotal + deliveryFee;
 
-  const handleIncreaseQuantity = (id: string, currentQty: number) => {
-    updateQuantity(id, currentQty + 1);
+  const handleIncreaseQuantity = async (id: string, currentQty: number) => {
+    try {
+      await updateQuantity(id, currentQty + 1);
+    } catch (error: any) {
+      Alert.alert("Update Failed", error?.message || "Please try again.");
+    }
   };
 
-  const handleDecreaseQuantity = (id: string, currentQty: number) => {
+  const handleDecreaseQuantity = async (id: string, currentQty: number) => {
     if (currentQty <= 1) {
       Alert.alert(
         "Remove Item",
         "Are you sure you want to remove this item from cart?",
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Remove", style: "destructive", onPress: () => removeItem(id) },
+          { text: "Remove", style: "destructive", onPress: async () => {
+            try {
+              await removeItem(id);
+            } catch (error: any) {
+              Alert.alert("Remove Failed", error?.message || "Please try again.");
+            }
+          } },
         ]
       );
     } else {
-      updateQuantity(id, currentQty - 1);
+      try {
+        await updateQuantity(id, currentQty - 1);
+      } catch (error: any) {
+        Alert.alert("Update Failed", error?.message || "Please try again.");
+      }
     }
   };
 
@@ -48,7 +64,13 @@ export default function CartScreen() {
       "Are you sure you want to remove this item from cart?",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Remove", style: "destructive", onPress: () => removeItem(id) },
+        { text: "Remove", style: "destructive", onPress: async () => {
+          try {
+            await removeItem(id);
+          } catch (error: any) {
+            Alert.alert("Remove Failed", error?.message || "Please try again.");
+          }
+        } },
       ]
     );
   };
@@ -64,7 +86,7 @@ export default function CartScreen() {
     try {
       // Prepare order items
       const orderItems = items.map(item => ({
-        productId: item.id,
+        productId: item.productId,
         quantity: item.quantity
       }));
 
@@ -76,11 +98,17 @@ export default function CartScreen() {
 
       if (orderResponse.success) {
         // Clear local cart after successful order
-        clearCart();
+        await clearCart();
         
+        const orderNum = Array.isArray(orderResponse.data)
+          ? orderResponse.data[0]?.orderNumber
+          : orderResponse.data?.orderNumber || orderResponse.data?.orders?.[0]?.orderNumber;
+        const orderTotal = Array.isArray(orderResponse.data)
+          ? orderResponse.data[0]?.total
+          : orderResponse.data?.total || orderResponse.data?.orders?.[0]?.total;
         Alert.alert(
           "Order Placed! 🎉",
-          `Your order ${orderResponse.data.orderNumber} has been placed successfully!\n\nTotal: $${orderResponse.data.total.toFixed(2)}\n\nSellers have been notified.`,
+          `Your order ${orderNum} has been placed successfully!\n\nTotal: Rs. ${orderTotal?.toLocaleString()}\n\nThe seller has been notified.`,
           [
             { 
               text: "View Orders", 
@@ -110,7 +138,13 @@ export default function CartScreen() {
     <View style={styles.cartItem}>
       <View style={styles.itemImage}>
         {item.image ? (
-          <Image source={{ uri: item.image }} style={styles.productImage} />
+          <TouchableOpacity
+            style={styles.imageTouchable}
+            activeOpacity={0.9}
+            onPress={() => setSelectedImage(item.image || null)}
+          >
+            <Image source={{ uri: item.image }} style={styles.productImage} />
+          </TouchableOpacity>
         ) : (
           <Ionicons name="car-sport" size={32} color="#00002E" />
         )}
@@ -122,11 +156,11 @@ export default function CartScreen() {
         <View style={styles.priceRow}>
           {item.discountPrice ? (
             <>
-              <Text style={styles.itemPrice}>${item.discountPrice.toFixed(2)}</Text>
-              <Text style={styles.originalPrice}>${item.price.toFixed(2)}</Text>
+              <Text style={styles.itemPrice}>Rs. {item.discountPrice.toLocaleString()}</Text>
+              <Text style={styles.originalPrice}>Rs. {item.price.toLocaleString()}</Text>
             </>
           ) : (
-            <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
+            <Text style={styles.itemPrice}>Rs. {item.price.toLocaleString()}</Text>
           )}
         </View>
       </View>
@@ -176,7 +210,13 @@ export default function CartScreen() {
                 "Are you sure you want to clear your cart?",
                 [
                   { text: "Cancel", style: "cancel" },
-                  { text: "Clear", style: "destructive", onPress: clearCart },
+                  { text: "Clear", style: "destructive", onPress: async () => {
+                    try {
+                      await clearCart();
+                    } catch (error: any) {
+                      Alert.alert("Clear Cart Failed", error?.message || "Please try again.");
+                    }
+                  } },
                 ]
               );
             }}>
@@ -193,22 +233,22 @@ export default function CartScreen() {
           <View style={styles.summaryContainer}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
+              <Text style={styles.summaryValue}>Rs. {subtotal.toLocaleString()}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Delivery</Text>
               <Text style={[styles.summaryValue, deliveryFee === 0 && styles.freeDelivery]}>
-                {deliveryFee === 0 ? "FREE" : `$${deliveryFee.toFixed(2)}`}
+                {deliveryFee === 0 ? "FREE" : `Rs. ${deliveryFee.toLocaleString()}`}
               </Text>
             </View>
             {deliveryFee > 0 && (
               <Text style={styles.freeDeliveryHint}>
-                Add ${(50 - subtotal).toFixed(2)} more for free delivery
+                Add Rs. {(5000 - subtotal).toLocaleString()} more for free delivery
               </Text>
             )}
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
+              <Text style={styles.totalValue}>Rs. {total.toLocaleString()}</Text>
             </View>
             <TouchableOpacity 
               style={[styles.checkoutButton, isCheckingOut && styles.checkoutButtonDisabled]} 
@@ -244,6 +284,39 @@ export default function CartScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      <Modal
+        visible={!!selectedImage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+      >
+        <TouchableOpacity
+          style={styles.imageModalOverlay}
+          activeOpacity={1}
+          onPress={() => setSelectedImage(null)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(event) => event.stopPropagation()}
+            style={styles.imageModalContent}
+          >
+            <TouchableOpacity
+              style={styles.imageModalCloseButton}
+              onPress={() => setSelectedImage(null)}
+            >
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+            {selectedImage && (
+              <Image
+                source={{ uri: selectedImage }}
+                style={styles.imageModalImage}
+                resizeMode="contain"
+              />
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -310,6 +383,10 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     resizeMode: "cover",
+  },
+  imageTouchable: {
+    width: "100%",
+    height: "100%",
   },
   itemInfo: {
     flex: 1,
@@ -476,6 +553,30 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  imageModalContent: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageModalCloseButton: {
+    position: "absolute",
+    top: 40,
+    right: 8,
+    zIndex: 2,
+    padding: 8,
+  },
+  imageModalImage: {
+    width: "100%",
+    height: "85%",
   },
 });
 

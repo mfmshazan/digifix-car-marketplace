@@ -1,4 +1,4 @@
-import { API_URL } from '../config/api.config';
+import { getApiUrl } from '../config/api.config';
 import { getToken } from './storage';
 
 // ================================
@@ -143,7 +143,7 @@ export const searchPartsByNumberPlate = async (
     if (options?.limit) queryParams.append('limit', options.limit.toString());
 
     const queryString = queryParams.toString();
-    const url = `${API_URL}/car-parts/search/${encodeURIComponent(numberPlate)}${queryString ? `?${queryString}` : ''}`;
+    const url = `${getApiUrl()}/car-parts/search/${encodeURIComponent(numberPlate)}${queryString ? `?${queryString}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -193,7 +193,7 @@ export const getAllCarParts = async (options?: {
     if (options?.sortOrder) queryParams.append('sortOrder', options.sortOrder);
 
     const queryString = queryParams.toString();
-    const url = `${API_URL}/car-parts${queryString ? `?${queryString}` : ''}`;
+    const url = `${getApiUrl()}/car-parts${queryString ? `?${queryString}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -215,7 +215,7 @@ export const getAllCarParts = async (options?: {
  */
 export const getCarPartById = async (id: string): Promise<{ success: boolean; data: CarPart }> => {
   try {
-    const response = await fetch(`${API_URL}/car-parts/${id}`, {
+    const response = await fetch(`${getApiUrl()}/car-parts/${id}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -251,7 +251,7 @@ export const getAllCars = async (options?: {
     if (options?.year) queryParams.append('year', options.year.toString());
 
     const queryString = queryParams.toString();
-    const url = `${API_URL}/car-parts/cars${queryString ? `?${queryString}` : ''}`;
+    const url = `${getApiUrl()}/car-parts/cars${queryString ? `?${queryString}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -282,7 +282,7 @@ export const createCar = async (data: CreateCarData): Promise<{ success: boolean
       throw new Error('Authentication required');
     }
 
-    const response = await fetch(`${API_URL}/car-parts/cars`, {
+    const response = await fetch(`${getApiUrl()}/car-parts/cars`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -314,7 +314,7 @@ export const createCarPart = async (data: CreateCarPartData): Promise<{ success:
       throw new Error('Authentication required');
     }
 
-    const response = await fetch(`${API_URL}/car-parts`, {
+    const response = await fetch(`${getApiUrl()}/car-parts`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -349,7 +349,7 @@ export const updateCarPart = async (
       throw new Error('Authentication required');
     }
 
-    const response = await fetch(`${API_URL}/car-parts/${id}`, {
+    const response = await fetch(`${getApiUrl()}/car-parts/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -381,7 +381,7 @@ export const deleteCarPart = async (id: string): Promise<{ success: boolean; mes
       throw new Error('Authentication required');
     }
 
-    const response = await fetch(`${API_URL}/car-parts/${id}`, {
+    const response = await fetch(`${getApiUrl()}/car-parts/${id}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -420,7 +420,7 @@ export const getMyCarParts = async (options?: {
     if (options?.limit) queryParams.append('limit', options.limit.toString());
 
     const queryString = queryParams.toString();
-    const url = `${API_URL}/car-parts/salesman/my-parts${queryString ? `?${queryString}` : ''}`;
+    const url = `${getApiUrl()}/car-parts/salesman/my-parts${queryString ? `?${queryString}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',

@@ -34,7 +34,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
-import { resolveMediaUrl, ordersApi } from '@/lib/api'; // re-trigger compile
+import { resolveMediaUrl, ordersApi, productsApi, categoriesApi } from '@/lib/api';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
 // OneSignal helpers kept for backend-side push (logoutOneSignalUser used on logout)
 import { logoutOneSignalUser } from '@/lib/onesignal';
@@ -766,11 +766,6 @@ export default function SalesmanDashboard() {
   const { user, logout, isAuthenticated, refreshProfile } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState<Tab>('orders');
-<<<<<<< Updated upstream
-=======
-
-
->>>>>>> Stashed changes
   const [showAddModal, setShowAddModal] = useState(false);
 
   // App Notifications (in-app messages)

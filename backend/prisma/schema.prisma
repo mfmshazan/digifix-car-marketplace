@@ -16,6 +16,7 @@ enum UserRole {
   CUSTOMER
   SALESMAN
   ADMIN
+  RIDER
 }
 
 // Enum for user status
@@ -229,6 +230,14 @@ enum OrderStatus {
   DELIVERED
   CANCELLED
   REFUNDED
+  AVAILABLE
+  ASSIGNED
+  ACCEPTED
+  ARRIVED_AT_PICKUP
+  PICKED_UP
+  IN_TRANSIT
+  ARRIVED_AT_DROPOFF
+  FAILED
 }
 
 // Payment status enum

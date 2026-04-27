@@ -15,6 +15,28 @@ const register = async (req, res) => {
   try {
     const { email, password, name, phone, role = 'CUSTOMER' } = req.body;
 
+    // Admin restrictions
+    if (role === 'ADMIN') {
+      const isWeb = req.headers.origin || req.headers.referer || (req.headers['user-agent'] && req.headers['user-agent'].includes('Mozilla'));
+      if (!isWeb) {
+        return res.status(403).json({
+          success: false,
+          message: 'Admin registration is only allowed from the web application',
+        });
+      }
+
+      const adminCount = await prisma.user.count({
+        where: { role: 'ADMIN' },
+      });
+
+      if (adminCount >= 2) {
+        return res.status(403).json({
+          success: false,
+          message: 'Maximum number of admins has been reached',
+        });
+      }
+    }
+
     // Validate input
     if (!email || !password) {
       return res.status(400).json({
@@ -114,6 +136,17 @@ const login = async (req, res) => {
         success: false,
         message: 'Invalid email or password',
       });
+    }
+
+    // Admin web-only restriction
+    if (user.role === 'ADMIN') {
+      const isWeb = req.headers.origin || req.headers.referer || (req.headers['user-agent'] && req.headers['user-agent'].includes('Mozilla'));
+      if (!isWeb) {
+        return res.status(403).json({
+          success: false,
+          message: 'Admin login is only allowed from the web application',
+        });
+      }
     }
 
     // Check if user signed up with Google

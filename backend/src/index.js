@@ -43,11 +43,19 @@ app.set('io', io);
 io.on('connection', (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
 
-  // Clients can join a room based on their user ID for targeted notifications
+  // Each client joins their own room for targeted notifications (e.g. order updates)
   socket.on('join', (userId) => {
     if (userId) {
       socket.join(`user:${userId}`);
       console.log(`👤 Socket ${socket.id} joined room user:${userId}`);
+    }
+  });
+
+  // Admins also join a shared room so we can broadcast cancellation requests to all of them
+  socket.on('joinRole', (role) => {
+    if (role === 'ADMIN') {
+      socket.join('role:ADMIN');
+      console.log(`🛡️ Socket ${socket.id} joined room role:ADMIN`);
     }
   });
 

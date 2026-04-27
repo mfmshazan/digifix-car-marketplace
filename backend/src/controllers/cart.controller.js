@@ -69,11 +69,16 @@ const getCart = async (req, res) => {
       return sum + (item.discountPrice || item.price) * item.quantity;
     }, 0);
 
+    // 10% platform fee — shown here so the customer sees it before checkout
+    const serviceCharge = parseFloat((total * 0.10).toFixed(2));
+
     res.json({
       success: true,
       data: {
         items: normalizedItems,
-        total,
+        subtotal: total,
+        serviceCharge,
+        total: total + serviceCharge,
         itemCount: normalizedItems.reduce((sum, item) => sum + item.quantity, 0),
       },
     });

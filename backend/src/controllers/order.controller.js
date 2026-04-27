@@ -693,14 +693,21 @@ export const createOrder = async (req, res) => {
       });
     });
 
-    // Calculate total
-    const deliveryFee = 300;
-    let grandTotal = deliveryFee;
+    // Service charge is the platform's revenue — calculated server-side to prevent tampering
+    const SERVICE_CHARGE_RATE = 0.10;
+    // Delivery fee will be distance-based (Rs. 250/km) once GPS integration is complete
+    // For now it defaults to 0 since we don't have distance data yet
+    const calculateDeliveryFee = (distanceKm = 0) => distanceKm * 250;
+    const deliveryFee = calculateDeliveryFee(0);
+    let grandTotal = 0;
     
     Object.values(groupedBySeller).forEach(sellerGroup => {
       sellerGroup.subtotal = sellerGroup.items.reduce((sum, item) => sum + item.total, 0);
-      grandTotal += sellerGroup.subtotal;
+      sellerGroup.serviceCharge = parseFloat((sellerGroup.subtotal * SERVICE_CHARGE_RATE).toFixed(2));
+      grandTotal += sellerGroup.subtotal + sellerGroup.serviceCharge;
     });
+    // Delivery fee is added once to the overall order total, not per-seller
+    grandTotal += deliveryFee;
 
     // Generate order number prefix
     const timestamp = Date.now().toString(36).toUpperCase();
@@ -722,7 +729,9 @@ export const createOrder = async (req, res) => {
           customerId,
           salesmanId: sellerId,
           subtotal: sellerGroup.subtotal,
-          total: sellerGroup.subtotal + (Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0),
+          serviceCharge: sellerGroup.serviceCharge,
+          // Only the first order carries the delivery fee to avoid double-charging
+          total: sellerGroup.subtotal + sellerGroup.serviceCharge + (Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0),
           deliveryFee: Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0,
           paymentMethod,
           notes,
@@ -976,10 +985,262 @@ export const getCustomerOrdersSimple = async (req, res) => {
   }
 };
 
+/**
+ * Customer requests cancellation or refund.
+ * PENDING/CONFIRMED → customer changed their mind before processing.
+ * DELIVERED → product arrived defective/wrong, customer wants refund.
+ * All other statuses are locked because the order is mid-fulfillment.
+ */
+export const requestCancellation = async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    if (!reason || reason.trim().length < 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a detailed reason (at least 5 characters)'
+      });
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { id, customerId },
+      include: {
+        customer: { select: { id: true, name: true } },
+        salesman: { select: { id: true, name: true } }
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    // Only these statuses are cancellable — mid-fulfillment orders cannot be reversed
+    const cancellableStatuses = ['PENDING', 'CONFIRMED', 'DELIVERED'];
+    if (!cancellableStatuses.includes(order.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel an order with status "${order.status}". Only Pending, Confirmed, or Delivered orders can be cancelled.`
+      });
+    }
+
+    // Mark as awaiting admin review — direct cancellation isn't allowed for accountability
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: {
+        status: 'REFUND_REQUESTED',
+        cancellationReason: reason.trim(),
+      }
+    });
+
+    // Log the status change for audit trail
+    await prisma.orderTracking.create({
+      data: {
+        orderId: id,
+        status: 'REFUND_REQUESTED',
+        description: `Customer requested cancellation: "${reason.trim()}"`
+      }
+    });
+
+    // Notify all admins via socket so they see it immediately on their dashboard
+    const io = req.app.get('io');
+    if (io) {
+      io.to('role:ADMIN').emit('cancellationRequested', {
+        orderId: id,
+        orderNumber: order.orderNumber,
+        customerId,
+        customerName: order.customer?.name,
+        salesmanId: order.salesmanId,
+        reason: reason.trim(),
+        previousStatus: order.status,
+      });
+      console.log(`📡 Emitted cancellationRequested for order ${order.orderNumber} → admins`);
+    }
+
+    // Web push notification to admins — fetch their IDs so we can target by external_id
+    // This is non-blocking to avoid delaying the customer's response
+    const { sendCancellationRequestToAdmin } = await import('../lib/onesignal.js');
+    const preferredAdminId = process.env.ADMIN_NOTIFICATION_USER_ID;
+    const admin = await prisma.user.findFirst({
+      where: {
+        role: 'ADMIN',
+        ...(preferredAdminId ? { id: preferredAdminId } : {}),
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const adminIds = admin ? [admin.id] : [];
+    sendCancellationRequestToAdmin({
+      orderNumber: order.orderNumber,
+      customerName: order.customer?.name || 'A customer',
+      adminIds,
+    }).catch(err => console.error('OneSignal admin notification error:', err.message));
+
+    res.json({
+      success: true,
+      message: 'Cancellation request submitted. Admin will review your request.',
+      data: updatedOrder
+    });
+  } catch (error) {
+    console.error('Request cancellation error:', error);
+    res.status(500).json({ success: false, message: 'Failed to submit cancellation request', error: error.message });
+  }
+};
+
+/**
+ * Admin approves a cancellation — triggers refund flow and notifies both parties.
+ * The salesman needs to know so they stop processing/shipping.
+ * The customer needs confirmation that their refund is on the way.
+ */
+export const approveCancellation = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { id: true, name: true } },
+        salesman: { select: { id: true, name: true } }
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (order.status !== 'REFUND_REQUESTED') {
+      return res.status(400).json({
+        success: false,
+        message: 'This order does not have a pending cancellation request'
+      });
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED',
+        // Payment status reflects that money needs to be returned (Stripe handles actual transfer)
+        paymentStatus: order.paymentStatus === 'PAID' ? 'REFUNDED' : order.paymentStatus,
+      }
+    });
+
+    await prisma.orderTracking.create({
+      data: {
+        orderId: id,
+        status: 'CANCELLED',
+        description: 'Admin approved the cancellation/refund request'
+      }
+    });
+
+    // Notify both parties in real-time so their dashboards update instantly
+    const io = req.app.get('io');
+    if (io) {
+      const payload = {
+        orderId: id,
+        orderNumber: order.orderNumber,
+        status: 'CANCELLED',
+        message: `Refund approved for Order ${order.orderNumber}. Please refund customer ${order.customer?.name || ''}.`.trim(),
+      };
+      io.to(`user:${order.salesmanId}`).emit('cancellationApproved', payload);
+      io.to(`user:${order.customerId}`).emit('cancellationApproved', payload);
+      console.log(`📡 Emitted cancellationApproved for order ${order.orderNumber}`);
+    }
+
+    // Push notification to salesman — they need to know to stop processing this order
+    const { sendRefundApprovedToSalesman } = await import('../lib/onesignal.js');
+    sendRefundApprovedToSalesman({
+      salesmanId: order.salesmanId,
+      orderNumber: order.orderNumber,
+    }).catch(err => console.error('OneSignal salesman notification error:', err.message));
+
+    res.json({
+      success: true,
+      message: 'Cancellation approved. Customer and salesman have been notified.',
+      data: updatedOrder
+    });
+  } catch (error) {
+    console.error('Approve cancellation error:', error);
+    res.status(500).json({ success: false, message: 'Failed to approve cancellation', error: error.message });
+  }
+};
+
+/**
+ * Admin rejects a cancellation — order reverts to its previous state.
+ * We set it back to PENDING since the original status isn't stored
+ * (if needed, we could track the pre-cancellation status in OrderTracking).
+ */
+export const rejectCancellation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { id: true, name: true } },
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (order.status !== 'REFUND_REQUESTED') {
+      return res.status(400).json({
+        success: false,
+        message: 'This order does not have a pending cancellation request'
+      });
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: {
+        status: 'PENDING',
+        // Clear the reason since the request was rejected
+        cancellationReason: null,
+      }
+    });
+
+    await prisma.orderTracking.create({
+      data: {
+        orderId: id,
+        status: 'PENDING',
+        description: `Admin rejected the cancellation request${message ? `: ${message}` : ''}`
+      }
+    });
+
+    // Let the customer know their request was denied
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${order.customerId}`).emit('cancellationRejected', {
+        orderId: id,
+        orderNumber: order.orderNumber,
+        status: 'PENDING',
+        message: message || 'Your cancellation request was rejected.',
+      });
+      console.log(`📡 Emitted cancellationRejected for order ${order.orderNumber}`);
+    }
+
+    res.json({
+      success: true,
+      message: 'Cancellation request rejected. Order has been restored.',
+      data: updatedOrder
+    });
+  } catch (error) {
+    console.error('Reject cancellation error:', error);
+    res.status(500).json({ success: false, message: 'Failed to reject cancellation', error: error.message });
+  }
+};
+
 export default {
   getSalesmanSalesSummary,
   getSalesmanOrders,
   updateOrderStatus,
   getCustomerOrders,
-  createOrder
+  createOrder,
+  requestCancellation,
+  approveCancellation,
+  rejectCancellation
 };

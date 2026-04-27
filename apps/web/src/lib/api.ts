@@ -301,5 +301,17 @@ export const adminApi = {
     const response = await api.patch(`/admin/catalog/${id}/status`, { type, isActive });
     return response.data;
   },
+
+  // Approve customer cancellation/refund request
+  approveCancellation: async (orderId: string) => {
+    const response = await api.post(`/orders/${orderId}/approve-cancel`);
+    return response.data;
+  },
+
+  // Reject customer cancellation/refund request
+  rejectCancellation: async (orderId: string, message?: string) => {
+    const response = await api.post(`/orders/${orderId}/reject-cancel`, { message });
+    return response.data;
+  },
 };
 

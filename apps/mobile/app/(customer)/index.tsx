@@ -50,6 +50,7 @@ export default function CustomerHomeScreen() {
   const [searchResults, setSearchResults] = useState<{ car: Car; parts: CarPart[] } | null>(null);
   const [showResults, setShowResults] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedPart, setSelectedPart] = useState<CarPart | null>(null);
   const [featuredParts, setFeaturedParts] = useState<CarPart[]>([]);
   const [wishlistedIds, setWishlistedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -190,31 +191,16 @@ export default function CustomerHomeScreen() {
     </TouchableOpacity>
   );
 
+  // Tapping a card opens the detail modal — the heart/cart are inside it
   const renderPartItem = ({ item }: { item: CarPart }) => (
-    <TouchableOpacity style={styles.productCard}>
-      <TouchableOpacity 
-        style={styles.wishlistHeartButton} 
-        onPress={(e) => handleToggleWishlist(item.id, e)}
-      >
-        <Ionicons 
-          name={wishlistedIds.has(item.id) ? "heart" : "heart-outline"} 
-          size={22} 
-          color={wishlistedIds.has(item.id) ? "#FF4444" : "#00002E"} 
-        />
-      </TouchableOpacity>
+    <TouchableOpacity style={styles.productCard} onPress={() => setSelectedPart(item)}>
       <View style={styles.productImageContainer}>
         {item.images && item.images.length > 0 ? (
-          <TouchableOpacity
-            style={styles.productImageTouchable}
-            activeOpacity={0.9}
-            onPress={() => setSelectedImage(item.images[0])}
-          >
-            <Image
-              source={{ uri: item.images[0] }}
-              style={styles.productImage}
-              resizeMode="cover"
-            />
-          </TouchableOpacity>
+          <Image
+            source={{ uri: item.images[0] }}
+            style={styles.productImage}
+            resizeMode="cover"
+          />
         ) : (
           <View style={styles.productImagePlaceholder}>
             <Ionicons name="car-sport" size={40} color="#00002E" />
@@ -241,12 +227,6 @@ export default function CustomerHomeScreen() {
           )}
         </View>
       </View>
-      <TouchableOpacity
-        style={styles.addToCartButton}
-        onPress={() => handleAddToCart(item)}
-      >
-        <Ionicons name="add" size={20} color="#FFFFFF" />
-      </TouchableOpacity>
     </TouchableOpacity>
   );
 
@@ -537,7 +517,123 @@ export default function CustomerHomeScreen() {
       {/* Search Results Modal */}
       {renderSearchResultsModal()}
 
-      {/* Image Zoom Modal */}
+      {/* Part Detail Modal — opens when customer taps any product card */}
+      <Modal
+        visible={!!selectedPart}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setSelectedPart(null)}
+      >
+        <View style={styles.detailModalOverlay}>
+          <View style={styles.detailModalContent}>
+            {/* Close button */}
+            <TouchableOpacity style={styles.detailModalClose} onPress={() => setSelectedPart(null)}>
+              <Ionicons name="close" size={24} color="#1A1A2E" />
+            </TouchableOpacity>
+
+            {selectedPart && (
+              <>
+                {/* Image — tap to zoom */}
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => selectedPart.images?.[0] && setSelectedImage(selectedPart.images[0])}
+                >
+                  {selectedPart.images && selectedPart.images.length > 0 ? (
+                    <Image
+                      source={{ uri: selectedPart.images[0] }}
+                      style={styles.detailModalImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.detailModalImagePlaceholder}>
+                      <Ionicons name="car-sport" size={60} color="#00002E" />
+                    </View>
+                  )}
+                  <View style={[styles.detailConditionBadge, {
+                    backgroundColor: selectedPart.condition === 'NEW' ? '#16A34A' : '#00002E'
+                  }]}>
+                    <Text style={styles.conditionText}>{selectedPart.condition}</Text>
+                  </View>
+                  <View style={styles.detailZoomHint}>
+                    <Ionicons name="expand" size={14} color="#FFF" />
+                  </View>
+                </TouchableOpacity>
+
+                {/* Info */}
+                <View style={styles.detailInfo}>
+                  <Text style={styles.detailSellerName}>{selectedPart.seller?.name}</Text>
+                  <Text style={styles.detailPartName}>{selectedPart.name}</Text>
+
+                  <View style={styles.detailMetaRow}>
+                    <Ionicons name="car" size={14} color="#666" />
+                    <Text style={styles.detailMetaText}>
+                      {selectedPart.car.make} {selectedPart.car.model} ({selectedPart.car.year})
+                    </Text>
+                  </View>
+                  {selectedPart.partNumber && (
+                    <View style={styles.detailMetaRow}>
+                      <Ionicons name="barcode" size={14} color="#666" />
+                      <Text style={styles.detailMetaText}>Part #: {selectedPart.partNumber}</Text>
+                    </View>
+                  )}
+                  <View style={styles.detailMetaRow}>
+                    <Ionicons name="layers" size={14} color="#666" />
+                    <Text style={styles.detailMetaText}>{selectedPart.stock > 0 ? `${selectedPart.stock} in stock` : 'Out of stock'}</Text>
+                  </View>
+
+                  {selectedPart.description && (
+                    <Text style={styles.detailDescription} numberOfLines={3}>
+                      {selectedPart.description}
+                    </Text>
+                  )}
+
+                  {/* Price */}
+                  <View style={styles.detailPriceRow}>
+                    <Text style={styles.detailPrice}>
+                      Rs. {(selectedPart.discountPrice || selectedPart.price).toLocaleString()}
+                    </Text>
+                    {selectedPart.discountPrice && (
+                      <Text style={styles.detailOriginalPrice}>Rs. {selectedPart.price.toLocaleString()}</Text>
+                    )}
+                  </View>
+                  <Text style={styles.detailServiceCharge}>
+                    + Rs. {((selectedPart.discountPrice || selectedPart.price) * 0.10).toFixed(0)} service charge (10%)
+                  </Text>
+
+                  {/* Actions */}
+                  <View style={styles.detailActions}>
+                    <TouchableOpacity
+                      style={styles.detailWishlistBtn}
+                      onPress={() => handleToggleWishlist(selectedPart.id)}
+                    >
+                      <Ionicons
+                        name={wishlistedIds.has(selectedPart.id) ? "heart" : "heart-outline"}
+                        size={22}
+                        color={wishlistedIds.has(selectedPart.id) ? "#FF4444" : "#00002E"}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.detailAddToCartBtn, selectedPart.stock <= 0 && { backgroundColor: '#CCC' }]}
+                      disabled={selectedPart.stock <= 0}
+                      onPress={() => {
+                        handleAddToCart(selectedPart);
+                        setSelectedPart(null);
+                      }}
+                    >
+                      <Ionicons name="cart" size={20} color="#FFF" />
+                      <Text style={styles.detailAddToCartText}>
+                        {selectedPart.stock > 0 ? 'Add to Cart' : 'Out of Stock'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Full-screen image zoom modal */}
       <Modal
         visible={!!selectedImage}
         transparent={true}
@@ -1062,7 +1158,141 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "85%",
   },
+  // Part detail modal
+  detailModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  detailModalContent: {
+    backgroundColor: "#FFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
+    maxHeight: "92%",
+  },
+  detailModalClose: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    zIndex: 10,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderRadius: 20,
+    padding: 6,
+  },
+  detailModalImage: {
+    width: "100%",
+    height: 240,
+  },
+  detailModalImagePlaceholder: {
+    width: "100%",
+    height: 200,
+    backgroundColor: "#E5E7EB",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  detailConditionBadge: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  detailZoomHint: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderRadius: 12,
+    padding: 4,
+  },
+  detailInfo: {
+    padding: 20,
+  },
+  detailSellerName: {
+    fontSize: 12,
+    color: "#00002E",
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  detailPartName: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1A1A2E",
+    marginBottom: 12,
+  },
+  detailMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  detailMetaText: {
+    fontSize: 13,
+    color: "#666",
+  },
+  detailDescription: {
+    fontSize: 13,
+    color: "#888",
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  detailPriceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 14,
+  },
+  detailPrice: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#00002E",
+  },
+  detailOriginalPrice: {
+    fontSize: 14,
+    color: "#999",
+    textDecorationLine: "line-through",
+  },
+  detailServiceCharge: {
+    fontSize: 12,
+    color: "#999",
+    marginTop: 2,
+    marginBottom: 16,
+  },
+  detailActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  detailWishlistBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#E0E0E0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  detailAddToCartBtn: {
+    flex: 1,
+    flexDirection: "row",
+    backgroundColor: "#00002E",
+    borderRadius: 14,
+    height: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  detailAddToCartText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
 });
+
 
 
 

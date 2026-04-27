@@ -67,14 +67,14 @@ const menuItems = [
     icon: "help-circle-outline",
     label: "Help & Support",
     color: "#87CEEB",
-    route: null,
+    route: "/help-support" as const,
   },
   {
     id: "8",
     icon: "information-circle-outline",
     label: "About Us",
     color: "#F4A460",
-    route: null,
+    route: "/about-us" as const,
   },
 ];
 

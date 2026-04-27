@@ -5,19 +5,28 @@ import {
   getSalesmanOrders,
   updateOrderStatus,
   getCustomerOrders,
-  createOrder
+  createOrder,
+  requestCancellation,
+  approveCancellation,
+  rejectCancellation
 } from '../controllers/order.controller.js';
 
 const router = Router();
 
-// All routes require authentication
+// Every order operation requires a logged-in user
 router.use(authenticate);
 
-// Customer routes
-router.post('/', createOrder);        // Create order
-router.get('/', getCustomerOrders);   // Get customer orders
+// Customer routes — any authenticated user can place/view their own orders
+router.post('/', createOrder);
+router.get('/', getCustomerOrders);
+// Customer cancellation — goes to admin for review, not instant
+router.post('/:id/cancel', requestCancellation);
 
-// Salesman routes - They see only their orders
+// Admin routes — only admins can approve/reject cancellations
+router.post('/:id/approve-cancel', authorize('ADMIN'), approveCancellation);
+router.post('/:id/reject-cancel', authorize('ADMIN'), rejectCancellation);
+
+// Salesman routes — scoped to their own orders only
 router.get('/salesman/summary', authorize('SALESMAN'), getSalesmanSalesSummary);
 router.get('/salesman/orders', authorize('SALESMAN'), getSalesmanOrders);
 router.put('/:id/status', authorize('SALESMAN'), updateOrderStatus);

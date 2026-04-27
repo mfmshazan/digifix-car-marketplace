@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { adminApi } from '@/lib/api';
 import {
+    Bell,
     Users,
     DollarSign,
     LayoutDashboard,
@@ -27,15 +28,28 @@ import {
     Check,
     Slash
 } from 'lucide-react';
+import { connectSocket, disconnectSocket } from '@/lib/socket';
 
 
 
 type AdminTab = 'overview' | 'users' | 'finances' | 'catalog';
 
+interface AdminCancellationNotification {
+    id: string;
+    orderNumber: string;
+    customerName?: string;
+    reason: string;
+    time: Date;
+    read: boolean;
+}
+
 export default function AdminDashboard() {
     const router = useRouter();
     const { user, logout, isAuthenticated } = useAuthStore();
     const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+    const [cancelNotifs, setCancelNotifs] = useState<AdminCancellationNotification[]>([]);
+    const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+    const [processingOrderId, setProcessingOrderId] = useState<string | null>(null);
 
     // Authorization Check
     useEffect(() => {
@@ -46,6 +60,80 @@ export default function AdminDashboard() {
             router.push(`/dashboard/${user?.role?.toLowerCase() || ''}`);
         }
     }, [isAuthenticated, user, router]);
+
+    useEffect(() => {
+        if (!user?.id || user.role !== 'ADMIN') return;
+
+        const socket = connectSocket(user.id, 'ADMIN');
+
+        const handleCancellationRequested = (payload: {
+            orderId: string;
+            orderNumber: string;
+            customerName?: string;
+            reason: string;
+        }) => {
+            setCancelNotifs((prev) => {
+                // Guard against duplicate socket deliveries for the same order
+                if (prev.some((n) => n.id === payload.orderId)) {
+                    return prev;
+                }
+
+                return [
+                    {
+                        id: payload.orderId,
+                        orderNumber: payload.orderNumber,
+                        customerName: payload.customerName,
+                        reason: payload.reason,
+                        time: new Date(),
+                        read: false,
+                    },
+                    ...prev,
+                ];
+            });
+        };
+
+        socket.on('cancellationRequested', handleCancellationRequested);
+
+        return () => {
+            socket.off('cancellationRequested', handleCancellationRequested);
+            disconnectSocket();
+        };
+    }, [user?.id, user?.role]);
+
+    const handleApproveCancellation = async (orderId: string) => {
+        try {
+            setProcessingOrderId(orderId);
+            const response = await adminApi.approveCancellation(orderId);
+            if (response?.success) {
+                setCancelNotifs((prev) => prev.filter((n) => n.id !== orderId));
+                alert('Refund request approved. Salesman has been notified.');
+                return;
+            }
+            alert(response?.message || 'Failed to approve refund request');
+        } catch (error: any) {
+            alert(error?.response?.data?.message || error?.message || 'Failed to approve refund request');
+        } finally {
+            setProcessingOrderId(null);
+        }
+    };
+
+    const handleRejectCancellation = async (orderId: string) => {
+        try {
+            const message = window.prompt('Optional reason for rejection (shown to customer):', '');
+            setProcessingOrderId(orderId);
+            const response = await adminApi.rejectCancellation(orderId, message || undefined);
+            if (response?.success) {
+                setCancelNotifs((prev) => prev.filter((n) => n.id !== orderId));
+                alert('Refund request rejected successfully.');
+                return;
+            }
+            alert(response?.message || 'Failed to reject refund request');
+        } catch (error: any) {
+            alert(error?.response?.data?.message || error?.message || 'Failed to reject refund request');
+        } finally {
+            setProcessingOrderId(null);
+        }
+    };
 
     const handleLogout = () => {
         logout();
@@ -66,6 +154,8 @@ export default function AdminDashboard() {
         { id: 'finances', label: 'System Finances', icon: DollarSign },
         { id: 'catalog', label: 'Global Catalog', icon: ShoppingBag },
     ];
+
+    const unreadCancelCount = cancelNotifs.filter((n) => !n.read).length;
 
     return (
         <div className="min-h-screen bg-[#f4f6fb]">
@@ -107,6 +197,86 @@ export default function AdminDashboard() {
 
                         {/* Actions */}
                         <div className="flex items-center gap-2">
+                            <div className="relative">
+                                <button
+                                    onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+                                    className="relative flex items-center justify-center w-9 h-9 rounded-xl hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+                                    title="Cancellation requests"
+                                >
+                                    <Bell className="w-5 h-5" />
+                                    {unreadCancelCount > 0 && (
+                                        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border border-[#00002E]">
+                                            {unreadCancelCount}
+                                        </span>
+                                    )}
+                                </button>
+
+                                {showNotifDropdown && (
+                                    <div className="absolute top-full mt-2 right-0 w-96 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
+                                        <div className="px-4 py-2 border-b border-gray-50 flex justify-between items-center gap-2">
+                                            <h3 className="font-bold text-gray-900 text-sm">Cancellation Requests</h3>
+                                            {cancelNotifs.length > 0 && (
+                                                <button
+                                                    onClick={() => setCancelNotifs((prev) => prev.map((n) => ({ ...n, read: true })))}
+                                                    className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+                                                >
+                                                    Mark all read
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="max-h-80 overflow-y-auto">
+                                            {cancelNotifs.length === 0 ? (
+                                                <div className="px-4 py-8 text-center text-sm text-gray-400">
+                                                    No cancellation notifications yet
+                                                </div>
+                                            ) : (
+                                                cancelNotifs.map((notif) => (
+                                                    <div
+                                                        key={notif.id}
+                                                        className={`w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors ${!notif.read ? 'bg-blue-50/50' : ''}`}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <p className="text-sm font-semibold text-gray-900">
+                                                                Order {notif.orderNumber} cancellation requested
+                                                            </p>
+                                                            {!notif.read && <span className="w-2 h-2 rounded-full bg-blue-600 mt-1 shrink-0" />}
+                                                        </div>
+                                                        <p className="text-xs text-gray-600 mt-0.5">
+                                                            {notif.customerName || 'Customer'}: {notif.reason}
+                                                        </p>
+                                                        <div className="mt-2 flex items-center justify-between gap-2">
+                                                            <button
+                                                                onClick={() => setCancelNotifs((prev) => prev.map((n) => n.id === notif.id ? { ...n, read: true } : n))}
+                                                                className="text-xs text-blue-600 hover:underline"
+                                                            >
+                                                                Mark read
+                                                            </button>
+                                                            <div className="flex items-center gap-2">
+                                                                <button
+                                                                    onClick={() => handleRejectCancellation(notif.id)}
+                                                                    disabled={processingOrderId === notif.id}
+                                                                    className="px-2.5 py-1 text-xs font-semibold rounded-md border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                                                                >
+                                                                    Reject
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleApproveCancellation(notif.id)}
+                                                                    disabled={processingOrderId === notif.id}
+                                                                    className="px-2.5 py-1 text-xs font-semibold rounded-md bg-[#00002E] text-white hover:bg-[#00002E]/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                                                                >
+                                                                    {processingOrderId === notif.id ? 'Processing...' : 'Approve'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             <button
                                 onClick={handleLogout}
                                 className="flex items-center gap-1.5 px-3 py-2 text-white/70 hover:text-red-400 text-sm font-medium rounded-xl transition-all hover:bg-white/10"
@@ -410,6 +580,7 @@ function FinancesTab() {
                     <div className="flex flex-col gap-1">
                         <label className="text-xs text-gray-400 font-medium">Order Status</label>
                         <select
+                            title="Filter by order status"
                             value={filters.status}
                             onChange={e => setFilters(f => ({ ...f, status: e.target.value, page: 1 }))}
                             className="text-xs border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
@@ -425,6 +596,7 @@ function FinancesTab() {
                     <div className="flex flex-col gap-1">
                         <label className="text-xs text-gray-400 font-medium">Payment Status</label>
                         <select
+                            title="Filter by payment status"
                             value={filters.paymentStatus}
                             onChange={e => setFilters(f => ({ ...f, paymentStatus: e.target.value, page: 1 }))}
                             className="text-xs border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
@@ -439,13 +611,13 @@ function FinancesTab() {
                     {/* Date Range */}
                     <div className="flex flex-col gap-1">
                         <label className="text-xs text-gray-400 font-medium">From</label>
-                        <input type="date" value={filters.dateFrom}
+                        <input type="date" title="Filter from date" value={filters.dateFrom}
                             onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value, page: 1 }))}
                             className="text-xs border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#00002E]/20" />
                     </div>
                     <div className="flex flex-col gap-1">
                         <label className="text-xs text-gray-400 font-medium">To</label>
-                        <input type="date" value={filters.dateTo}
+                        <input type="date" title="Filter to date" value={filters.dateTo}
                             onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value, page: 1 }))}
                             className="text-xs border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#00002E]/20" />
                     </div>
@@ -485,7 +657,7 @@ function FinancesTab() {
                                 {transactions.map((tx) => (
                                     <tr key={tx.id} className="hover:bg-gray-50/60 transition-colors">
                                         <td className="px-4 py-3">
-                                            <button onClick={() => setSelectedTx(tx)}
+                                            <button onClick={() => setSelectedTx(tx)} title="Open transaction details"
                                                 className="font-mono text-xs font-bold text-[#00002E] hover:underline">
                                                 {shortId(tx.id)}
                                             </button>
@@ -518,7 +690,7 @@ function FinancesTab() {
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-center">
-                                            <button onClick={() => setSelectedTx(tx)}
+                                            <button onClick={() => setSelectedTx(tx)} title="View receipt"
                                                 className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-[#00002E] transition-colors">
                                                 <Receipt className="w-4 h-4" />
                                             </button>
@@ -535,12 +707,12 @@ function FinancesTab() {
                     <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
                         <p className="text-xs text-gray-500">Showing page {meta.page} of {meta.totalPages} ({meta.total} records)</p>
                         <div className="flex gap-2">
-                            <button disabled={filters.page <= 1}
+                            <button disabled={filters.page <= 1} title="Previous page"
                                 onClick={() => setFilters(f => ({ ...f, page: f.page - 1 }))}
                                 className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed">
                                 <ChevronLeft className="w-4 h-4" />
                             </button>
-                            <button disabled={filters.page >= meta.totalPages}
+                            <button disabled={filters.page >= meta.totalPages} title="Next page"
                                 onClick={() => setFilters(f => ({ ...f, page: f.page + 1 }))}
                                 className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed">
                                 <ChevronRight className="w-4 h-4" />
@@ -554,7 +726,7 @@ function FinancesTab() {
             {selectedTx && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedTx(null)}>
                     <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 relative" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => setSelectedTx(null)}
+                        <button onClick={() => setSelectedTx(null)} title="Close receipt modal"
                             className="absolute top-4 right-4 p-1.5 rounded-xl hover:bg-gray-100 text-gray-400">
                             <X className="w-5 h-5" />
                         </button>
@@ -701,6 +873,7 @@ function CatalogTab() {
 
                         {/* Status Filter */}
                         <select
+                            title="Filter catalog by listing status"
                             value={filters.status}
                             onChange={(e) => setFilters(f => ({ ...f, status: e.target.value }))}
                             className="text-xs border border-gray-200 rounded-xl px-3 py-2 text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"

@@ -228,7 +228,7 @@ model WishlistItem {
   @@index([userId])
 }
 
-// Order status enum
+// Tracks the lifecycle of an order from placement through delivery or cancellation
 enum OrderStatus {
   PENDING
   CONFIRMED
@@ -237,6 +237,7 @@ enum OrderStatus {
   DELIVERED
   CANCELLED
   REFUNDED
+  REFUND_REQUESTED
   AVAILABLE
   ASSIGNED
   ACCEPTED
@@ -255,20 +256,22 @@ enum PaymentStatus {
   REFUNDED
 }
 
-// Order model - represents a customer order for items from a single seller
+// Each order belongs to one seller — multi-seller carts create multiple orders
 model Order {
-  id            String        @id @default(cuid())
-  orderNumber   String        @unique @default(cuid())
-  status        OrderStatus   @default(PENDING)
-  paymentStatus PaymentStatus @default(PENDING)
-  paymentMethod String?
-  subtotal      Float
-  deliveryFee   Float         @default(0)
-  discount      Float         @default(0)
-  total         Float
-  notes         String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id                 String        @id @default(cuid())
+  orderNumber        String        @unique @default(cuid())
+  status             OrderStatus   @default(PENDING)
+  paymentStatus      PaymentStatus @default(PENDING)
+  paymentMethod      String?
+  subtotal           Float
+  serviceCharge      Float         @default(0) // 10% platform fee charged to customer
+  deliveryFee        Float         @default(0) // Calculated as distance_km * 250 once distance is available
+  discount           Float         @default(0)
+  total              Float
+  notes              String?
+  cancellationReason String?       // Customer must provide a reason so admin can make an informed decision
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   // Relations
   customerId String

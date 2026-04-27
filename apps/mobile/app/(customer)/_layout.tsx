@@ -94,6 +94,14 @@ export default function CustomerTabLayout() {
           ),
         }}
       />
+      {/* Wishlist is reachable from the Profile menu — not a persistent bottom tab */}
+      <Tabs.Screen
+        name="wishlist"
+        options={{
+          href: null,
+          title: "Wishlist",
+        }}
+      />
     </Tabs>
   );
 }

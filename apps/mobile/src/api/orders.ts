@@ -275,3 +275,34 @@ export const createOrder = async (
     throw error;
   }
 };
+
+// Request cancellation — requires a reason so admin can evaluate the request
+export const cancelOrder = async (orderId: string, reason: string) => {
+  try {
+    const token = await getToken();
+    
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    const response = await fetch(`${getApiUrl()}/orders/${orderId}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reason }),
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to submit cancellation request');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Cancel order error:', error);
+    throw error;
+  }
+};

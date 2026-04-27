@@ -10,11 +10,13 @@ import {
   Image,
   Modal,
   Animated,
+  TextInput,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import MapView, { Marker } from "react-native-maps";
-import { getCustomerOrders, Order } from "../../src/api/orders";
+import { getCustomerOrders, cancelOrder, Order } from "../../src/api/orders";
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
 
@@ -34,6 +36,8 @@ const getStatusColor = (status: string) => {
       return "#9E9E9E";
     case "CANCELLED":
       return "#F44336";
+    case "REFUND_REQUESTED":
+      return "#FF5722";
     default:
       return "#666666";
   }
@@ -171,6 +175,11 @@ export default function OrdersScreen() {
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
+  // Cancellation modal state
+  const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [actionMenuOrderId, setActionMenuOrderId] = useState<string | null>(null);
 
   const fetchOrders = async (showRefresh = false) => {
     try {
@@ -207,8 +216,6 @@ export default function OrdersScreen() {
 
   // ── Real-time socket: listen for order status changes ───────────────────────
   useEffect(() => {
-    let connected = false;
-
     const setup = async () => {
       try {
         // Decode the user ID from the JWT stored on device
@@ -222,7 +229,6 @@ export default function OrdersScreen() {
         if (!userId) return;
 
         const socket = connectSocket(userId);
-        connected = true;
 
         const handleStatusUpdate = (payload: {
           orderId: string;
@@ -238,9 +244,31 @@ export default function OrdersScreen() {
 
         socket.on('orderStatusUpdated', handleStatusUpdate);
 
-        // Store cleanup reference
+        // Listen for cancellation approval/rejection so the UI updates without manual refresh
+        const handleCancellationApproved = (payload: { orderId: string; status: string }) => {
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === payload.orderId ? { ...o, status: payload.status } : o
+            )
+          );
+        };
+
+        const handleCancellationRejected = (payload: { orderId: string; status: string; message?: string }) => {
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === payload.orderId ? { ...o, status: payload.status } : o
+            )
+          );
+          Alert.alert('Cancellation Rejected', payload.message || 'Your cancellation request was rejected by the admin.');
+        };
+
+        socket.on('cancellationApproved', handleCancellationApproved);
+        socket.on('cancellationRejected', handleCancellationRejected);
+
         return () => {
           socket.off('orderStatusUpdated', handleStatusUpdate);
+          socket.off('cancellationApproved', handleCancellationApproved);
+          socket.off('cancellationRejected', handleCancellationRejected);
         };
       } catch (err) {
         console.warn('Socket setup failed:', err);
@@ -262,6 +290,11 @@ export default function OrdersScreen() {
   const renderOrder = ({ item }: { item: Order }) => {
     const statusColor = getStatusColor(item.status);
     const itemCount = item.items?.length || 0;
+    const normalizedStatus = item.status.toUpperCase();
+    const isDelivered = normalizedStatus === 'DELIVERED';
+    const isRefundRequested = normalizedStatus === 'REFUND_REQUESTED';
+    const canRequestAction = ['PENDING', 'CONFIRMED', 'DELIVERED'].includes(normalizedStatus);
+    const isMenuOpen = actionMenuOrderId === item.id;
 
     return (
       <TouchableOpacity style={styles.orderCard}>
@@ -314,10 +347,71 @@ export default function OrdersScreen() {
           <Text style={styles.orderItems}>{itemCount} item(s)</Text>
           <Text style={styles.orderTotal}>Rs. {item.total.toFixed(2)}</Text>
         </View>
-        <TouchableOpacity style={styles.trackButton} onPress={() => setTrackingOrder(item)}>
-          <Ionicons name="location" size={16} color="#FF6B35" />
-          <Text style={styles.trackButtonText}>Track Order</Text>
-        </TouchableOpacity>
+
+        {isDelivered && (
+          <View style={styles.deliveredHighlight}>
+            <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+            <View style={styles.deliveredHighlightTextWrap}>
+              <Text style={styles.deliveredHighlightTitle}>Item Delivered</Text>
+              <Text style={styles.deliveredHighlightSubtitle}>
+                If you have any concerns, please raise a complaint for admin review.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.trackButton, styles.trackButtonFull]}
+            onPress={() => {
+              setActionMenuOrderId(null);
+              setTrackingOrder(item);
+            }}
+          >
+            <Ionicons name="location" size={16} color="#FF6B35" />
+            <Text style={styles.trackButtonText}>Track Order</Text>
+          </TouchableOpacity>
+          {/* Overflow actions keep Track Order as the primary horizontal action. */}
+          {canRequestAction && (
+            <View style={styles.moreActionsWrap}>
+              <TouchableOpacity
+                style={styles.moreActionsButton}
+                onPress={() => setActionMenuOrderId(isMenuOpen ? null : item.id)}
+              >
+                <Ionicons name="ellipsis-vertical" size={18} color="#1A1A2E" />
+              </TouchableOpacity>
+
+              {isMenuOpen && (
+                <View style={styles.moreActionsMenu}>
+                  <TouchableOpacity
+                    style={styles.moreActionItem}
+                    onPress={() => {
+                      setActionMenuOrderId(null);
+                      setCancellingOrder(item);
+                      setCancelReason("");
+                    }}
+                  >
+                    <Ionicons
+                      name={isDelivered ? "alert-circle-outline" : "close-circle-outline"}
+                      size={16}
+                      color={isDelivered ? "#B45309" : "#EF4444"}
+                    />
+                    <Text style={[styles.moreActionText, isDelivered && styles.moreActionTextComplaint]}>
+                      {isDelivered ? 'Raise Complaint' : 'Cancel Order'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+        {/* Tells the customer their request is queued so they don't submit duplicates */}
+        {isRefundRequested && (
+          <View style={styles.refundRequestedBadge}>
+            <Ionicons name="time-outline" size={14} color="#FF5722" />
+            <Text style={styles.refundRequestedText}>Complaint Under Review</Text>
+          </View>
+        )}
       </TouchableOpacity>
     );
   };
@@ -440,6 +534,86 @@ export default function OrdersScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Cancellation Reason Modal — customer must explain why they want to cancel */}
+      <Modal
+        visible={!!cancellingOrder}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setCancellingOrder(null)}
+      >
+        <View style={styles.cancelModalOverlay}>
+          <View style={styles.cancelModalContent}>
+            <View style={styles.cancelModalHeader}>
+              <Text style={styles.cancelModalTitle}>
+                {cancellingOrder?.status?.toUpperCase() === 'DELIVERED' ? 'Raise Complaint' : 'Cancel Order'}
+              </Text>
+              <TouchableOpacity onPress={() => setCancellingOrder(null)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.cancelModalSubtitle}>
+              Order: {cancellingOrder?.orderNumber}
+            </Text>
+            
+            <Text style={styles.cancelModalLabel}>
+              {cancellingOrder?.status?.toUpperCase() === 'DELIVERED'
+                ? 'Please describe your concern clearly (this goes to admin):'
+                : 'Please provide a reason for your request:'}
+            </Text>
+            
+            <TextInput
+              style={styles.cancelReasonInput}
+              multiline
+              numberOfLines={4}
+              placeholder="Enter your reason here (minimum 5 characters)..."
+              placeholderTextColor="#999"
+              value={cancelReason}
+              onChangeText={setCancelReason}
+              textAlignVertical="top"
+            />
+            
+            <TouchableOpacity
+              style={[
+                styles.cancelSubmitButton,
+                (cancelReason.trim().length < 5 || isCancelling) && styles.cancelSubmitDisabled
+              ]}
+              disabled={cancelReason.trim().length < 5 || isCancelling}
+              onPress={async () => {
+                if (!cancellingOrder) return;
+                setIsCancelling(true);
+                try {
+                  await cancelOrder(cancellingOrder.id, cancelReason.trim());
+                  // Update local state immediately so the badge shows
+                  setOrders(prev =>
+                    prev.map(o =>
+                      o.id === cancellingOrder.id ? { ...o, status: 'REFUND_REQUESTED' } : o
+                    )
+                  );
+                  setCancellingOrder(null);
+                  Alert.alert(
+                    'Request Submitted',
+                    cancellingOrder.status?.toUpperCase() === 'DELIVERED'
+                      ? 'Your complaint has been sent to admin for review.'
+                      : 'Your cancellation request has been sent to the admin for review.'
+                  );
+                } catch (err: any) {
+                  Alert.alert('Error', err.message || 'Failed to submit cancellation request.');
+                } finally {
+                  setIsCancelling(false);
+                }
+              }}
+            >
+              {isCancelling ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.cancelSubmitText}>Submit Request</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -535,6 +709,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   orderItems: {
     fontSize: 14,
     color: "#666",
@@ -552,11 +731,56 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     height: 44,
   },
+  trackButtonFull: {
+    flex: 1,
+  },
   trackButtonText: {
     color: "#FF6B35",
     fontSize: 14,
     fontWeight: "600",
     marginLeft: 8,
+  },
+  moreActionsWrap: {
+    position: "relative",
+  },
+  moreActionsButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  moreActionsMenu: {
+    position: "absolute",
+    top: 48,
+    right: 0,
+    minWidth: 160,
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#EEE",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 6,
+    zIndex: 30,
+  },
+  moreActionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    gap: 8,
+  },
+  moreActionText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#EF4444",
+  },
+  moreActionTextComplaint: {
+    color: "#B45309",
   },
   emptyContainer: {
     flex: 1,
@@ -763,7 +987,126 @@ const styles = StyleSheet.create({
     backgroundColor: "#00002E",
     borderRadius: 2,
   },
+  cancelButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FEE2E2",
+    borderRadius: 12,
+    height: 44,
+    marginTop: 8,
+  },
+  complaintButton: {
+    backgroundColor: "#FEF3C7",
+  },
+  cancelButtonText: {
+    color: "#EF4444",
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  complaintButtonText: {
+    color: "#B45309",
+  },
+  deliveredHighlight: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#ECFDF3",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  deliveredHighlightTextWrap: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  deliveredHighlightTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#166534",
+    marginBottom: 2,
+  },
+  deliveredHighlightSubtitle: {
+    fontSize: 12,
+    color: "#166534",
+    lineHeight: 17,
+  },
+  refundRequestedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF3E0",
+    borderRadius: 12,
+    height: 40,
+    marginTop: 8,
+  },
+  refundRequestedText: {
+    color: "#FF5722",
+    fontSize: 13,
+    fontWeight: "600",
+    marginLeft: 6,
+  },
+  cancelModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  cancelModalContent: {
+    backgroundColor: "#FFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  cancelModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  cancelModalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1A1A2E",
+  },
+  cancelModalSubtitle: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 16,
+  },
+  cancelModalLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1A1A2E",
+    marginBottom: 8,
+  },
+  cancelReasonInput: {
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 14,
+    color: "#1A1A2E",
+    minHeight: 100,
+    marginBottom: 16,
+    backgroundColor: "#F9FAFB",
+  },
+  cancelSubmitButton: {
+    backgroundColor: "#EF4444",
+    borderRadius: 12,
+    height: 52,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cancelSubmitDisabled: {
+    backgroundColor: "#FECACA",
+  },
+  cancelSubmitText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
 });
-
-
-

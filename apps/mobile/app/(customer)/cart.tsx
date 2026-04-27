@@ -22,8 +22,10 @@ export default function CartScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   
   const subtotal = getTotalPrice();
-  const deliveryFee = subtotal > 5000 ? 0 : 300;
-  const total = subtotal + deliveryFee;
+  // 10% platform service charge — matches backend calculation
+  const serviceCharge = parseFloat((subtotal * 0.10).toFixed(2));
+  // Delivery fee will be added once distance calculation is integrated
+  const total = subtotal + serviceCharge;
 
   const handleIncreaseQuantity = async (id: string, currentQty: number) => {
     try {
@@ -236,16 +238,9 @@ export default function CartScreen() {
               <Text style={styles.summaryValue}>Rs. {subtotal.toLocaleString()}</Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Delivery</Text>
-              <Text style={[styles.summaryValue, deliveryFee === 0 && styles.freeDelivery]}>
-                {deliveryFee === 0 ? "FREE" : `Rs. ${deliveryFee.toLocaleString()}`}
-              </Text>
+              <Text style={styles.summaryLabel}>Service Charge (10%)</Text>
+              <Text style={styles.summaryValue}>Rs. {serviceCharge.toLocaleString()}</Text>
             </View>
-            {deliveryFee > 0 && (
-              <Text style={styles.freeDeliveryHint}>
-                Add Rs. {(5000 - subtotal).toLocaleString()} more for free delivery
-              </Text>
-            )}
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={styles.totalLabel}>Total</Text>
               <Text style={styles.totalValue}>Rs. {total.toLocaleString()}</Text>

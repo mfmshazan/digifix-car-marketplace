@@ -159,9 +159,16 @@ interface SalesSummary {
 interface AppNotification {
   id: string;
   orderNumber: string;
-  total: number;
+  total?: number;
+  type: 'NEW_ORDER' | 'REFUND_APPROVED';
+  message?: string;
   time: Date;
   read: boolean;
+}
+
+function mergeNotification(prev: AppNotification[], next: AppNotification): AppNotification[] {
+  if (prev.some((n) => n.id === next.id)) return prev;
+  return [next, ...prev];
 }
 
 
@@ -417,12 +424,22 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
       setLastRefresh(new Date());
     };
 
+    // Admin approved customer cancellation/refund request
+    const handleCancellationApproved = (payload: { orderId: string; status: OrderStatus }) => {
+      setOrders(prev =>
+        prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o)
+      );
+      setLastRefresh(new Date());
+    };
+
     socket.on('newOrder', handleNewOrder);
     socket.on('orderStatusUpdated', handleStatusUpdate);
+    socket.on('cancellationApproved', handleCancellationApproved);
 
     return () => {
       socket.off('newOrder', handleNewOrder);
       socket.off('orderStatusUpdated', handleStatusUpdate);
+      socket.off('cancellationApproved', handleCancellationApproved);
     };
   }, [userId, loadOrders]);
 
@@ -738,10 +755,10 @@ function ProductsTab() {
                       <span className={`text-xs font-semibold ${statusColor}`}>{statusLabel}</span>
                     </div>
                     <div className="flex gap-1">
-                      <button className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#00002E] transition-colors">
+                      <button title="Edit product" className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#00002E] transition-colors">
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-red-500 transition-colors">
+                      <button title="Delete product" className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-red-500 transition-colors">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -799,14 +816,15 @@ export default function SalesmanDashboard() {
       
       const handleNewOrder = (orderData: any) => {
         const notif: AppNotification = {
-          id: orderData.orderId,
+          id: `new-order-${orderData.orderId}`,
           orderNumber: orderData.orderNumber,
           total: orderData.total,
+          type: 'NEW_ORDER',
           time: new Date(),
           read: false
         };
         
-        setAppNotifs(prev => [notif, ...prev]);
+        setAppNotifs(prev => mergeNotification(prev, notif));
         setToastNotif(notif);
         
         // Auto hide toast after 10 seconds without deleting from messages
@@ -814,14 +832,72 @@ export default function SalesmanDashboard() {
           setToastNotif(current => current?.id === notif.id ? null : current);
         }, 10000);
       };
+
+      const handleRefundApproved = (payload: { orderId: string; orderNumber: string; message?: string }) => {
+        const notif: AppNotification = {
+          id: `refund-approved-${payload.orderId}`,
+          orderNumber: payload.orderNumber,
+          type: 'REFUND_APPROVED',
+          message: payload.message || `Refund approved for Order ${payload.orderNumber}. Please refund the customer.` ,
+          time: new Date(),
+          read: false,
+        };
+
+        setAppNotifs(prev => mergeNotification(prev, notif));
+        setToastNotif(notif);
+
+        setTimeout(() => {
+          setToastNotif(current => current?.id === notif.id ? null : current);
+        }, 10000);
+      };
       
       socket.on('newOrder', handleNewOrder);
+      socket.on('cancellationApproved', handleRefundApproved);
       
       return () => {
         socket.off('newOrder', handleNewOrder);
+        socket.off('cancellationApproved', handleRefundApproved);
         disconnectSocket();
       };
     }
+  }, [user?.id]);
+
+  // On login/reload, rebuild refund-related messages from existing refunded orders
+  // so salesmen still see instructions even if they missed the live socket event.
+  useEffect(() => {
+    const loadRefundInstructionMessages = async () => {
+      if (!user?.id) return;
+
+      try {
+        const response = await ordersApi.getSalesmanOrders({ status: 'CANCELLED', limit: 50 });
+        const cancelledOrders = response?.data?.orders || [];
+
+        const refundInstructionNotifs: AppNotification[] = cancelledOrders
+          .filter((order: any) => order?.paymentStatus === 'REFUNDED')
+          .map((order: any) => ({
+            id: `refund-approved-${order.id}`,
+            orderNumber: order.orderNumber,
+            type: 'REFUND_APPROVED' as const,
+            message: `Refund approved for Order ${order.orderNumber}. Please refund the customer.`,
+            time: new Date(order.updatedAt || order.createdAt || Date.now()),
+            read: false,
+          }));
+
+        if (refundInstructionNotifs.length > 0) {
+          setAppNotifs((prev) => {
+            let next = prev;
+            for (const notif of refundInstructionNotifs) {
+              next = mergeNotification(next, notif);
+            }
+            return next;
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to load refunded orders for notifications:', err);
+      }
+    };
+
+    loadRefundInstructionMessages();
   }, [user?.id]);
 
 
@@ -976,11 +1052,15 @@ export default function SalesmanDashboard() {
                               <div className="flex justify-between items-start mb-0.5">
                                 <span className="font-semibold text-sm text-gray-900 flex items-center gap-1.5">
                                   {!notif.read && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />}
-                                  Order {notif.orderNumber}
+                                  {notif.type === 'REFUND_APPROVED' ? 'Refund Approved' : `Order ${notif.orderNumber}`}
                                 </span>
                                 <span className="text-xs text-gray-400 shrink-0 ml-2">{timeAgo(notif.time.toISOString())}</span>
                               </div>
-                              <p className="text-xs text-gray-600">Total: Rs. {notif.total.toLocaleString()}</p>
+                              {notif.type === 'REFUND_APPROVED' ? (
+                                <p className="text-xs text-gray-600">{notif.message}</p>
+                              ) : (
+                                <p className="text-xs text-gray-600">Total: Rs. {(notif.total || 0).toLocaleString()}</p>
+                              )}
                             </div>
 
                             {/* Individual delete button */}
@@ -1109,15 +1189,24 @@ export default function SalesmanDashboard() {
         <div className="fixed bottom-4 right-4 z-50 bg-white rounded-xl shadow-xl border border-gray-100 p-4 max-w-sm w-full animate-in slide-in-from-bottom-5">
           <div className="flex items-start justify-between">
             <div className="flex gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <ShoppingCart className="w-5 h-5 text-blue-600" />
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${toastNotif.type === 'REFUND_APPROVED' ? 'bg-emerald-100' : 'bg-blue-100'}`}>
+                {toastNotif.type === 'REFUND_APPROVED' ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <ShoppingCart className="w-5 h-5 text-blue-600" />
+                )}
               </div>
               <div>
-                <h4 className="font-bold text-gray-900 text-sm">New Order!</h4>
-                <p className="text-xs text-gray-500 mt-0.5">Order {toastNotif.orderNumber} for Rs. {toastNotif.total.toLocaleString()}</p>
+                <h4 className="font-bold text-gray-900 text-sm">{toastNotif.type === 'REFUND_APPROVED' ? 'Refund Approved' : 'New Order!'}</h4>
+                {toastNotif.type === 'REFUND_APPROVED' ? (
+                  <p className="text-xs text-gray-500 mt-0.5">{toastNotif.message || `Order ${toastNotif.orderNumber} refund was approved.`}</p>
+                ) : (
+                  <p className="text-xs text-gray-500 mt-0.5">Order {toastNotif.orderNumber} for Rs. {(toastNotif.total || 0).toLocaleString()}</p>
+                )}
               </div>
             </div>
             <button 
+              title="Close toast"
               onClick={() => {
                 // Clicking X removes it from the messages list entirely
                 setAppNotifs(prev => prev.filter(n => n.id !== toastNotif.id));
@@ -1304,6 +1393,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
             <select
+              title="Select product category"
               value={formData.categoryId}
               onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"

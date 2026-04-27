@@ -3,8 +3,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies for hot-reloading
-RUN apk add --no-cache libc6-compat
+# Install dependencies for hot-reloading and native modules
+RUN apk add --no-cache libc6-compat python3 make g++
 
 # Copy package files
 COPY package*.json ./

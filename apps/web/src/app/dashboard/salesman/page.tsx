@@ -34,7 +34,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
-import { resolveMediaUrl, ordersApi } from '@/lib/api';
+import { resolveMediaUrl, ordersApi, productsApi, categoriesApi } from '@/lib/api';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
 // OneSignal helpers kept for backend-side push (logoutOneSignalUser used on logout)
 import { logoutOneSignalUser } from '@/lib/onesignal';
@@ -461,8 +461,8 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
               key={opt.value}
               onClick={() => setFilterStatus(opt.value)}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${filterStatus === opt.value
-                  ? 'bg-[#00002E] text-white'
-                  : 'bg-white border border-gray-200 text-gray-600 hover:border-[#00002E]/40'
+                ? 'bg-[#00002E] text-white'
+                : 'bg-white border border-gray-200 text-gray-600 hover:border-[#00002E]/40'
                 }`}
             >
               {opt.label}
@@ -597,9 +597,9 @@ function SalesHistoryTab() {
             {summary!.topSellingProducts.map((product, idx) => (
               <div key={product.uniqueId} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
                 <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? 'bg-amber-100 text-amber-700' :
-                    idx === 1 ? 'bg-gray-100 text-gray-600' :
-                      idx === 2 ? 'bg-orange-100 text-orange-700' :
-                        'bg-gray-50 text-gray-500'
+                  idx === 1 ? 'bg-gray-100 text-gray-600' :
+                    idx === 2 ? 'bg-orange-100 text-orange-700' :
+                      'bg-gray-50 text-gray-500'
                   }`}>{idx + 1}</span>
                 <div className="w-10 h-10 bg-gray-100 rounded-lg shrink-0 flex items-center justify-center overflow-hidden">
                   {product.images?.[0] ? (
@@ -665,9 +665,101 @@ function SalesHistoryTab() {
   );
 }
 
+// ─── Products Tab ────────────────────────────────────────────────────────────
+
+function ProductsTab() {
+  const [products, setProducts] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await productsApi.getSalesmanProducts();
+        if (res.success) setProducts(res.data);
+      } catch (err) {
+        console.error('Failed to load products', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <div className="w-10 h-10 border-2 border-[#00002E] border-t-transparent rounded-full animate-spin" />
+        <p className="text-gray-500 text-sm">Loading products…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {products.length === 0 ? (
+          <div className="col-span-full py-20 text-center text-gray-400">
+            No products found. Add your first product!
+          </div>
+        ) : (
+          products.map(product => {
+            const status = product.computedStatus || 'IN_STORE';
+            const statusLabel = status === 'IN_STORE' ? 'In Store' : (STATUS_META[status as OrderStatus]?.label || status);
+            const statusBg = status === 'IN_STORE' ? 'bg-emerald-100' : (STATUS_META[status as OrderStatus]?.bg || 'bg-gray-100');
+            const statusColor = status === 'IN_STORE' ? 'text-emerald-700' : (STATUS_META[status as OrderStatus]?.color || 'text-gray-700');
+
+            return (
+              <div key={product.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
+                <div className="h-48 bg-gray-100 relative">
+                  {product.images?.[0] ? (
+                    <Image src={product.images[0]} alt={product.name} fill className="object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Package className="w-10 h-10 text-gray-300" />
+                    </div>
+                  )}
+                  <div className="absolute top-3 right-3">
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase shadow-sm ${product.stock > 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                      }`}>
+                      {product.stock > 0 ? `Stock: ${product.stock}` : 'Out of Stock'}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-4 flex-1 flex flex-col">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-bold text-gray-900 text-sm line-clamp-1 flex-1">{product.name}</h3>
+                    <span className="text-sm font-bold text-[#00002E] ml-2">{formatRs(product.price)}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 line-clamp-2 mb-4">{product.description}</p>
+
+                  <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-50">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Status</span>
+                      <span className={`text-xs font-semibold ${statusColor}`}>{statusLabel}</span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#00002E] transition-colors">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-red-500 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+}
+
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 
-type Tab = 'orders' | 'history';
+type Tab = 'orders' | 'products' | 'history';
 
 export default function SalesmanDashboard() {
   const router = useRouter();
@@ -753,8 +845,10 @@ export default function SalesmanDashboard() {
 
   const tabs = [
     { id: 'orders' as const, label: 'Current Orders', icon: ListOrdered },
+    { id: 'products' as const, label: 'My Products', icon: Package },
     { id: 'history' as const, label: 'Sales History', icon: BarChart3 },
   ];
+
 
   return (
     <div className="min-h-screen bg-[#f4f6fb]">
@@ -803,8 +897,8 @@ export default function SalesmanDashboard() {
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as Tab)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === tab.id
-                        ? 'bg-white text-[#00002E] shadow'
-                        : 'text-white/70 hover:text-white hover:bg-white/10'
+                      ? 'bg-white text-[#00002E] shadow'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
                       }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -974,8 +1068,8 @@ export default function SalesmanDashboard() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold border-b-2 transition-all ${activeTab === tab.id
-                    ? 'border-[#00002E] text-[#00002E]'
-                    : 'border-transparent text-gray-500'
+                  ? 'border-[#00002E] text-[#00002E]'
+                  : 'border-transparent text-gray-500'
                   }`}
               >
                 <Icon className="w-4 h-4" />
@@ -1002,7 +1096,9 @@ export default function SalesmanDashboard() {
         </div>
 
         {activeTab === 'orders' && <CurrentOrdersTab userId={user.id} />}
+        {activeTab === 'products' && <ProductsTab />}
         {activeTab === 'history' && <SalesHistoryTab />}
+
       </main>
 
       {/* Add Product Modal */}
@@ -1052,6 +1148,8 @@ export default function SalesmanDashboard() {
 // ─── Add Product Modal (unchanged) ──────────────────────────────────────────
 
 function AddProductModal({ onClose }: { onClose: () => void }) {
+  const [categories, setCategories] = useState<any[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: '',
@@ -1060,10 +1158,23 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     stock: '',
     condition: 'NEW',
     categoryId: '',
-    carNumberPlate: '',
   });
 
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await categoriesApi.getAll();
+        if (res.success) setCategories(res.data);
+      } catch (err) {
+        console.error('Failed to load categories', err);
+      }
+    };
+    fetchCategories();
+  }, []);
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+
     const files = e.target.files;
     if (files) {
       const newImages = Array.from(files).map(file => URL.createObjectURL(file));
@@ -1075,11 +1186,30 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     setImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Creating product:', { ...formData, images });
-    onClose();
+    // Category is now optional
+    setIsSubmitting(true);
+    try {
+      // In a real app, you'd upload images first and get URLs.
+      // For now, we'll send the dummy local URLs if any, or empty array.
+      await productsApi.createProduct({
+        ...formData,
+        price: parseFloat(formData.price),
+        stock: parseInt(formData.stock),
+        images: [], // Assuming backend handles image upload separately or we use placeholders
+      });
+      alert('Product added successfully!');
+      onClose();
+      window.location.reload(); // Quick refresh to show new product
+    } catch (err) {
+      console.error('Failed to add product', err);
+      alert('Failed to add product');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1097,7 +1227,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Product Images (Up to 5)</label>
             <div className="flex flex-wrap gap-3">
-              {images.map((image, index) => (
+              {images && images.map((image, index) => (
                 <div key={index} className="relative w-24 h-24 rounded-xl overflow-hidden border border-gray-200">
                   <Image src={image} alt={`Product ${index + 1}`} fill className="object-cover" />
                   <button
@@ -1170,47 +1300,31 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Condition */}
+          {/* Category */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Condition</label>
-            <div className="flex gap-3">
-              {['NEW', 'USED', 'RECONDITIONED'].map(condition => (
-                <button
-                  key={condition}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, condition })}
-                  className={`px-4 py-2 rounded-xl font-medium transition-colors ${formData.condition === condition
-                      ? 'bg-[#00002E] text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                >
-                  {condition}
-                </button>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+            <select
+              value={formData.categoryId}
+              onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
+            >
+              <option value="">Select a category</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
-            </div>
+            </select>
           </div>
 
-          {/* Car Number Plate */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Car Number Plate</label>
-            <input
-              type="text"
-              value={formData.carNumberPlate}
-              onChange={e => setFormData({ ...formData, carNumberPlate: e.target.value.toUpperCase() })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] uppercase"
-              placeholder="e.g., CAB-1234"
-              required
-            />
-          </div>
 
           {/* Submit */}
           <div className="flex gap-3 pt-4">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl transition-all">
               Cancel
             </button>
-            <button type="submit" className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all">
-              Add Product
+            <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
+              {isSubmitting ? 'Adding...' : 'Add Product'}
             </button>
+
           </div>
         </form>
       </div>

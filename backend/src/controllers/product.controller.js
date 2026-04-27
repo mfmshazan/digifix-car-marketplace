@@ -154,10 +154,10 @@ const createProduct = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!name || !price || !categoryId) {
+    if (!name || !price) {
       return res.status(400).json({
         success: false,
-        message: 'Name, price, and category are required',
+        message: 'Name and price are required',
       });
     }
 
@@ -176,7 +176,7 @@ const createProduct = async (req, res) => {
         sku,
         stock: stock ? parseInt(stock) : 0,
         images: images || [],
-        categoryId,
+        categoryId: categoryId || null,
         salesmanId: userId,
         storeId: store?.id,
         compatibleVehicles: compatibleVehicles
@@ -236,7 +236,7 @@ const updateProduct = async (req, res) => {
         sku: updateData.sku,
         stock: updateData.stock ? parseInt(updateData.stock) : undefined,
         images: updateData.images,
-        categoryId: updateData.categoryId,
+        categoryId: updateData.categoryId || null,
         isActive: updateData.isActive,
       },
       include: {
@@ -315,18 +315,39 @@ const getSalesmanProducts = async (req, res) => {
           category: {
             select: { id: true, name: true },
           },
-          _count: {
-            select: { reviews: true, orderItems: true },
-          },
+          orderItems: {
+            select: {
+              id: true,
+              order: {
+                select: { status: true }
+              }
+            }
+          }
         },
       }),
       prisma.product.count({ where: { salesmanId: userId } }),
     ]);
 
+    // Compute status for each product
+    const enrichedProducts = products.map(product => {
+      // Logic: find the "most active" status among its order items
+      // Priority: PROCESSING > PENDING > SHIPPED > DELIVERED
+      const statuses = product.orderItems.map(item => item.order.status);
+      
+      let status = 'IN_STORE';
+      if (statuses.includes('PROCESSING')) status = 'PROCESSING';
+      else if (statuses.includes('PENDING')) status = 'PENDING';
+      else if (statuses.includes('SHIPPED')) status = 'SHIPPED';
+      else if (statuses.includes('DELIVERED')) status = 'DELIVERED';
+      else if (statuses.includes('CANCELLED')) status = 'CANCELLED';
+
+      return { ...product, computedStatus: status };
+    });
+
     res.json({
       success: true,
       data: {
-        products,
+        products: enrichedProducts,
         pagination: {
           page: pageNum,
           limit: limitNum,

@@ -3,7 +3,7 @@ import axios from 'axios';
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 /** Avatars are served from the API origin (e.g. /uploads/...), not the Next.js dev port. */
-export function resolveMediaUrl(path: string | null | undefined): string | null {
+export function resolveMediaUrl(path: string | null | undefined): string | null { // exported function
   if (!path || typeof path !== 'string') return null;
   const trimmed = path.trim();
   if (!trimmed) return null;
@@ -102,6 +102,20 @@ export interface Category {
 }
 
 // API Functions
+export const productsApi = {
+  // Get salesman's own products
+  getSalesmanProducts: async () => {
+    const response = await api.get('/products/salesman/my-products');
+    return response.data;
+  },
+
+  // Create a new product
+  createProduct: async (data: any) => {
+    const response = await api.post('/products', data);
+    return response.data;
+  },
+};
+
 export const carPartsApi = {
   // Get all car parts
   getAll: async (params?: { limit?: number; page?: number; categoryId?: string; condition?: string }) => {
@@ -249,3 +263,43 @@ export const ordersApi = {
     return response.data;
   },
 };
+
+export const adminApi = {
+  // Get system stats for overview
+  getStats: async () => {
+    const response = await api.get('/admin/stats');
+    return response.data;
+  },
+
+  // Get users for management
+  getUsers: async (params?: { role?: string }) => {
+    const response = await api.get('/admin/users', { params });
+    return response.data;
+  },
+
+  // Update user status (ACTIVE/SUSPENDED)
+  updateUserStatus: async (userId: string, status: string, additionalInfo?: any) => {
+    const response = await api.patch(`/admin/users/${userId}/status`, { status, ...additionalInfo });
+    return response.data;
+  },
+
+
+  // Get finance records (order ledger)
+  getFinances: async (params?: { status?: string; paymentStatus?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/admin/finances', { params });
+    return response.data;
+  },
+
+  // Get global catalog
+  getCatalog: async (params?: { type?: string; status?: string }) => {
+    const response = await api.get('/admin/catalog', { params });
+    return response.data;
+  },
+
+  // Update catalog item status
+  updateCatalogItemStatus: async (id: string, type: string, isActive: boolean) => {
+    const response = await api.patch(`/admin/catalog/${id}/status`, { type, isActive });
+    return response.data;
+  },
+};
+

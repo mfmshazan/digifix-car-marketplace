@@ -13,6 +13,7 @@ import orderRoutes from './routes/order.routes.js';
 import carPartRoutes from './routes/carPart.routes.js';
 import cartRoutes from './routes/cart.routes.js';
 import clerkRoutes from './routes/clerk.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 // Load environment variables early
 dotenv.config({ override: true });
@@ -55,10 +56,11 @@ io.on('connection', (socket) => {
 });
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
-  credentials: true,
-}));
+// app.use(cors({
+//   origin: process.env.FRONTEND_URL || '*',
+//   credentials: true,
+// }));
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -74,6 +76,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/car-parts', carPartRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/admin', adminRoutes)
 
 // Health check
 app.get('/health', (req, res) => {

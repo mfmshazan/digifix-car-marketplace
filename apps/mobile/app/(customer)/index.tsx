@@ -15,6 +15,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { searchPartsByNumberPlate, getAllCarParts, CarPart, Car } from "../../src/api/carParts";
+import { wishlistApi } from "../../src/api/wishlist";
 import { useCart } from "../../src/store/cartStore";
 
 // Sample data for promotions - Blue, Black & White Theme
@@ -50,6 +51,7 @@ export default function CustomerHomeScreen() {
   const [showResults, setShowResults] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [featuredParts, setFeaturedParts] = useState<CarPart[]>([]);
+  const [wishlistedIds, setWishlistedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const { addItem } = useCart();
@@ -80,10 +82,59 @@ export default function CustomerHomeScreen() {
     }
   };
 
-  // Load featured parts on mount
+  // Load featured parts and wishlist on mount
   useEffect(() => {
     loadFeaturedParts();
+    loadWishlist();
   }, []);
+
+  const loadWishlist = async () => {
+    try {
+      const response = await wishlistApi.getWishlist();
+      if (response.success && response.data) {
+        const ids = new Set<string>();
+        response.data.forEach((item: any) => {
+          if (item.carPartId) ids.add(item.carPartId);
+          if (item.productId) ids.add(item.productId);
+        });
+        setWishlistedIds(ids);
+      }
+    } catch (error) {
+      console.error("Failed to load wishlist:", error);
+    }
+  };
+
+  const handleToggleWishlist = async (partId: string, e?: any) => {
+    if (e) e.stopPropagation();
+    
+    // Optimistic UI update
+    const isCurrentlyWishlisted = wishlistedIds.has(partId);
+    setWishlistedIds(prev => {
+      const newSet = new Set(prev);
+      if (isCurrentlyWishlisted) {
+        newSet.delete(partId);
+      } else {
+        newSet.add(partId);
+      }
+      return newSet;
+    });
+
+    try {
+      await wishlistApi.toggleWishlist(partId, 'CAR_PART');
+    } catch (error) {
+      console.error("Wishlist toggle error:", error);
+      // Revert on error
+      setWishlistedIds(prev => {
+        const newSet = new Set(prev);
+        if (isCurrentlyWishlisted) {
+          newSet.add(partId);
+        } else {
+          newSet.delete(partId);
+        }
+        return newSet;
+      });
+    }
+  };
 
   const loadFeaturedParts = async () => {
     try {
@@ -141,6 +192,16 @@ export default function CustomerHomeScreen() {
 
   const renderPartItem = ({ item }: { item: CarPart }) => (
     <TouchableOpacity style={styles.productCard}>
+      <TouchableOpacity 
+        style={styles.wishlistHeartButton} 
+        onPress={(e) => handleToggleWishlist(item.id, e)}
+      >
+        <Ionicons 
+          name={wishlistedIds.has(item.id) ? "heart" : "heart-outline"} 
+          size={22} 
+          color={wishlistedIds.has(item.id) ? "#FF4444" : "#00002E"} 
+        />
+      </TouchableOpacity>
       <View style={styles.productImageContainer}>
         {item.images && item.images.length > 0 ? (
           <TouchableOpacity
@@ -301,17 +362,29 @@ export default function CustomerHomeScreen() {
                       </Text>
                     </View>
                   </View>
-                  <TouchableOpacity
-                    style={styles.addButton}
-                    onPress={() => handleAddToCart(item)}
-                    disabled={item.stock <= 0}
-                  >
-                    <Ionicons
-                      name="add-circle"
-                      size={32}
-                      color={item.stock > 0 ? "#00002E" : "#CCC"}
-                    />
-                  </TouchableOpacity>
+                  <View style={styles.actionButtonsCol}>
+                    <TouchableOpacity
+                      style={styles.actionButtonSpace}
+                      onPress={(e) => handleToggleWishlist(item.id, e)}
+                    >
+                      <Ionicons
+                        name={wishlistedIds.has(item.id) ? "heart" : "heart-outline"}
+                        size={28}
+                        color={wishlistedIds.has(item.id) ? "#FF4444" : "#00002E"}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.addButton}
+                      onPress={() => handleAddToCart(item)}
+                      disabled={item.stock <= 0}
+                    >
+                      <Ionicons
+                        name="add-circle"
+                        size={32}
+                        color={item.stock > 0 ? "#00002E" : "#CCC"}
+                      />
+                    </TouchableOpacity>
+                  </View>
                 </TouchableOpacity>
               )}
               keyExtractor={(item) => item.id}
@@ -637,6 +710,15 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
+  wishlistHeartButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 20,
+    padding: 6,
+  },
   productImageContainer: {
     position: "relative",
   },
@@ -942,10 +1024,19 @@ const styles = StyleSheet.create({
     color: "#4ECDC4",
     marginLeft: "auto",
   },
+  actionButtonsCol: {
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+  actionButtonSpace: {
+    marginBottom: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   addButton: {
     justifyContent: "center",
     alignItems: "center",
-    marginLeft: 8,
   },
   imageModalOverlay: {
     flex: 1,

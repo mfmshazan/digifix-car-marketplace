@@ -138,6 +138,11 @@ const buildEndpoints = (base: string) => ({
     BY_ID: (id: string) => `${base}/orders/${id}`,
   },
   CART: `${base}/cart`,
+  WISHLIST: {
+    BASE: `${base}/wishlist`,
+    TOGGLE: `${base}/wishlist/toggle`,
+    BY_ID: (id: string) => `${base}/wishlist/${id}`,
+  },
   HEALTH: `http://${LOCAL_IP}:${API_PORT}/health`,
 });
 

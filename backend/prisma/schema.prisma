@@ -214,10 +214,17 @@ model WishlistItem {
   // Relations
   userId    String
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  itemType  String   @default("PRODUCT") // PRODUCT or CAR_PART
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  carPartId String?
+  carPart   CarPart? @relation(fields: [carPartId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
+  @@unique([userId, carPartId])
   @@index([userId])
 }
 
@@ -402,6 +409,8 @@ model CarPart {
 
   // Order items containing this car part
   orderItems OrderItem[]
+
+  wishlistItems WishlistItem[]
 
   @@index([carId])
   @@index([categoryId])

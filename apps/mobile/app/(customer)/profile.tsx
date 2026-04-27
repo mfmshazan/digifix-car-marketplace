@@ -52,7 +52,7 @@ const menuItems = [
     icon: "heart-outline",
     label: "Wishlist",
     color: "#00002E",
-    route: null,
+    route: "/(customer)/wishlist" as const,
   },
   {
     id: "6",

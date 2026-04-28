@@ -19,6 +19,7 @@ import riderPartnerRoutes from './routes/riderPartner.routes.js';
 import riderJobsRoutes from './routes/riderJobs.routes.js';
 import riderAdminRoutes from './routes/riderAdmin.routes.js';
 import deliveryRequestRoutes from './routes/deliveryRequest.routes.js';
+import customerTrackingRoutes from './routes/customerTracking.routes.js';
 import { initializeRiderRealtimeDispatch } from './services/riderRealtimeDispatch.js';
 
 // Load environment variables early
@@ -96,6 +97,7 @@ app.use('/api/jobs', riderJobsRoutes);
 app.use('/api/admin', riderAdminRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/tracking', customerTrackingRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

@@ -276,6 +276,95 @@ export const createOrder = async (
   }
 };
 
+// Get rider's live location for a given order (customer live tracking)
+export const getRiderLiveLocation = async (orderId: string) => {
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const response = await fetch(`${getApiUrl()}/tracking/order/${orderId}/rider-location`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || result.message || 'Failed to get rider location');
+    return result;
+  } catch (error) {
+    console.warn('getRiderLiveLocation error:', error);
+    throw error;
+  }
+};
+
+// Get full delivery status for a given order (customer + salesman)
+export const getOrderDeliveryStatus = async (orderId: string) => {
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const response = await fetch(`${getApiUrl()}/tracking/order/${orderId}/delivery-status`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || result.message || 'Failed to get delivery status');
+    return result;
+  } catch (error) {
+    console.warn('getOrderDeliveryStatus error:', error);
+    throw error;
+  }
+};
+
+// Create a delivery request for an order (salesman dispatches a rider from mobile)
+export const createDeliveryRequest = async (data: {
+  orderId: string;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  pickupAddress?: string;
+  pickupContactName?: string;
+  pickupContactPhone?: string;
+  deliveryLatitude: number;
+  deliveryLongitude: number;
+  deliveryAddress: string;
+  packageNotes?: string;
+  paymentType: 'PREPAID' | 'COD';
+  estimatedEarnings?: number;
+  customerName?: string;
+  customerPhone?: string;
+}) => {
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const response = await fetch(`${getApiUrl()}/delivery-requests`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      // Prefer the detailed backend error over the generic outer message
+      const detail = result.error || result.message || 'Failed to create delivery request';
+      throw new Error(detail);
+    }
+    return result;
+  } catch (error) {
+    console.error('createDeliveryRequest error:', error);
+    throw error;
+  }
+};
+
 // Request cancellation — requires a reason so admin can evaluate the request
 export const cancelOrder = async (orderId: string, reason: string) => {
   try {

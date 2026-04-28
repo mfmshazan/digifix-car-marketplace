@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
@@ -32,9 +32,12 @@ import {
   Bell,
   BellOff,
   MessageSquare,
+  MapPin,
+  Navigation,
+  Send,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
-import { resolveMediaUrl, ordersApi, productsApi, categoriesApi } from '@/lib/api';
+import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi } from '@/lib/api';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
 // OneSignal helpers kept for backend-side push (logoutOneSignalUser used on logout)
 import { logoutOneSignalUser } from '@/lib/onesignal';
@@ -269,11 +272,452 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
   );
 }
 
+// ─── Delivery Status Badge ───────────────────────────────────────────────────
+
+const DELIVERY_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  pending: { label: 'Finding Rider', color: 'text-amber-700', bg: 'bg-amber-50' },
+  available: { label: 'Awaiting Rider', color: 'text-orange-700', bg: 'bg-orange-50' },
+  assigned: { label: 'Rider Assigned', color: 'text-blue-700', bg: 'bg-blue-50' },
+  accepted: { label: 'Rider Confirmed', color: 'text-blue-700', bg: 'bg-blue-50' },
+  arrived_at_pickup: { label: 'Rider at Shop', color: 'text-purple-700', bg: 'bg-purple-50' },
+  picked_up: { label: 'Package Collected', color: 'text-indigo-700', bg: 'bg-indigo-50' },
+  in_transit: { label: 'In Transit', color: 'text-cyan-700', bg: 'bg-cyan-50' },
+  arrived_at_dropoff: { label: 'At Customer', color: 'text-teal-700', bg: 'bg-teal-50' },
+  delivered: { label: 'Delivered', color: 'text-green-700', bg: 'bg-green-50' },
+  failed: { label: 'Failed', color: 'text-red-700', bg: 'bg-red-50' },
+};
+
+function DeliveryStatusBadge({ status }: { status: string }) {
+  const meta = DELIVERY_STATUS_META[status] ?? { label: status, color: 'text-gray-700', bg: 'bg-gray-50' };
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${meta.bg} ${meta.color}`}>
+      <Truck className="w-3 h-3" />
+      {meta.label}
+    </span>
+  );
+}
+
+// ─── Leaflet Map Picker (Delivery Location) ──────────────────────────────────
+
+function LeafletMapPicker({
+  onSelect,
+}: {
+  onSelect: (lat: number, lng: number, address: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const [status, setStatus] = useState<'idle' | 'selected' | 'geocoding'>('idle');
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    // Inject Leaflet CSS once
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+
+    const initMap = () => {
+      if (!containerRef.current || mapRef.current) return;
+      const L = (window as any).L;
+      if (!L) return;
+
+      const map = L.map(containerRef.current).setView([6.9271, 79.8612], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      const handlePick = async (lat: number, lng: number) => {
+        setCoords({ lat, lng });
+        setStatus('geocoding');
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          const data = await res.json();
+          onSelect(lat, lng, data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        } catch {
+          onSelect(lat, lng, `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        }
+        setStatus('selected');
+      };
+
+      map.on('click', (e: any) => {
+        const { lat, lng } = e.latlng;
+        if (markerRef.current) {
+          markerRef.current.setLatLng([lat, lng]);
+        } else {
+          markerRef.current = L.marker([lat, lng], { draggable: true }).addTo(map);
+          markerRef.current.on('dragend', (de: any) => {
+            const pos = de.target.getLatLng();
+            handlePick(pos.lat, pos.lng);
+          });
+        }
+        handlePick(lat, lng);
+      });
+
+      mapRef.current = map;
+    };
+
+    if ((window as any).L) {
+      initMap();
+    } else if (!document.getElementById('leaflet-js')) {
+      const script = document.createElement('script');
+      script.id = 'leaflet-js';
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.onload = initMap;
+      document.head.appendChild(script);
+    } else {
+      // Script tag exists but may still be loading — poll briefly
+      const poll = setInterval(() => {
+        if ((window as any).L) { clearInterval(poll); initMap(); }
+      }, 100);
+      return () => clearInterval(poll);
+    }
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        markerRef.current = null;
+      }
+    };
+  }, []);
+
+  return (
+    <div className="space-y-2">
+      <div
+        ref={containerRef}
+        className="w-full rounded-xl overflow-hidden border border-gray-200"
+        style={{ height: 260 }}
+      />
+      {status === 'idle' && (
+        <p className="text-xs text-gray-400 text-center">
+          Click anywhere on the map to pin the delivery location
+        </p>
+      )}
+      {status === 'geocoding' && (
+        <p className="text-xs text-amber-600 text-center animate-pulse">
+          Fetching address…
+        </p>
+      )}
+      {status === 'selected' && coords && (
+        <p className="text-xs text-green-700 font-medium text-center">
+          📍 {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)} — You can drag the pin to adjust
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Create Delivery Request Modal ───────────────────────────────────────────
+
+interface DeliveryFormState {
+  pickupLatitude: string;
+  pickupLongitude: string;
+  pickupAddress: string;
+  deliveryLatitude: string;
+  deliveryLongitude: string;
+  deliveryAddress: string;
+  paymentType: 'PREPAID' | 'COD';
+  packageNotes: string;
+  estimatedEarnings: string;
+}
+
+function CreateDeliveryRequestModal({
+  order,
+  onClose,
+  onSuccess,
+}: {
+  order: Order;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [form, setForm] = useState<DeliveryFormState>({
+    pickupLatitude: '',
+    pickupLongitude: '',
+    pickupAddress: '',
+    deliveryLatitude: '',
+    deliveryLongitude: '',
+    deliveryAddress: '',
+    paymentType: 'COD',
+    packageNotes: '',
+    estimatedEarnings: '',
+  });
+  const [gettingLocation, setGettingLocation] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setGettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setForm((f) => ({
+          ...f,
+          pickupLatitude: pos.coords.latitude.toFixed(6),
+          pickupLongitude: pos.coords.longitude.toFixed(6),
+        }));
+        setGettingLocation(false);
+      },
+      () => {
+        setError('Could not get your location. Please enter coordinates manually.');
+        setGettingLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+    const { pickupLatitude, pickupLongitude, deliveryLatitude, deliveryLongitude, deliveryAddress } = form;
+
+    if (!pickupLatitude || !pickupLongitude) {
+      setError('Pickup coordinates are required. Use "Get Current Location" or enter manually.');
+      return;
+    }
+    if (!deliveryLatitude || !deliveryLongitude || !deliveryAddress) {
+      setError('Please pin the customer delivery location on the map.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await deliveryRequestsApi.create({
+        orderId: order.id,
+        pickupLatitude: parseFloat(pickupLatitude),
+        pickupLongitude: parseFloat(pickupLongitude),
+        pickupAddress: form.pickupAddress || undefined,
+        deliveryLatitude: parseFloat(deliveryLatitude),
+        deliveryLongitude: parseFloat(deliveryLongitude),
+        deliveryAddress,
+        packageNotes: form.packageNotes || undefined,
+        paymentType: form.paymentType,
+        estimatedEarnings: form.estimatedEarnings ? parseFloat(form.estimatedEarnings) : undefined,
+        customerName: order.customer?.name,
+      });
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Failed to create delivery request.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div>
+            <h3 className="text-base font-bold text-gray-900">Dispatch Rider</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Order {order.orderNumber} · {order.customer?.name}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              {error}
+            </div>
+          )}
+
+          {/* Pickup Location */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-2">
+              <MapPin className="w-3.5 h-3.5 inline mr-1" />
+              Pickup Location (Your Shop)
+            </label>
+            <button
+              onClick={useCurrentLocation}
+              disabled={gettingLocation}
+              className="w-full mb-2 flex items-center justify-center gap-2 px-3 py-2 bg-[#00002E] text-white rounded-xl text-sm font-medium hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
+            >
+              {gettingLocation ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
+              {gettingLocation ? 'Getting Location…' : 'Use My Current Location'}
+            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                step="any"
+                placeholder="Latitude"
+                value={form.pickupLatitude}
+                onChange={(e) => setForm((f) => ({ ...f, pickupLatitude: e.target.value }))}
+                className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+              />
+              <input
+                type="number"
+                step="any"
+                placeholder="Longitude"
+                value={form.pickupLongitude}
+                onChange={(e) => setForm((f) => ({ ...f, pickupLongitude: e.target.value }))}
+                className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+              />
+            </div>
+            <input
+              type="text"
+              placeholder="Shop address (optional)"
+              value={form.pickupAddress}
+              onChange={(e) => setForm((f) => ({ ...f, pickupAddress: e.target.value }))}
+              className="mt-2 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+            />
+          </div>
+
+          {/* Delivery Location — map picker */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-2">
+              <MapPin className="w-3.5 h-3.5 inline mr-1" />
+              Customer Delivery Location
+            </label>
+
+            {/* Selected location summary */}
+            {form.deliveryLatitude && form.deliveryLongitude && (
+              <div className="flex items-start gap-2 p-3 mb-2 bg-indigo-50 border border-indigo-200 rounded-xl">
+                <MapPin className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-indigo-900 truncate">
+                    {form.deliveryAddress || 'Location pinned'}
+                  </p>
+                  <p className="text-xs text-indigo-500 mt-0.5">
+                    {parseFloat(form.deliveryLatitude).toFixed(5)}, {parseFloat(form.deliveryLongitude).toFixed(5)}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Leaflet map */}
+            <LeafletMapPicker
+              onSelect={(lat, lng, address) => {
+                setForm((f) => ({
+                  ...f,
+                  deliveryLatitude: lat.toFixed(6),
+                  deliveryLongitude: lng.toFixed(6),
+                  deliveryAddress: address,
+                }));
+              }}
+            />
+
+            {/* Editable address label after pin */}
+            {form.deliveryLatitude && form.deliveryLongitude && (
+              <input
+                type="text"
+                placeholder="Edit address label (optional)"
+                value={form.deliveryAddress}
+                onChange={(e) => setForm((f) => ({ ...f, deliveryAddress: e.target.value }))}
+                className="mt-2 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+              />
+            )}
+          </div>
+
+          {/* Payment Type */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-2">Payment Type</label>
+            <div className="flex gap-2">
+              {(['COD', 'PREPAID'] as const).map((pt) => (
+                <button
+                  key={pt}
+                  onClick={() => setForm((f) => ({ ...f, paymentType: pt }))}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                    form.paymentType === pt
+                      ? 'bg-[#00002E] text-white border-[#00002E]'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-[#00002E]/40'
+                  }`}
+                >
+                  {pt === 'COD' ? 'Cash on Delivery' : 'Prepaid'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Extras */}
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="number"
+              step="any"
+              placeholder="Rider earnings (Rs)"
+              value={form.estimatedEarnings}
+              onChange={(e) => setForm((f) => ({ ...f, estimatedEarnings: e.target.value }))}
+              className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+            />
+            <input
+              type="text"
+              placeholder="Package notes (optional)"
+              value={form.packageNotes}
+              onChange={(e) => setForm((f) => ({ ...f, packageNotes: e.target.value }))}
+              className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+            />
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="p-5 border-t border-gray-100 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex-1 py-2.5 rounded-xl bg-[#00002E] text-white text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+          >
+            {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {submitting ? 'Dispatching…' : 'Dispatch Rider'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Order Card ──────────────────────────────────────────────────────────────
 
 function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void> }) {
   const [expanded, setExpanded] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [deliveryStatus, setDeliveryStatus] = useState<string | null>(null);
+  const [loadingDeliveryStatus, setLoadingDeliveryStatus] = useState(false);
+
+  // Load delivery status when the card mounts for PROCESSING / SHIPPED orders
+  useEffect(() => {
+    const eligible = ['PROCESSING', 'SHIPPED', 'CONFIRMED'];
+    if (!eligible.includes(order.status)) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingDeliveryStatus(true);
+      try {
+        const res = await deliveryRequestsApi.getDeliveryStatus(order.id);
+        if (!cancelled && res.success && res.data?.hasDelivery) {
+          setDeliveryStatus(res.data.deliveryStatus);
+        }
+      } catch { /* silently ignore */ } finally {
+        if (!cancelled) setLoadingDeliveryStatus(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [order.id, order.status]);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
@@ -352,6 +796,42 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
           </div>
         )}
       </div>
+
+      {/* Delivery Dispatch Section */}
+      {['CONFIRMED', 'PROCESSING', 'SHIPPED'].includes(order.status) && (
+        <div className="px-4 pb-4 border-t border-gray-50 pt-3">
+          {deliveryStatus ? (
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 font-medium">Delivery Status</span>
+              <DeliveryStatusBadge status={deliveryStatus} />
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowDispatchModal(true)}
+              disabled={loadingDeliveryStatus}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-[#00002E] text-white rounded-xl text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
+            >
+              {loadingDeliveryStatus ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Truck className="w-4 h-4" />
+              )}
+              {loadingDeliveryStatus ? 'Checking…' : 'Dispatch Rider'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Dispatch Modal */}
+      {showDispatchModal && (
+        <CreateDeliveryRequestModal
+          order={order}
+          onClose={() => setShowDispatchModal(false)}
+          onSuccess={() => {
+            setDeliveryStatus('pending');
+          }}
+        />
+      )}
 
       {/* Image Preview Modal */}
       {previewImage && (

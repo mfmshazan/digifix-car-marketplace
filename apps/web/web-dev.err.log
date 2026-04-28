@@ -6,3 +6,9 @@ operable program or batch file.
 operable program or batch file.
 'wmic' is not recognized as an internal or external command,
 operable program or batch file.
+ ⨯ TypeError: __webpack_modules__[moduleId] is not a function
+    at __webpack_require__ (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\apps\web\.next\server\webpack-runtime.js:33:42)
+    at eval (./src/app/dashboard/salesman/page.tsx:11:331)
+    at (ssr)/./src/app/dashboard/salesman/page.tsx (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\apps\web\.next\server\app\dashboard\salesman\page.js:335:1)
+    at Object.__webpack_require__ [as require] (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\apps\web\.next\server\webpack-runtime.js:33:42)
+digest: "180390054"

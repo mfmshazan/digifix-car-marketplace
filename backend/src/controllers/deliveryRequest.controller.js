@@ -152,13 +152,20 @@ export const createDeliveryRequest = async (req, res) => {
     );
 
     const job = result.rows[0];
-    const offer = await dispatchJobToNextEligibleDriver(job.id);
+
+    // Dispatch is best-effort — a failure must NOT roll back the already-committed job
+    let offer = null;
+    try {
+      offer = await dispatchJobToNextEligibleDriver(job.id);
+    } catch (dispatchError) {
+      console.error('Dispatch failed (job still created, will retry):', dispatchError.message);
+    }
 
     return res.status(201).json({
       success: true,
       message: offer
         ? 'Delivery request created and sent to nearby riders'
-        : 'Delivery request created. No nearby online riders found yet.',
+        : 'Delivery request created. Searching for available riders.',
       data: {
         ...job,
         offer,
@@ -168,7 +175,7 @@ export const createDeliveryRequest = async (req, res) => {
     console.error('Create delivery request error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to create delivery request',
+      message: error.message || 'Failed to create delivery request',
       error: error.message,
     });
   }

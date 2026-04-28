@@ -45,3 +45,29 @@ When running on Windows, file names are checked against an access list to protec
  ✓ Compiled / in 195ms (660 modules)
  GET / 307 in 480ms
  GET /login 200 in 83ms
+ ✓ Compiled in 1421ms (1162 modules)
+ ✓ Compiled in 687ms (524 modules)
+ ✓ Compiled in 532ms (524 modules)
+ ✓ Compiled in 1174ms (1344 modules)
+ ✓ Compiled in 1099ms (1344 modules)
+ ✓ Compiled in 495ms (524 modules)
+ ✓ Compiled in 477ms (524 modules)
+ ✓ Compiled in 502ms (524 modules)
+ ✓ Compiled in 716ms (1344 modules)
+ ✓ Compiled in 370ms (510 modules)
+ ✓ Compiled in 658ms (1344 modules)
+ ✓ Compiled in 768ms (1162 modules)
+ ✓ Compiled in 918ms (1162 modules)
+ ✓ Compiled in 2s (1176 modules)
+ ✓ Compiled in 1337ms (1182 modules)
+ ✓ Compiled in 958ms (1182 modules)
+ ✓ Compiled in 946ms (1182 modules)
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 1422ms (1171 modules)
+ GET /dashboard/salesman 500 in 566ms
+ GET /_next/static/chunks/app/dashboard/salesman/page.js 404 in 167ms
+ GET /login 200 in 145ms
+ ✓ Compiled in 7.4s (1182 modules)
+ ✓ Compiled in 1907ms (1182 modules)
+ ✓ Compiled in 1681ms (1182 modules)
+ ✓ Compiled in 1497ms (1182 modules)

@@ -16,7 +16,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import MapView, { Marker } from "react-native-maps";
-import { getCustomerOrders, cancelOrder, Order } from "../../src/api/orders";
+import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../../src/api/orders";
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
 
@@ -180,6 +180,41 @@ export default function OrdersScreen() {
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
   const [actionMenuOrderId, setActionMenuOrderId] = useState<string | null>(null);
+  const [riderLocation, setRiderLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [liveDeliveryStatus, setLiveDeliveryStatus] = useState<string | null>(null);
+
+  // Poll rider's GPS every 6 s while the tracking modal is open
+  useEffect(() => {
+    if (!trackingOrder) {
+      setRiderLocation(null);
+      setLiveDeliveryStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await getRiderLiveLocation(trackingOrder.id);
+        if (cancelled) return;
+        if (res?.success && res.data?.riderLocation) {
+          setRiderLocation(res.data.riderLocation);
+        }
+        if (res?.success && res.data?.status) {
+          setLiveDeliveryStatus(res.data.status);
+        }
+      } catch {
+        // silently ignore network errors between polls
+      }
+    };
+
+    poll();
+    const intervalId = setInterval(poll, 6000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [trackingOrder]);
 
   const fetchOrders = async (showRefresh = false) => {
     try {
@@ -508,29 +543,48 @@ export default function OrdersScreen() {
           <MapView
             style={styles.map}
             initialRegion={{
-              latitude: 6.9271, // Colombo default
-              longitude: 79.8612,
-              latitudeDelta: 0.0922,
-              longitudeDelta: 0.0421,
+              latitude: riderLocation?.latitude ?? 6.9271,
+              longitude: riderLocation?.longitude ?? 79.8612,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
             }}
+            region={
+              riderLocation
+                ? {
+                    latitude: riderLocation.latitude,
+                    longitude: riderLocation.longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  }
+                : undefined
+            }
           >
-            <Marker
-              coordinate={{ latitude: 6.9271, longitude: 79.8612 }}
-              title="Rider Location"
-              description="Your rider is here"
-            >
-              <View style={styles.markerContainer}>
-                <Ionicons name="bicycle" size={24} color="#FFF" />
-              </View>
-            </Marker>
+            {riderLocation && (
+              <Marker
+                coordinate={{ latitude: riderLocation.latitude, longitude: riderLocation.longitude }}
+                title="Rider Location"
+                description="Your rider is on the way"
+              >
+                <View style={styles.markerContainer}>
+                  <Ionicons name="bicycle" size={24} color="#FFF" />
+                </View>
+              </Marker>
+            )}
           </MapView>
-          
+
+          {!riderLocation && (
+            <View style={styles.noRiderOverlay}>
+              <Ionicons name="location-outline" size={32} color="#999" />
+              <Text style={styles.noRiderText}>Waiting for rider location…</Text>
+            </View>
+          )}
+
           <View style={styles.trackingInfoCard}>
             <View style={styles.trackingInfoHeader}>
                <Text style={styles.trackingStatusText}>Order Status</Text>
                <Text style={styles.trackingOrderText}>Order {trackingOrder?.orderNumber}</Text>
             </View>
-            <OrderStepper currentStatus={trackingOrder?.status || 'PENDING'} />
+            <OrderStepper currentStatus={liveDeliveryStatus ? liveDeliveryStatus.toUpperCase() : (trackingOrder?.status || 'PENDING')} />
           </View>
         </View>
       </Modal>
@@ -1108,5 +1162,21 @@ const styles = StyleSheet.create({
     color: "#FFF",
     fontSize: 16,
     fontWeight: "600",
+  },
+  noRiderOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.75)",
+  },
+  noRiderText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: "#666",
+    fontWeight: "500",
   },
 });

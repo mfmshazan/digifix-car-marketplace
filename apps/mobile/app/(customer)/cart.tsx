@@ -16,7 +16,8 @@ import { useCart, CartItem } from "../../src/store/cartStore";
 import { useRouter } from "expo-router";
 import { createOrder } from "../../src/api/orders";
 import CustomModal from "@/src/components/modal";
-import { LOCAL_IP, API_PORT } from "../../src/config/api.config";
+import { getApiUrl, getExpoDeepLinkBase } from "../../src/config/api.config";
+import { getUser, getToken } from "../../src/api/storage";
 
 export default function CartScreen() {
   const { items, updateQuantity, removeItem, clearCart, getTotalPrice, isLoading } = useCart();
@@ -124,15 +125,21 @@ export default function CartScreen() {
   const handleStripeCheckout = async () => {
     setIsCheckingOut(true);
     try {
-      // NOTE: Ensure your endpoint matches your backend router exactly
-      const response = await fetch(`http://${LOCAL_IP}:${API_PORT}/api/stripe/create-checkout-session`, {
+      const deepLinkBase = getExpoDeepLinkBase();
+      const [user, token] = await Promise.all([getUser(), getToken()]);
+      const realUserID = user?.id ?? '';
+      const response = await fetch(`${getApiUrl()}/stripe/create-checkout-session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
-          items: items, 
-          // Replace "user_123" with the actual ID from Clerk Auth when you hook it up
-          userID: "user_123", 
-          userRole: "customer"
+          items: items,
+          userID: realUserID,
+          userRole: user?.role?.toLowerCase() ?? 'customer',
+          successUrl: `${deepLinkBase}/--/(customer)/checkout-success?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${deepLinkBase}/--/(customer)/cart`,
         }),
       });
       

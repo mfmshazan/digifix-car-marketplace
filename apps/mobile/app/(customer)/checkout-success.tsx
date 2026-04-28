@@ -3,7 +3,8 @@ import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from 'rea
 import { useLocalSearchParams, router } from 'expo-router'; 
 import { Ionicons } from "@expo/vector-icons";
 import { useCart } from '../../src/store/cartStore'; 
-import { LOCAL_IP, API_PORT } from "../../src/config/api.config";
+import { getApiUrl } from "../../src/config/api.config";
+import { getToken } from "../../src/api/storage";
 
 interface VerifyResponse {
   success: boolean;
@@ -26,11 +27,14 @@ export default function SuccessScreen() {
 
   const verifyPayment = async (id: string) => {
     try {
-      const response = await fetch(`http://${LOCAL_IP}:${API_PORT}/api/verify-session/${id}`);
+      const token = await getToken();
+      const response = await fetch(`${getApiUrl()}/stripe/verify-session/${id}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       const data: VerifyResponse = await response.json();
 
       if (data.success && data.status === 'paid') {
-        clearCart(); // Important: Clear the cart only when payment is verified!
+        await clearCart();
         setStatus('success');
       } else {
         setStatus('failed');

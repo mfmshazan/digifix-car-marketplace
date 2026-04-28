@@ -60,6 +60,7 @@ enum OrderStatus {
   DELIVERED
   CANCELLED
   REFUNDED
+  REFUND_REQUESTED
 }
 
 // Payment status enum

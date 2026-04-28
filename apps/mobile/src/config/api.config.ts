@@ -76,6 +76,24 @@ export function getApiUrl(): string {
 }
 
 /**
+ * Returns the Expo Go deep-link base (exp://<host>:8081) so Stripe can redirect
+ * back into the app after payment. Uses the same host resolution as getApiUrl().
+ */
+export function getExpoDeepLinkBase(): string {
+  const isExpoGo = Constants.appOwnership === 'expo';
+  const hostUri = Constants.expoConfig?.hostUri; // e.g. "172.20.10.14:8081"
+
+  if (isExpoGo && hostUri) {
+    const hostIp = hostUri.split(':')[0];
+    return `exp://${hostIp}:8081`;
+  }
+
+  const raw = process.env.EXPO_PUBLIC_API_HOST || LOCAL_IP;
+  const ip = String(raw).replace(/^https?:\/\//, '').split('/')[0].trim();
+  return `exp://${ip || LOCAL_IP}:8081`;
+}
+
+/**
  * Turn stored avatar values (relative /uploads/..., absolute http(s), file URIs)
  * into a string suitable for <Image source={{ uri }} />.
  */

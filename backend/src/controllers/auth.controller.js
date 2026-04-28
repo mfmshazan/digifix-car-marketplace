@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
+import { isRiderRegisterPayload, loginRiderByEmail, registerRider } from './riderAuth.controller.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -12,6 +13,16 @@ const generateToken = (userId, role) => {
 
 // Register new user
 const register = async (req, res) => {
+  if (isRiderRegisterPayload(req.body)) {
+    return registerRider(req, res, (error) => {
+      console.error('Rider registration error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to register rider',
+      });
+    });
+  }
+
   try {
     const { email, password, name, phone, role = 'CUSTOMER' } = req.body;
 
@@ -132,6 +143,12 @@ const login = async (req, res) => {
     });
 
     if (!user) {
+      const riderLoginResult = await loginRiderByEmail({ email, password });
+
+      if (riderLoginResult && riderLoginResult !== false) {
+        return res.json(riderLoginResult);
+      }
+
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password',

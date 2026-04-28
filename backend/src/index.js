@@ -15,6 +15,10 @@ import cartRoutes from './routes/cart.routes.js';
 import clerkRoutes from './routes/clerk.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import wishlistRoutes from './routes/wishlist.routes.js';
+import riderPartnerRoutes from './routes/riderPartner.routes.js';
+import riderJobsRoutes from './routes/riderJobs.routes.js';
+import riderAdminRoutes from './routes/riderAdmin.routes.js';
+import { initializeRiderRealtimeDispatch } from './services/riderRealtimeDispatch.js';
 
 // Load environment variables early
 dotenv.config({ override: true });
@@ -85,6 +89,9 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/car-parts', carPartRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/partner', riderPartnerRoutes);
+app.use('/api/jobs', riderJobsRoutes);
+app.use('/api/admin', riderAdminRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 
@@ -103,6 +110,10 @@ app.use((err, req, res, next) => {
 });
 
 // ─── Start server ─────────────────────────────────────────────────────────────
+initializeRiderRealtimeDispatch(httpServer).catch((error) => {
+  console.warn('Rider realtime dispatch did not initialize:', error.message);
+});
+
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🔌 Socket.io ready on port ${PORT}`);

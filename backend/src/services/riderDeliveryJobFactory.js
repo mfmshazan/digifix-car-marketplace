@@ -79,9 +79,14 @@ export const createRiderJobFromMarketplaceOrder = async (orderId) => {
         dropoff_longitude,
         distance_km,
         payment_amount,
+        package_weight,
+        package_type,
+        package_notes,
+        payment_type,
         items_description,
-        special_instructions
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL, $13, $14, $15)
+        special_instructions,
+        status
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL, $13, NULL, NULL, NULL, 'PREPAID', $14, $15, 'pending')
      RETURNING id, order_number, status, created_at`,
     [
       order.id,
@@ -120,4 +125,3 @@ export const createRiderJobsForMarketplaceOrders = async (orders = []) => {
 
   return jobs;
 };
-

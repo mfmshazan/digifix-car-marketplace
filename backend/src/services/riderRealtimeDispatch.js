@@ -4,6 +4,7 @@ import { getRiderClient, riderQuery } from '../lib/riderDb.js';
 import { verifyRiderAccessToken } from '../lib/riderTokens.js';
 
 export const REQUEST_WINDOW_SECONDS = Number(process.env.DISPATCH_REQUEST_WINDOW_SECONDS || 30);
+const MATCH_RADIUS_KM = Number(process.env.RIDER_MATCH_RADIUS_KM || 2);
 
 const ACTIVE_JOB_STATUSES = [
   'assigned',
@@ -21,7 +22,8 @@ const JOB_DETAIL_SELECT = `SELECT id, order_number, customer_name, customer_phon
   pickup_address, pickup_latitude, pickup_longitude,
   pickup_contact_name, pickup_contact_phone,
   dropoff_address, dropoff_latitude, dropoff_longitude,
-  distance_km, payment_amount, items_description, special_instructions,
+  distance_km, payment_amount, package_weight, package_type, package_notes,
+  payment_type, items_description, special_instructions,
   status, assigned_at, accepted_at, created_at
   FROM rider_delivery_jobs
   WHERE id = $1`;
@@ -112,6 +114,11 @@ const formatOfferPayload = (row) => ({
   paymentAmount: Number(row.payment_amount),
   distanceKm: row.distance_km !== null ? Number(row.distance_km) : null,
   distanceToPickupKm: row.distance_to_pickup_km !== null ? Number(row.distance_to_pickup_km) : null,
+  estimatedEarnings: Number(row.payment_amount || 0),
+  packageWeight: row.package_weight !== null ? Number(row.package_weight) : null,
+  packageType: row.package_type || '',
+  packageNotes: row.package_notes || '',
+  paymentType: row.payment_type || 'PREPAID',
   vehicleType: row.vehicle_type || '',
   offeredAt: row.offered_at,
   expiresAt: row.expires_at,
@@ -125,7 +132,8 @@ const fetchOfferPayload = async (offerId) => {
             dj.order_number, dj.customer_name,
             dj.pickup_address, dj.pickup_latitude, dj.pickup_longitude,
             dj.dropoff_address, dj.dropoff_latitude, dj.dropoff_longitude,
-            dj.distance_km, dj.payment_amount,
+            dj.distance_km, dj.payment_amount, dj.package_weight, dj.package_type,
+            dj.package_notes, dj.payment_type,
             dp.vehicle_type
        FROM rider_delivery_request_offers dro
        JOIN rider_delivery_jobs dj ON dj.id = dro.job_id
@@ -194,6 +202,7 @@ const pickNearestEligiblePartner = async (client, jobId, pickupLatitude, pickupL
         Number(candidate.current_longitude)
       ),
     }))
+    .filter((candidate) => candidate.distanceToPickupKm <= MATCH_RADIUS_KM)
     .sort((left, right) =>
       left.distanceToPickupKm === right.distanceToPickupKm
         ? Number(left.id) - Number(right.id)
@@ -221,7 +230,7 @@ export const dispatchJobToNextEligibleDriver = async (jobId) => {
     }
 
     const job = jobResult.rows[0];
-    if (job.status !== 'available' || job.partner_id) {
+    if (!['pending', 'available'].includes(job.status) || job.partner_id) {
       await client.query('ROLLBACK');
       return null;
     }
@@ -253,6 +262,13 @@ export const dispatchJobToNextEligibleDriver = async (jobId) => {
       return null;
     }
 
+    await client.query(
+      `UPDATE rider_delivery_jobs
+          SET status = 'available'
+        WHERE id = $1 AND status = 'pending'`,
+      [jobId]
+    );
+
     const offerResult = await client.query(
       `INSERT INTO rider_delivery_request_offers (
           job_id, partner_id, offer_status, distance_to_pickup_km, expires_at
@@ -279,7 +295,7 @@ export const dispatchAvailableJobs = async () => {
   const result = await riderQuery(
     `SELECT dj.id
        FROM rider_delivery_jobs dj
-      WHERE dj.status = 'available'
+      WHERE dj.status IN ('pending', 'available')
         AND dj.partner_id IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM rider_delivery_request_offers dro
@@ -356,7 +372,7 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
         return { success: false, statusCode: 409, message: 'Request window expired' };
       }
 
-      if (offer.job_status !== 'available' || offer.assigned_partner_id) {
+      if (!['pending', 'available'].includes(offer.job_status) || offer.assigned_partner_id) {
         await client.query(
           `UPDATE rider_delivery_request_offers
               SET offer_status = 'cancelled',
@@ -488,7 +504,8 @@ const sendPendingOffersForPartner = async (partnerId) => {
             dj.order_number, dj.customer_name,
             dj.pickup_address, dj.pickup_latitude, dj.pickup_longitude,
             dj.dropoff_address, dj.dropoff_latitude, dj.dropoff_longitude,
-            dj.distance_km, dj.payment_amount,
+            dj.distance_km, dj.payment_amount, dj.package_weight, dj.package_type,
+            dj.package_notes, dj.payment_type,
             dp.vehicle_type
        FROM rider_delivery_request_offers dro
        JOIN rider_delivery_jobs dj ON dj.id = dro.job_id
@@ -561,4 +578,3 @@ export const initializeRiderRealtimeDispatch = async (server) => {
     }
   });
 };
-

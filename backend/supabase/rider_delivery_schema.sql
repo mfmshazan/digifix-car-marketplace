@@ -55,11 +55,16 @@ CREATE TABLE IF NOT EXISTS rider_delivery_jobs (
 
     distance_km DECIMAL(6, 2),
     payment_amount DECIMAL(10, 2) NOT NULL,
+    package_weight DECIMAL(8, 2),
+    package_type VARCHAR(80),
+    package_notes TEXT,
+    payment_type VARCHAR(30) DEFAULT 'PREPAID' CHECK (payment_type IN ('COD', 'PREPAID')),
     items_description TEXT,
     special_instructions TEXT,
 
-    status VARCHAR(30) DEFAULT 'available' CHECK (
+    status VARCHAR(30) DEFAULT 'pending' CHECK (
         status IN (
+            'pending',
             'available',
             'assigned',
             'accepted',
@@ -140,6 +145,7 @@ CREATE INDEX IF NOT EXISTS idx_rider_jobs_status ON rider_delivery_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_rider_jobs_partner ON rider_delivery_jobs(partner_id);
 CREATE INDEX IF NOT EXISTS idx_rider_jobs_order_number ON rider_delivery_jobs(order_number);
 CREATE INDEX IF NOT EXISTS idx_rider_jobs_marketplace_order ON rider_delivery_jobs(marketplace_order_id);
+CREATE INDEX IF NOT EXISTS idx_rider_jobs_pickup_location ON rider_delivery_jobs(pickup_latitude, pickup_longitude);
 CREATE INDEX IF NOT EXISTS idx_rider_tracking_job ON rider_job_tracking(job_id);
 CREATE INDEX IF NOT EXISTS idx_rider_tracking_recorded_at ON rider_job_tracking(recorded_at);
 CREATE INDEX IF NOT EXISTS idx_rider_refresh_tokens_token ON rider_refresh_tokens(token);
@@ -173,4 +179,3 @@ DROP TRIGGER IF EXISTS update_rider_delivery_jobs_updated_at ON rider_delivery_j
 CREATE TRIGGER update_rider_delivery_jobs_updated_at
     BEFORE UPDATE ON rider_delivery_jobs
     FOR EACH ROW EXECUTE FUNCTION rider_update_updated_at_column();
-

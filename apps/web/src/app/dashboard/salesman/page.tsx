@@ -692,9 +692,17 @@ function ProductsTab() {
     const load = async () => {
       try {
         const res = await productsApi.getSalesmanProducts();
-        if (res.success) setProducts(res.data);
+        if (res.success) {
+          const nextProducts = Array.isArray(res.data)
+            ? res.data
+            : Array.isArray(res.data?.products)
+              ? res.data.products
+              : [];
+          setProducts(nextProducts);
+        }
       } catch (err) {
         console.error('Failed to load products', err);
+        setProducts([]);
       } finally {
         setIsLoading(false);
       }

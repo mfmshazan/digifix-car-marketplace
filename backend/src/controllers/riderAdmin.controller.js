@@ -43,8 +43,8 @@ export const createRiderAdminJob = async (req, res, next) => {
           pickup_address, pickup_latitude, pickup_longitude,
           pickup_contact_name, pickup_contact_phone,
           dropoff_address, dropoff_latitude, dropoff_longitude,
-          distance_km, payment_amount, items_description, special_instructions
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          distance_km, payment_amount, items_description, special_instructions, status
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'pending')
        RETURNING id, order_number, status, created_at`,
       [
         orderNumber,
@@ -133,4 +133,3 @@ export const getRiderAdminJobTracking = async (req, res, next) => {
     return next(error);
   }
 };
-

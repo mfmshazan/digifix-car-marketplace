@@ -1,0 +1,47 @@
+
+> digifix-web@0.1.0 dev
+> next dev -p 3001
+
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3001
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 5.2s
+ ○ Compiling /src/middleware ...
+ ✓ Compiled /src/middleware in 758ms (182 modules)
+ ○ Compiling / ...
+ ✓ Compiled / in 4.1s (773 modules)
+ GET / 200 in 4132ms
+ ✓ Compiled in 266ms (370 modules)
+ GET / 307 in 70ms
+ ○ Compiling /login ...
+ ✓ Compiled /login in 1761ms (993 modules)
+ GET /login 200 in 2176ms
+ ○ Compiling /dashboard/salesman ...
+ ✓ Compiled /dashboard/salesman in 1277ms (1170 modules)
+
+Could not open page.tsx in the editor.
+
+When running on Windows, file names are checked against an access list to protect against remote code execution attacks. File names may consist only of alphanumeric characters (all languages), periods, dashes, slashes, and underscores.
+
+
+Could not open page.tsx in the editor.
+
+When running on Windows, file names are checked against an access list to protect against remote code execution attacks. File names may consist only of alphanumeric characters (all languages), periods, dashes, slashes, and underscores.
+
+
+Could not open page.tsx in the editor.
+
+When running on Windows, file names are checked against an access list to protect against remote code execution attacks. File names may consist only of alphanumeric characters (all languages), periods, dashes, slashes, and underscores.
+
+
+Could not open page.tsx in the editor.
+
+When running on Windows, file names are checked against an access list to protect against remote code execution attacks. File names may consist only of alphanumeric characters (all languages), periods, dashes, slashes, and underscores.
+
+ ✓ Compiled in 1426ms (1176 modules)
+ GET /login 200 in 321ms
+ ✓ Compiled / in 195ms (660 modules)
+ GET / 307 in 480ms
+ GET /login 200 in 83ms

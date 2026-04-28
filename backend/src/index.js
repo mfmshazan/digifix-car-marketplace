@@ -18,6 +18,7 @@ import wishlistRoutes from './routes/wishlist.routes.js';
 import riderPartnerRoutes from './routes/riderPartner.routes.js';
 import riderJobsRoutes from './routes/riderJobs.routes.js';
 import riderAdminRoutes from './routes/riderAdmin.routes.js';
+import deliveryRequestRoutes from './routes/deliveryRequest.routes.js';
 import { initializeRiderRealtimeDispatch } from './services/riderRealtimeDispatch.js';
 
 // Load environment variables early
@@ -89,6 +90,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/car-parts', carPartRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/delivery-requests', deliveryRequestRoutes);
 app.use('/api/partner', riderPartnerRoutes);
 app.use('/api/jobs', riderJobsRoutes);
 app.use('/api/admin', riderAdminRoutes);

@@ -168,7 +168,7 @@ class StripeController {
                         salesmanId: sellerGroup.sellerId,
                         subtotal,
                         total: subtotal,
-                        status: 'PROCESSING',
+                        status: 'PENDING',
                         paymentStatus: 'PAID',
                         paymentMethod: 'Stripe',
                         items: {

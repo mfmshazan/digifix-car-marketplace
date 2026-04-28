@@ -292,6 +292,22 @@ export const getSalesmanSalesSummary = async (req, res) => {
 };
 
 /**
+ * Get count of pending orders for salesman (lightweight endpoint)
+ */
+export const getSalesmanPendingCount = async (req, res) => {
+  try {
+    const salesmanId = req.user.id;
+    const count = await prisma.order.count({
+      where: { salesmanId, status: 'PENDING' }
+    });
+    res.json({ success: true, count });
+  } catch (error) {
+    console.error('Get pending count error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get pending count', error: error.message });
+  }
+};
+
+/**
  * Get all orders for salesman
  */
 export const getSalesmanOrders = async (req, res) => {
@@ -1062,6 +1078,7 @@ export const getCustomerOrdersSimple = async (req, res) => {
 export default {
   getSalesmanSalesSummary,
   getSalesmanOrders,
+  getSalesmanPendingCount,
   updateOrderStatus,
   getCustomerOrders,
   createOrder,

@@ -184,6 +184,22 @@ export const updateOrderStatus = async (orderId: string, status: string) => {
   }
 };
 
+// Get salesman pending orders count (lightweight - avoids connection exhaustion)
+export const getSalesmanPendingCount = async (): Promise<number> => {
+  try {
+    const token = await getToken();
+    if (!token) return 0;
+    const response = await fetch(`${getApiUrl()}/orders/salesman/pending-count`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    });
+    const result = await response.json();
+    return result.success ? (result.count ?? 0) : 0;
+  } catch {
+    return 0;
+  }
+};
+
 // Get customer orders
 export const getCustomerOrders = async (
   status?: string,

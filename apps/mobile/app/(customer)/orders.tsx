@@ -267,7 +267,7 @@ export default function OrdersScreen() {
       <TouchableOpacity style={styles.orderCard}>
         <View style={styles.orderHeader}>
           <View>
-            <Text style={styles.orderId}>{item.orderNumber || `ORD-${item.id.slice(-6).toUpperCase()}`}</Text>
+            <Text style={styles.orderId}>Order #{(item.orderNumber || item.id).slice(-8).toUpperCase()}</Text>
             <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
           </View>
           <View
@@ -434,7 +434,7 @@ export default function OrdersScreen() {
           <View style={styles.trackingInfoCard}>
             <View style={styles.trackingInfoHeader}>
                <Text style={styles.trackingStatusText}>Order Status</Text>
-               <Text style={styles.trackingOrderText}>Order {trackingOrder?.orderNumber}</Text>
+               <Text style={styles.trackingOrderText}>Order #{(trackingOrder?.orderNumber || trackingOrder?.id || '').slice(-8).toUpperCase()}</Text>
             </View>
             <OrderStepper currentStatus={trackingOrder?.status || 'PENDING'} />
           </View>

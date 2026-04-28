@@ -1,8 +1,24 @@
 // Initialize Stripe with the Secret Key
 import Stripe from 'stripe';
 import prisma from '../lib/prisma.js';
+import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+/**
+ * Pure service function — creates a Stripe Express connected account.
+ * Safe to call from any controller without req/res.
+ */
+export const createStripeAccountForSalesman = async (opts = {}) => {
+    const account = await stripe.accounts.create({ type: 'express' });
+    const accountLink = await stripe.accountLinks.create({
+        account: account.id,
+        refresh_url: opts.refreshUrl || 'http://localhost:3000/reauth',
+        return_url: opts.returnUrl || 'http://localhost:3000/dashboard',
+        type: 'account_onboarding',
+    });
+    return { accountId: account.id, onboardingUrl: accountLink.url };
+};
 
 class StripeController {
     stripeTest = async (req, res) => {
@@ -29,23 +45,9 @@ class StripeController {
     createConnectedAccount = async (req, res) => {
         try {
             console.log("Creating connected account with Stripe...");
-            const account = await stripe.accounts.create({
-                type: 'express',
-            });
-            const accountLink = await stripe.accountLinks.create({
-                account: account.id,
-                refresh_url: 'http://localhost:3000/reauth', // URL to handle expired sessions
-                return_url: 'http://localhost:3000/dashboard', // URL upon successful completion
-                type: 'account_onboarding',
-            });
-
-            // 3. Send the URL back to the frontend
-            res.status(200).json({
-                success: true,
-                accountId: account.id,
-                onboardingUrl: accountLink.url
-            });
-
+            const { refreshUrl, returnUrl } = req.body || {};
+            const result = await createStripeAccountForSalesman({ refreshUrl, returnUrl });
+            res.status(200).json({ success: true, ...result });
         } catch (error) {
             console.error("Error creating connected account:", error.message);
             res.status(500).json({
@@ -185,10 +187,39 @@ class StripeController {
                         },
                     },
                 });
-                createdOrders.push(order);
+                createdOrders.push({ order, subtotal });
             }
 
-            res.json({ success: true, status: 'paid', orderId: createdOrders[0]?.id });
+            // ============================================================
+            // WALLET BRIDGE: Record Stripe payment as DEPOSIT to admin wallet
+            // Money flow: Stripe (external) → Admin wallet (held until delivery)
+            // ============================================================
+            try {
+                const adminWallet = await getAdminWallet();
+                const totalPaid = createdOrders.reduce((s, o) => s + o.subtotal, 0);
+
+                await prisma.$transaction([
+                    prisma.wallet.update({
+                        where: { id: adminWallet.id },
+                        data: { balance: { increment: totalPaid } }
+                    }),
+                    prisma.walletTransaction.create({
+                        data: {
+                            amount: totalPaid,
+                            type: 'DEPOSIT',
+                            senderWalletId: null,
+                            receiverWalletId: adminWallet.id,
+                            orderId: createdOrders[0]?.order.id,
+                            description: `Stripe payment received for ${createdOrders.length} order(s)`,
+                        }
+                    })
+                ]);
+            } catch (walletErr) {
+                // Non-fatal: orders are created, wallet is best-effort
+                console.error('Wallet DEPOSIT record failed (orders still created):', walletErr.message);
+            }
+
+            res.json({ success: true, status: 'paid', orderId: createdOrders[0]?.order.id });
 
         } catch (error) {
             console.error("Verification & DB Save Error:", error);

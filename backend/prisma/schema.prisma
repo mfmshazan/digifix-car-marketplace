@@ -19,7 +19,8 @@ datasource db {
 enum UserRole {
   CUSTOMER
   SALESMAN
-  ADMIN     // Added Admin to hold the "Master System Wallet" for platform fees
+  DELIVERY_PERSON   // Delivery personnel who collect COD and earn delivery fees
+  ADMIN             // Added Admin to hold the "Master System Wallet" for platform fees
 }
 
 // Enum for user account status
@@ -36,13 +37,17 @@ enum AuthProvider {
 
 // Wallet & Transaction Enums
 enum TransactionType {
-  DEPOSIT           // External money enters app (Sender is null, Receiver is Customer)
-  PURCHASE          // Customer uses wallet balance (Sender = Customer, Receiver = Salesman)
-  PLATFORM_FEE      // App deducts profit (Sender = Salesman, Receiver = Admin System Wallet)
-  DELIVERY_FEE      // Deduction for delivery (Sender = Customer/Salesman, Receiver = Driver/System)
-  PAYOUT            // Salesman withdraws money to bank (Sender = Salesman, Receiver is null)
-  REFUND            // Customer gets money back (Sender = Salesman, Receiver = Customer)
-  COD_REMITTANCE    // Driver hands over cash (Sender = Driver, Receiver = System/Salesman)
+  DEPOSIT           // External money enters app (Sender is null, Receiver is Admin)
+  PURCHASE          // Customer uses wallet balance (Sender = Customer, Receiver = Admin)
+  SALE_EARNING      // Admin releases sale funds to Salesman (Sender = Admin, Receiver = Salesman)
+  PLATFORM_FEE      // App deducts profit (Sender = Salesman, Receiver = Admin)
+  DELIVERY_FEE      // Admin pays delivery person (Sender = Admin, Receiver = DeliveryPerson)
+  EARNING           // Delivery person earns for a delivery (Sender = Admin, Receiver = DeliveryPerson)
+  PAYOUT            // Salesman withdraws to bank via Stripe (Sender = Salesman, Receiver = null)
+  REFUND            // Customer gets money back (Sender = Admin, Receiver = Customer)
+  COD_PAYMENT       // Delivery person records cash collected from customer (Sender = null, Receiver = DeliveryPerson)
+  COD_REMITTANCE    // Delivery person hands cash to admin (Sender = DeliveryPerson, Receiver = Admin)
+  REFUND_SETTLEMENT // Salesman compensates admin for a refund (Sender = Salesman, Receiver = Admin)
 }
 
 enum CodSettlementStatus {

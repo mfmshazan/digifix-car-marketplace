@@ -1,6 +1,59 @@
 import prisma from '../lib/prisma.js';
+import Stripe from 'stripe';
+import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 class WalletController {
+
+    /**
+     * GET /wallet/my
+     * Returns the authenticated user's wallet + last 30 transactions.
+     */
+    getMyWallet = async (req, res) => {
+        try {
+            const userId = req.user.id;
+            let wallet = await prisma.wallet.findUnique({
+                where: { userId },
+                include: {
+                    sentTransactions: {
+                        orderBy: { createdAt: 'desc' },
+                        take: 30,
+                        include: { receiverWallet: { include: { user: { select: { name: true, role: true } } } } }
+                    },
+                    receivedTransactions: {
+                        orderBy: { createdAt: 'desc' },
+                        take: 30,
+                        include: { senderWallet: { include: { user: { select: { name: true, role: true } } } } }
+                    }
+                }
+            });
+
+            if (!wallet) {
+                wallet = await prisma.wallet.create({ data: { userId, balance: 0 } });
+                wallet.sentTransactions = [];
+                wallet.receivedTransactions = [];
+            }
+
+            // Merge and sort transactions for a unified feed
+            const allTx = [
+                ...wallet.sentTransactions.map(t => ({ ...t, direction: 'OUT' })),
+                ...wallet.receivedTransactions.map(t => ({ ...t, direction: 'IN' })),
+            ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 30);
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    balance: wallet.balance,
+                    walletId: wallet.id,
+                    transactions: allTx,
+                }
+            });
+        } catch (error) {
+            console.error('getMyWallet error:', error);
+            return res.status(500).json({ success: false, msg: 'Failed to fetch wallet' });
+        }
+    }
 
     getAllWallets = async (req, res) => {
         try {
@@ -37,7 +90,12 @@ class WalletController {
                 return res.status(400).json({ msg: 'Invalid amount provided', error: true, status: 400 });
             }
 
+            const adminWallet = await getAdminWallet();
             await prisma.$transaction([
+                prisma.wallet.update({
+                    where: { id: adminWallet.id },
+                    data: { balance: { decrement: safeAmount } }
+                }),
                 prisma.wallet.update({
                     where: { id: walletID },
                     data: { balance: { increment: safeAmount } }
@@ -49,12 +107,21 @@ class WalletController {
                 prisma.walletTransaction.create({
                     data: {
                         amount: safeAmount,
-                        type: "REFUND",
+                        type: "REFUND_SETTLEMENT",
                         senderWalletId: salesmanWalletId,
+                        receiverWalletId: adminWallet.id,
+                        orderId: orderId,
+                        description: "Salesman funds clawed back for refund"
+                    }
+                }),
+                prisma.walletTransaction.create({
+                    data: {
+                        amount: safeAmount,
+                        type: "REFUND",
+                        senderWalletId: adminWallet.id,
                         receiverWalletId: walletID,
                         orderId: orderId,
-                        codSettlementStatus: "PENDING",
-                        description: "Admin approved refund"
+                        description: "Admin approved refund to customer"
                     }
                 })
             ]);
@@ -82,20 +149,18 @@ class WalletController {
                 return res.status(400).json({ msg: 'Order is not delivered', error: true, status: 400 });
             }
 
+            const adminWallet = await getAdminWallet();
             await prisma.$transaction([
-                prisma.wallet.update({
-                    where: { id: walletID },
-                    data: { balance: { increment: safeAmount } }
-                }),
+                prisma.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: safeAmount } } }),
+                prisma.wallet.update({ where: { id: walletID }, data: { balance: { increment: safeAmount } } }),
                 prisma.walletTransaction.create({
                     data: {
                         amount: safeAmount,
                         type: "EARNING",
-                        senderWalletId: null,
+                        senderWalletId: adminWallet.id,
                         receiverWalletId: walletID,
                         orderId: orderId,
-                        codSettlementStatus: "NOT_APPLICABLE",
-                        description: "Earnings from completed delivery"
+                        description: "Delivery fee paid by admin to delivery person"
                     }
                 })
             ]);
@@ -125,26 +190,22 @@ class WalletController {
             await prisma.$transaction([
                 prisma.wallet.update({
                     where: { id: deliveryWalletID },
-                    data: { balance: { decrement: safeAmount } }
-                }),
-                prisma.wallet.update({
-                    where: { id: salespersonWalletID },
                     data: { balance: { increment: safeAmount } }
                 }),
                 prisma.walletTransaction.create({
                     data: {
                         amount: safeAmount,
                         type: "COD_PAYMENT",
-                        senderWalletId: deliveryWalletID,
-                        receiverWalletId: salespersonWalletID,
+                        senderWalletId: null,
+                        receiverWalletId: deliveryWalletID,
                         orderId: orderId,
                         codSettlementStatus: "PENDING",
-                        description: "COD payment collected from customer"
+                        description: "COD cash collected from customer, held by delivery person"
                     }
                 })
             ]);
 
-            return res.status(200).json({ msg: 'COD payment subtracted successfully', error: false, status: 200 });
+            return res.status(200).json({ msg: 'COD payment recorded successfully', error: false, status: 200 });
         } catch (error) {
             console.error("COD payment processing error:", error);
             return res.status(500).json({ msg: 'walletController --> substractCODPayment: Failed to process COD payment', error: true, status: 500 });
@@ -163,24 +224,24 @@ class WalletController {
                 return res.status(400).json({ msg: 'Invalid transaction for settlement', error: true, status: 400 });
             }
 
+            const adminWallet = await getAdminWallet();
             await prisma.$transaction([
                 prisma.walletTransaction.update({
                     where: { id: transactionId },
-                    data: { codSettlementStatus: 'SETTLED' }
+                    data: { codSettlementStatus: 'PAID' }
                 }),
-                prisma.wallet.update({
-                    where: { id: deliveryWalletID },
-                    data: { balance: { increment: transaction.amount } }
-                }),
+                // Delivery person hands cash to admin: deduct from delivery wallet, credit admin
+                prisma.wallet.update({ where: { id: deliveryWalletID }, data: { balance: { decrement: transaction.amount } } }),
+                prisma.wallet.update({ where: { id: adminWallet.id }, data: { balance: { increment: transaction.amount } } }),
                 prisma.walletTransaction.create({
                     data: {
                         amount: transaction.amount,
                         type: "COD_REMITTANCE",
                         senderWalletId: deliveryWalletID,
-                        receiverWalletId: salespersonWalletID,
+                        receiverWalletId: adminWallet.id,
                         orderId: transaction.orderId,
-                        codSettlementStatus: "SETTLED",
-                        description: "COD settlement finalized"
+                        codSettlementStatus: "PAID",
+                        description: "COD cash remitted from delivery person to admin"
                     }
                 })
             ]);
@@ -243,20 +304,18 @@ class WalletController {
                 return res.status(400).json({ msg: 'Order is not delivered', error: true, status: 400 });
             }
 
+            const adminWallet = await getAdminWallet();
             await prisma.$transaction([
-                prisma.wallet.update({
-                    where: { id: salesmanWalletID },
-                    data: { balance: { increment: safeAmount } }
-                }),
+                prisma.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: safeAmount } } }),
+                prisma.wallet.update({ where: { id: salesmanWalletID }, data: { balance: { increment: safeAmount } } }),
                 prisma.walletTransaction.create({
                     data: {
                         amount: safeAmount,
                         type: "SALE_EARNING",
-                        senderWalletId: null,
+                        senderWalletId: adminWallet.id,
                         receiverWalletId: salesmanWalletID,
                         orderId: orderId,
-                        codSettlementStatus: "NOT_APPLICABLE",
-                        description: "Earnings from completed sale"
+                        description: "Sale earnings released from admin to salesman"
                     }
                 })
             ]);
@@ -268,39 +327,89 @@ class WalletController {
         }
     }
 
+    /**
+     * POST /wallet/payout/salesman
+     * Withdraws the salesman's full wallet balance to their connected Stripe account.
+     * Uses a two-phase approach: record DB deduction first, then call Stripe.
+     * On Stripe failure, the DB deduction is rolled back (idempotent via payoutTxId).
+     */
     substractSaleRevenueFromSalesman = async (req, res) => {
         try {
-            const { salesmanWalletID } = req.body;
+            const userId = req.user?.id || req.body.userId;
+
+            // Get wallet + stripeAccountId in one query
             const wallet = await prisma.wallet.findUnique({
-                where: { id: salesmanWalletID }
+                where: userId ? { userId } : { id: req.body.salesmanWalletID },
+                include: { user: { select: { id: true, name: true, stripeAccountId: true } } }
             });
-            
-            if (!wallet) return res.status(404).json({ msg: 'Salesman wallet not found', error: true, status: 404 });
-            if (wallet.balance <= 0) return res.status(400).json({ msg: 'Insufficient balance', error: true, status: 400 });
+
+            if (!wallet) return res.status(404).json({ success: false, msg: 'Wallet not found' });
+            if (wallet.balance <= 0) return res.status(400).json({ success: false, msg: 'No balance to withdraw' });
+            if (!wallet.user.stripeAccountId) {
+                return res.status(400).json({ success: false, msg: 'Stripe account not connected. Complete onboarding first.' });
+            }
 
             const payoutAmount = wallet.balance;
+            const amountInCents = Math.round(payoutAmount * 100);
 
-            await prisma.$transaction([
-                prisma.wallet.update({
-                    where: { id: salesmanWalletID },
-                    data: { balance: { decrement: payoutAmount } }
-                }),
-                prisma.walletTransaction.create({
-                    data: {
-                        amount: payoutAmount,
-                        type: "PAYOUT",
-                        senderWalletId: salesmanWalletID,
-                        receiverWalletId: null,
-                        codSettlementStatus: "NOT_APPLICABLE",
-                        description: "Revenue payout to Salesman bank account"
-                    }
-                })
-            ]);
+            // Phase 1: Deduct from DB atomically
+            let payoutTx;
+            try {
+                const [, createdTx] = await prisma.$transaction([
+                    prisma.wallet.update({
+                        where: { id: wallet.id },
+                        data: { balance: { decrement: payoutAmount } }
+                    }),
+                    prisma.walletTransaction.create({
+                        data: {
+                            amount: payoutAmount,
+                            type: 'PAYOUT',
+                            senderWalletId: wallet.id,
+                            receiverWalletId: null,
+                            description: `Stripe payout to ${wallet.user.name || 'salesman'}`
+                        }
+                    })
+                ]);
+                payoutTx = createdTx;
+            } catch (dbError) {
+                console.error('Payout DB error:', dbError);
+                return res.status(500).json({ success: false, msg: 'Failed to create payout record' });
+            }
 
-            return res.status(200).json({ msg: 'Sale revenue subtracted from Salesman successfully', error: false, status: 200 });
+            // Phase 2: Execute Stripe transfer (idempotency key = payoutTx.id)
+            try {
+                const transfer = await stripe.transfers.create(
+                    {
+                        amount: amountInCents,
+                        currency: 'lkr',
+                        destination: wallet.user.stripeAccountId,
+                        transfer_group: `PAYOUT_${wallet.id}`,
+                    },
+                    { idempotencyKey: `payout_${payoutTx.id}` }
+                );
+
+                return res.status(200).json({
+                    success: true,
+                    msg: `Rs. ${payoutAmount.toLocaleString()} transferred to your bank account.`,
+                    stripeTransferId: transfer.id,
+                });
+
+            } catch (stripeError) {
+                // Phase 2 failed: roll back DB deduction
+                console.error('Stripe payout failed, rolling back DB:', stripeError.message);
+                await prisma.$transaction([
+                    prisma.wallet.update({ where: { id: wallet.id }, data: { balance: { increment: payoutAmount } } }),
+                    prisma.walletTransaction.delete({ where: { id: payoutTx.id } })
+                ]);
+                return res.status(502).json({
+                    success: false,
+                    msg: 'Stripe transfer failed. Wallet balance has been restored.',
+                    stripeError: stripeError.message,
+                });
+            }
         } catch (error) {
-            console.error("Subtracting sale revenue error:", error);
-            return res.status(500).json({ msg: 'walletController --> substractSaleRevenueFromSalesman: Failed to subtract sale revenue', error: true, status: 500 });
+            console.error('substractSaleRevenueFromSalesman error:', error);
+            return res.status(500).json({ success: false, msg: 'Payout failed', error: error.message });
         }
     }
 
@@ -327,20 +436,18 @@ class WalletController {
                 return res.status(400).json({ msg: 'Order is not delivered', error: true, status: 400 });
             }
 
+            const adminWallet = await getAdminWallet();
             await prisma.$transaction([
-                prisma.wallet.update({
-                    where: { id: salesmanWalletID },
-                    data: { balance: { increment: safeAmount } }
-                }),
+                prisma.wallet.update({ where: { id: salesmanWalletID }, data: { balance: { decrement: safeAmount } } }),
+                prisma.wallet.update({ where: { id: adminWallet.id }, data: { balance: { increment: safeAmount } } }),
                 prisma.walletTransaction.create({
                     data: {
                         amount: safeAmount,
                         type: "REFUND_SETTLEMENT",
-                        senderWalletId: null,
-                        receiverWalletId: salesmanWalletID,
+                        senderWalletId: salesmanWalletID,
+                        receiverWalletId: adminWallet.id,
                         orderId: transaction.orderId,
-                        codSettlementStatus: "NOT_APPLICABLE",
-                        description: "Refund settlement added to Salesman wallet"
+                        description: "Refund settlement: salesman returns funds to admin"
                     }
                 })
             ]);

@@ -6,9 +6,12 @@ interface ModalProps {
   setModalVisible: (visible: boolean) => void;
   modalVisible: boolean;
   onSelectMethod: (method: "stripe" | "wallet" | "cod") => void;
+  walletBalance?: number | null;
+  orderTotal?: number;
 }
 
-const CustomModal = ({ modalVisible, setModalVisible, onSelectMethod }: ModalProps) => {
+const CustomModal = ({ modalVisible, setModalVisible, onSelectMethod, walletBalance, orderTotal }: ModalProps) => {
+  const hasSufficientBalance = walletBalance != null && walletBalance > 0 && (orderTotal == null || walletBalance >= orderTotal);
   return (
     <Modal
       animationType="fade"
@@ -33,11 +36,19 @@ const CustomModal = ({ modalVisible, setModalVisible, onSelectMethod }: ModalPro
 
           {/* Pay with Wallet */}
           <Pressable
-            style={[styles.button, styles.walletButton]}
-            onPress={() => onSelectMethod('wallet')}
+            style={[styles.button, styles.walletButton, !hasSufficientBalance && styles.buttonDisabled]}
+            onPress={() => hasSufficientBalance && onSelectMethod('wallet')}
           >
-            <Ionicons name="wallet-outline" size={20} color="#f8fafc" />
-            <Text style={styles.textStyle}>Pay with Wallet</Text>
+            <Ionicons name="wallet-outline" size={20} color={hasSufficientBalance ? '#f8fafc' : '#64748b'} />
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={[styles.textStyle, !hasSufficientBalance && styles.textDisabled]}>Pay with Wallet</Text>
+              {walletBalance != null && (
+                <Text style={styles.walletBalanceText}>
+                  Balance: Rs. {walletBalance.toLocaleString()}
+                  {!hasSufficientBalance ? ' (insufficient)' : ''}
+                </Text>
+              )}
+            </View>
           </Pressable>
 
           {/* Cash on Delivery */}
@@ -111,6 +122,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#334155',
     borderWidth: 1,
     borderColor: '#475569',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  textDisabled: {
+    color: '#64748b',
+  },
+  walletBalanceText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    marginTop: 2,
   },
   codButton: {
     backgroundColor: '#334155',

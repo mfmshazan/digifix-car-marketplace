@@ -26,7 +26,7 @@ import Constants from 'expo-constants';
 
 // Your computer's local IP address (for physical device testing)
 // Run 'ipconfig' (Windows) or 'ifconfig' (Mac/Linux) to find this
-export const LOCAL_IP = '192.168.43.171';
+export const LOCAL_IP = '192.168.43.35';
 
 // Backend port (should match Docker/backend configuration)
 export const API_PORT = 3000;

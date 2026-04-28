@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { sendNewOrderNotificationToSalesman } from '../lib/onesignal.js';
+import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
 
 /**
  * Get salesman's sales summary
@@ -462,29 +463,24 @@ export const updateOrderStatus = async (req, res) => {
 
       // ==========================================
       // WALLET INTEGRATION: RELEASE FUNDS TO SELLER
+      // Admin → Salesman: release held Stripe funds on delivery
       // ==========================================
       if (status === 'DELIVERED' && order.status !== 'DELIVERED') {
         if (order.paymentMethod === 'Stripe' || order.paymentMethod === 'WALLET') {
-          // Ensure salesman has a wallet
-          let salesmanWallet = await tx.wallet.findUnique({ where: { userId: salesmanId } });
-          if (!salesmanWallet) {
-            salesmanWallet = await tx.wallet.create({ data: { userId: salesmanId, balance: 0 } });
-          }
+          const adminWallet = await getAdminWallet(tx);
+          const salesmanWallet = await ensureWallet(salesmanId, tx);
 
-          // Credit salesman wallet
-          await tx.wallet.update({
-            where: { id: salesmanWallet.id },
-            data: { balance: { increment: order.total } }
-          });
+          await tx.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: order.total } } });
+          await tx.wallet.update({ where: { id: salesmanWallet.id }, data: { balance: { increment: order.total } } });
 
-          // Log the PURCHASE earnings
           await tx.walletTransaction.create({
             data: {
               amount: order.total,
-              type: 'PURCHASE', 
+              type: 'SALE_EARNING',
+              senderWalletId: adminWallet.id,
               receiverWalletId: salesmanWallet.id,
               orderId: order.id,
-              description: `Earnings released for delivered order ${order.orderNumber}`
+              description: `Sale earnings released for delivered order ${order.orderNumber}`
             }
           });
         }
@@ -492,29 +488,24 @@ export const updateOrderStatus = async (req, res) => {
 
       // ==========================================
       // WALLET INTEGRATION: REFUND TO CUSTOMER
+      // Admin → Customer: admin refunds from held pool
       // ==========================================
       if (status === 'REFUNDED' && order.status !== 'REFUNDED') {
         if (order.paymentMethod === 'Stripe' || order.paymentMethod === 'WALLET') {
-          // Ensure customer has a wallet
-          let customerWallet = await tx.wallet.findUnique({ where: { userId: order.customerId } });
-          if (!customerWallet) {
-            customerWallet = await tx.wallet.create({ data: { userId: order.customerId, balance: 0 } });
-          }
+          const adminWallet = await getAdminWallet(tx);
+          const customerWallet = await ensureWallet(order.customerId, tx);
 
-          // Return money to customer
-          await tx.wallet.update({
-            where: { id: customerWallet.id },
-            data: { balance: { increment: order.total } }
-          });
+          await tx.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: order.total } } });
+          await tx.wallet.update({ where: { id: customerWallet.id }, data: { balance: { increment: order.total } } });
 
-          // Log the REFUND
           await tx.walletTransaction.create({
             data: {
               amount: order.total,
               type: 'REFUND',
+              senderWalletId: adminWallet.id,
               receiverWalletId: customerWallet.id,
-              orderId: order.id,
-              description: `Refund for cancelled/refunded order ${order.orderNumber}`
+              orderId: id,
+              description: `Refund for order ${order.orderNumber}`
             }
           });
         }

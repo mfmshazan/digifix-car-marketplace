@@ -1,20 +1,10 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
-import stripeController from './stripe.controller.js';
-import { create } from 'node:domain';
+import { createStripeAccountForSalesman } from './stripe.controller.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
-
-const createStripeAccount = async (user) => {
-      stripDetails = await stripeController.createConnectedAccount(user);
-      const stripeAccountId = stripDetails.accountId;
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { stripeAccountId },
-      });
-    } 
 
 // Generate JWT token
 const generateToken = (userId, role) => {
@@ -69,7 +59,7 @@ const register = async (req, res) => {
       },
     });
 
-    // If salesman, create a store
+    // If salesman, create a store + Stripe connected account
     if (role === 'SALESMAN') {
       await prisma.store.create({
         data: {
@@ -77,12 +67,25 @@ const register = async (req, res) => {
           ownerId: user.id,
         },
       });
+
+      // Create Stripe Express connected account and save to user
+      try {
+        const { accountId } = await createStripeAccountForSalesman();
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { stripeAccountId: accountId },
+        });
+        user.stripeAccountId = accountId;
+        console.log(`Stripe connected account created for salesman ${user.email}: ${accountId}`);
+      } catch (stripeErr) {
+        // Non-fatal: user is created, they can connect Stripe later from profile
+        console.warn(`Stripe account creation failed for ${user.email}:`, stripeErr.message);
+      }
     }
 
     // Generate token
     const token = generateToken(user.id, user.role);
-    
-    await createStripeAccount(user);
+
     res.status(201).json({
       success: true,
       message: 'User registered successfully',

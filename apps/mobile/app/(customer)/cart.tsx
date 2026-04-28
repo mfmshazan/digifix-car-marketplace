@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { createOrder } from "../../src/api/orders";
 import CustomModal from "@/src/components/modal";
 import { getApiUrl, getExpoDeepLinkBase } from "../../src/config/api.config";
 import { getUser, getToken } from "../../src/api/storage";
+import { getMyWallet } from "../../src/api/wallet";
 
 export default function CartScreen() {
   const { items, updateQuantity, removeItem, clearCart, getTotalPrice, isLoading } = useCart();
@@ -26,6 +27,7 @@ export default function CartScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [paymentMethode, setPaymentMethode] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   
   const subtotal = getTotalPrice();
   const deliveryFee = subtotal > 5000 ? 0 : 300;
@@ -175,10 +177,19 @@ export default function CartScreen() {
     }
   };
 
-  const openPaymentModal = () => {
+  const openPaymentModal = async () => {
     if (items.length === 0) {
       Alert.alert("Empty Cart", "Please add items to your cart first.");
       return;
+    }
+    // Fetch wallet balance before showing modal
+    try {
+      const result = await getMyWallet();
+      if (result.success && result.data) {
+        setWalletBalance(result.data.balance);
+      }
+    } catch {
+      // Non-fatal — modal still opens, wallet option just shows no balance
     }
     setModalVisible(true);
   };
@@ -362,7 +373,9 @@ export default function CartScreen() {
       <CustomModal 
         modalVisible={modalVisible} 
         setModalVisible={setModalVisible} 
-        onSelectMethod={handlePaymentSelection} 
+        onSelectMethod={handlePaymentSelection}
+        walletBalance={walletBalance}
+        orderTotal={total}
       />
     </View>
   );

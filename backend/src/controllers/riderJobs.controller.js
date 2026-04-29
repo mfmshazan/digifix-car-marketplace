@@ -65,10 +65,13 @@ export const getActiveRiderJob = async (req, res, next) => {
               pickup_contact_name, pickup_contact_phone,
               dropoff_address, dropoff_latitude, dropoff_longitude,
               distance_km, payment_amount, items_description, special_instructions,
-              status, assigned_at, accepted_at, picked_up_at, created_at
+              status, assigned_at, accepted_at, picked_up_at, created_at,
+              current_latitude, current_longitude
          FROM rider_delivery_jobs
-        WHERE partner_id = $1 AND status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
-        ORDER BY assigned_at DESC
+         LEFT JOIN rider_delivery_partners ON rider_delivery_partners.id = rider_delivery_jobs.partner_id
+        WHERE partner_id = $1
+          AND rider_delivery_jobs.status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
+        ORDER BY rider_delivery_jobs.assigned_at DESC
         LIMIT 1`,
       [req.user.id]
     );
@@ -96,6 +99,15 @@ export const getActiveRiderJob = async (req, res, next) => {
           speed: trackingPoint.speed !== null ? Number(trackingPoint.speed) : null,
           heading: trackingPoint.heading !== null ? Number(trackingPoint.heading) : null,
           recordedAt: trackingPoint.recorded_at,
+        }
+      : job.current_latitude !== null && job.current_longitude !== null
+      ? {
+          latitude: Number(job.current_latitude),
+          longitude: Number(job.current_longitude),
+          accuracy: null,
+          speed: null,
+          heading: null,
+          recordedAt: null,
         }
       : null;
 

@@ -1,0 +1,165 @@
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+Skipped Rider job creation for order ORD-MOK8MJ2T-STY8: configure RIDER_DEFAULT_PICKUP_LATITUDE, RIDER_DEFAULT_PICKUP_LONGITUDE, RIDER_DEFAULT_DROPOFF_LATITUDE, and RIDER_DEFAULT_DROPOFF_LONGITUDE.
+Skipped Rider job creation for order ORD-MOK8OACA-P67N: configure RIDER_DEFAULT_PICKUP_LATITUDE, RIDER_DEFAULT_PICKUP_LONGITUDE, RIDER_DEFAULT_DROPOFF_LATITUDE, and RIDER_DEFAULT_DROPOFF_LONGITUDE.
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+Rider offer 11 is pending, but partner 5 has no websocket on this backend process.
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+Rejected rider realtime dispatch socket: invalid signature
+Rejected rider realtime dispatch socket: invalid signature
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+error: column reference "id" is ambiguous
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getActiveRiderJob (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/riderJobs.controller.js:62:20)
+Failed to dispatch rider job 1: Error: Connection terminated due to connection timeout
+    at C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async fetchOfferPayload (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/services/riderRealtimeDispatch.js:129:18)
+    at async sendPendingOfferToPartner (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/services/riderRealtimeDispatch.js:149:24)
+    at async dispatchJobToNextEligibleDriver (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/services/riderRealtimeDispatch.js:286:5)
+    at async dispatchAvailableJobs (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/services/riderRealtimeDispatch.js:314:7) {
+  [cause]: Error: Connection terminated unexpectedly
+      at Connection.<anonymous> (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg\lib\client.js:136:73)
+      at Object.onceWrapper (node:events:633:28)
+      at Connection.emit (node:events:519:28)
+      at Socket.<anonymous> (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\pg\lib\connection.js:62:12)
+      at Socket.emit (node:events:531:35)
+      at TCP.<anonymous> (node:net:346:12)
+}
+Get salesman orders error: PrismaClientKnownRequestError: 
+Invalid `prisma.order.findMany()` invocation:
+
+
+Can't reach database server at `aws-1-ap-southeast-2.pooler.supabase.com:6543`
+
+Please make sure your database server is running at `aws-1-ap-southeast-2.pooler.supabase.com:6543`.
+    at ei.handleRequestError (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:121:7268)
+    at ei.handleAndLogRequestError (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:121:6593)
+    at ei.request (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:121:6300)
+    at async a (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:130:9551)
+    at async getSalesmanOrders (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/order.controller.js:311:20) {
+  code: 'P1001',
+  meta: {
+    modelName: 'Order',
+    database_location: 'aws-1-ap-southeast-2.pooler.supabase.com:6543'
+  },
+  clientVersion: '6.19.1'
+}
+getOrderDeliveryStatus error: PrismaClientKnownRequestError: 
+Invalid `prisma.order.findUnique()` invocation:
+
+
+Can't reach database server at `aws-1-ap-southeast-2.pooler.supabase.com:6543`
+
+Please make sure your database server is running at `aws-1-ap-southeast-2.pooler.supabase.com:6543`.
+    at ei.handleRequestError (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:121:7268)
+    at ei.handleAndLogRequestError (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:121:6593)
+    at ei.request (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:121:6300)
+    at async a (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:130:9551)
+    at async getOrderDeliveryStatus (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/customerTracking.controller.js:134:19) {
+  code: 'P1001',
+  meta: {
+    modelName: 'Order',
+    database_location: 'aws-1-ap-southeast-2.pooler.supabase.com:6543'
+  },
+  clientVersion: '6.19.1'
+}
+getOrderDeliveryStatus error: PrismaClientKnownRequestError: 
+Invalid `prisma.order.findUnique()` invocation:
+
+
+Can't reach database server at `aws-1-ap-southeast-2.pooler.supabase.com:6543`
+
+Please make sure your database server is running at `aws-1-ap-southeast-2.pooler.supabase.com:6543`.
+    at ei.handleRequestError (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:121:7268)
+    at ei.handleAndLogRequestError (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:121:6593)
+    at ei.request (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:121:6300)
+    at async a (C:\Users\ROG STRIX G15\Desktop\digifix car parts market place Final\digifix-car-marketplace\backend\node_modules\@prisma\client\runtime\library.js:130:9551)
+    at async getOrderDeliveryStatus (file:///C:/Users/ROG%20STRIX%20G15/Desktop/digifix%20car%20parts%20market%20place%20Final/digifix-car-marketplace/backend/src/controllers/customerTracking.controller.js:134:19) {
+  code: 'P1001',
+  meta: {
+    modelName: 'Order',
+    database_location: 'aws-1-ap-southeast-2.pooler.supabase.com:6543'
+  },
+  clientVersion: '6.19.1'
+}

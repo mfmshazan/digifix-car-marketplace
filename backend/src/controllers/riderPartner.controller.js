@@ -161,6 +161,24 @@ export const updateRiderLocation = async (req, res, next) => {
       [latitude, longitude, req.user.id]
     );
 
+    const activeJob = await riderQuery(
+      `SELECT id
+         FROM rider_delivery_jobs
+        WHERE partner_id = $1
+          AND status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
+        ORDER BY assigned_at DESC NULLS LAST, created_at DESC
+        LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (activeJob.rows.length) {
+      await riderQuery(
+        `INSERT INTO rider_job_tracking (job_id, partner_id, latitude, longitude)
+         VALUES ($1, $2, $3, $4)`,
+        [activeJob.rows[0].id, req.user.id, latitude, longitude]
+      );
+    }
+
     await dispatchAvailableJobs();
 
     return res.json({

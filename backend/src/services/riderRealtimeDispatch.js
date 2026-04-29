@@ -156,7 +156,9 @@ const sendPendingOfferToPartner = async (offerId) => {
   );
 
   if (sentCount === 0) {
-    await resolveOffer({ offerId, action: 'expired', reason: 'driver_socket_unavailable' });
+    console.warn(
+      `Rider offer ${offerId} is pending, but partner ${offerPayload.partner_id} has no websocket on this backend process.`
+    );
   }
 };
 
@@ -176,7 +178,7 @@ const pickNearestEligiblePartner = async (client, jobId, pickupLatitude, pickupL
         AND NOT EXISTS (
           SELECT 1 FROM rider_delivery_jobs active_job
            WHERE active_job.partner_id = dp.id
-             AND active_job.status = ANY($4::text[])
+             AND active_job.status = ANY($2::text[])
         )
         AND NOT EXISTS (
           SELECT 1 FROM rider_delivery_request_offers pending_offer
@@ -186,10 +188,10 @@ const pickNearestEligiblePartner = async (client, jobId, pickupLatitude, pickupL
         )
         AND NOT EXISTS (
           SELECT 1 FROM rider_delivery_request_offers prior_offer
-           WHERE prior_offer.job_id = $3
+           WHERE prior_offer.job_id = $1
              AND prior_offer.partner_id = dp.id
         )`,
-    [pickupLatitude, pickupLongitude, jobId, ACTIVE_JOB_STATUSES]
+    [jobId, ACTIVE_JOB_STATUSES]
   );
 
   return result.rows
@@ -577,4 +579,161 @@ export const initializeRiderRealtimeDispatch = async (server) => {
       socket.close(1008, 'Unauthorized');
     }
   });
+};
+
+export const listEligibleDeliveryPartners = async ({ pickupLatitude, pickupLongitude }) => {
+  const result = await riderQuery(
+    `SELECT dp.id, dp.full_name, dp.phone, dp.vehicle_type, dp.vehicle_number,
+            dp.rating, dp.total_deliveries, dp.current_latitude, dp.current_longitude
+       FROM rider_delivery_partners dp
+      WHERE dp.status = 'online'
+        AND NOT EXISTS (
+          SELECT 1 FROM rider_delivery_jobs active_job
+           WHERE active_job.partner_id = dp.id
+             AND active_job.status = ANY($1::text[])
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM rider_delivery_request_offers pending_offer
+           WHERE pending_offer.partner_id = dp.id
+             AND pending_offer.offer_status = 'pending'
+             AND pending_offer.expires_at > NOW()
+        )`,
+    [ACTIVE_JOB_STATUSES]
+  );
+
+  return result.rows
+    .map((row) => ({
+      id: row.id,
+      fullName: row.full_name,
+      phone: row.phone,
+      vehicleType: row.vehicle_type,
+      vehicleNumber: row.vehicle_number,
+      rating: row.rating !== null ? Number(row.rating) : null,
+      totalDeliveries: Number(row.total_deliveries || 0),
+      distanceToPickupKm:
+        row.current_latitude !== null && row.current_longitude !== null
+          ? computeDistanceKm(
+              pickupLatitude,
+              pickupLongitude,
+              Number(row.current_latitude),
+              Number(row.current_longitude)
+            )
+          : null,
+    }))
+    .sort((a, b) => {
+      if (a.distanceToPickupKm === null && b.distanceToPickupKm === null) return Number(a.id) - Number(b.id);
+      if (a.distanceToPickupKm === null) return 1;
+      if (b.distanceToPickupKm === null) return -1;
+      return a.distanceToPickupKm - b.distanceToPickupKm;
+    });
+};
+
+export const dispatchJobToSelectedDriver = async (jobId, partnerId) => {
+  const client = await getRiderClient();
+
+  try {
+    await client.query('BEGIN');
+
+    const jobResult = await client.query(
+      `SELECT id, order_number, pickup_latitude, pickup_longitude, status, partner_id
+         FROM rider_delivery_jobs
+        WHERE id = $1
+        FOR UPDATE`,
+      [jobId]
+    );
+
+    if (!jobResult.rows.length) {
+      await client.query('ROLLBACK');
+      return { success: false, statusCode: 404, message: 'Delivery job not found' };
+    }
+
+    const job = jobResult.rows[0];
+    if (!['pending', 'available'].includes(job.status) || job.partner_id) {
+      await client.query('ROLLBACK');
+      return { success: false, statusCode: 409, message: 'Job is no longer available for dispatch' };
+    }
+
+    const partnerResult = await client.query(
+      `SELECT id, current_latitude, current_longitude, status
+         FROM rider_delivery_partners
+        WHERE id = $1`,
+      [partnerId]
+    );
+
+    if (!partnerResult.rows.length) {
+      await client.query('ROLLBACK');
+      return { success: false, statusCode: 404, message: 'Selected rider not found' };
+    }
+
+    const partner = partnerResult.rows[0];
+    if (partner.status !== 'online') {
+      await client.query('ROLLBACK');
+      return { success: false, statusCode: 400, message: 'Selected rider is not online' };
+    }
+
+    const activeJobCheck = await client.query(
+      `SELECT id FROM rider_delivery_jobs
+        WHERE partner_id = $1 AND status = ANY($2::text[])
+        LIMIT 1`,
+      [partnerId, ACTIVE_JOB_STATUSES]
+    );
+
+    if (activeJobCheck.rows.length) {
+      await client.query('ROLLBACK');
+      return { success: false, statusCode: 409, message: 'Selected rider already has an active delivery' };
+    }
+
+    const pendingOfferCheck = await client.query(
+      `SELECT id FROM rider_delivery_request_offers
+        WHERE partner_id = $1 AND offer_status = 'pending' AND expires_at > NOW()
+        LIMIT 1`,
+      [partnerId]
+    );
+
+    if (pendingOfferCheck.rows.length) {
+      await client.query('ROLLBACK');
+      return { success: false, statusCode: 409, message: 'Selected rider has a pending request' };
+    }
+
+    const distanceToPickupKm =
+      partner.current_latitude && partner.current_longitude
+        ? computeDistanceKm(
+            Number(job.pickup_latitude),
+            Number(job.pickup_longitude),
+            Number(partner.current_latitude),
+            Number(partner.current_longitude)
+          )
+        : null;
+
+    await client.query(
+      `UPDATE rider_delivery_jobs SET status = 'available' WHERE id = $1 AND status = 'pending'`,
+      [jobId]
+    );
+
+    const offerResult = await client.query(
+      `INSERT INTO rider_delivery_request_offers (
+          job_id, partner_id, offer_status, distance_to_pickup_km, expires_at
+       ) VALUES ($1, $2, 'pending', $3, NOW() + ($4 || ' seconds')::interval)
+       RETURNING id, expires_at`,
+      [
+        jobId,
+        partnerId,
+        distanceToPickupKm !== null ? distanceToPickupKm.toFixed(3) : null,
+        REQUEST_WINDOW_SECONDS,
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    const offer = offerResult.rows[0];
+    scheduleOfferTimer(offer.id, offer.expires_at);
+    await sendPendingOfferToPartner(offer.id);
+
+    return { success: true, data: offer };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 };

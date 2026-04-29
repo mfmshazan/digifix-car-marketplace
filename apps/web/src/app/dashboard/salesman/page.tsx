@@ -429,6 +429,17 @@ interface DeliveryFormState {
   estimatedEarnings: string;
 }
 
+interface AvailableRider {
+  id: number;
+  fullName: string;
+  phone: string;
+  vehicleType?: string;
+  vehicleNumber?: string;
+  rating?: number | null;
+  totalDeliveries: number;
+  distanceToPickupKm: number | null;
+}
+
 function CreateDeliveryRequestModal({
   order,
   onClose,
@@ -451,6 +462,9 @@ function CreateDeliveryRequestModal({
   });
   const [gettingLocation, setGettingLocation] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingRiders, setLoadingRiders] = useState(false);
+  const [availableRiders, setAvailableRiders] = useState<AvailableRider[]>([]);
+  const [selectedRiderId, setSelectedRiderId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const useCurrentLocation = () => {
@@ -476,6 +490,33 @@ function CreateDeliveryRequestModal({
     );
   };
 
+  const loadAvailableRiders = async () => {
+    setError(null);
+    setSelectedRiderId(null);
+
+    if (!form.pickupLatitude || !form.pickupLongitude) {
+      setError('Pickup coordinates are required before loading available riders.');
+      return;
+    }
+
+    setLoadingRiders(true);
+    try {
+      const res = await deliveryRequestsApi.getAvailableRiders(
+        parseFloat(form.pickupLatitude),
+        parseFloat(form.pickupLongitude)
+      );
+      setAvailableRiders(res.data || []);
+      if (!res.data?.length) {
+        setError('No online riders are available near this pickup location right now.');
+      }
+    } catch (err: any) {
+      setAvailableRiders([]);
+      setError(err?.response?.data?.message || err?.message || 'Failed to load available riders.');
+    } finally {
+      setLoadingRiders(false);
+    }
+  };
+
   const handleSubmit = async () => {
     setError(null);
     const { pickupLatitude, pickupLongitude, deliveryLatitude, deliveryLongitude, deliveryAddress } = form;
@@ -486,6 +527,10 @@ function CreateDeliveryRequestModal({
     }
     if (!deliveryLatitude || !deliveryLongitude || !deliveryAddress) {
       setError('Please pin the customer delivery location on the map.');
+      return;
+    }
+    if (!selectedRiderId) {
+      setError('Select an available rider before sending the request.');
       return;
     }
 
@@ -503,6 +548,7 @@ function CreateDeliveryRequestModal({
         paymentType: form.paymentType,
         estimatedEarnings: form.estimatedEarnings ? parseFloat(form.estimatedEarnings) : undefined,
         customerName: order.customer?.name,
+        partnerId: selectedRiderId,
       });
       onSuccess();
       onClose();
@@ -525,7 +571,7 @@ function CreateDeliveryRequestModal({
         {/* Modal Header */}
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
           <div>
-            <h3 className="text-base font-bold text-gray-900">Dispatch Rider</h3>
+            <h3 className="text-base font-bold text-gray-900">Assign Delivery</h3>
             <p className="text-xs text-gray-500 mt-0.5">Order {order.orderNumber} · {order.customer?.name}</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
@@ -667,6 +713,66 @@ function CreateDeliveryRequestModal({
               className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
             />
           </div>
+
+          {/* Available Riders */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <label className="block text-xs font-semibold text-gray-700">
+                <Truck className="w-3.5 h-3.5 inline mr-1" />
+                Available Delivery Persons
+              </label>
+              <button
+                type="button"
+                onClick={loadAvailableRiders}
+                disabled={loadingRiders}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                {loadingRiders ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                {loadingRiders ? 'Loading' : 'Load Riders'}
+              </button>
+            </div>
+
+            {availableRiders.length > 0 && (
+              <div className="space-y-2">
+                {availableRiders.map((rider) => {
+                  const selected = selectedRiderId === rider.id;
+                  return (
+                    <button
+                      key={rider.id}
+                      type="button"
+                      onClick={() => setSelectedRiderId(rider.id)}
+                      className={`w-full text-left p-3 rounded-xl border transition-all ${
+                        selected
+                          ? 'border-[#00002E] bg-[#00002E]/5 ring-2 ring-[#00002E]/10'
+                          : 'border-gray-200 hover:border-[#00002E]/30 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900 truncate">{rider.fullName}</span>
+                            {selected && <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {rider.vehicleType || 'Vehicle'} {rider.vehicleNumber ? `- ${rider.vehicleNumber}` : ''}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">{rider.phone}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-semibold text-gray-900">
+                            {rider.distanceToPickupKm !== null ? `${rider.distanceToPickupKm.toFixed(1)} km` : 'Location pending'}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {rider.rating ? `${rider.rating.toFixed(1)} stars` : 'New'} - {rider.totalDeliveries} trips
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Modal Footer */}
@@ -683,7 +789,7 @@ function CreateDeliveryRequestModal({
             className="flex-1 py-2.5 rounded-xl bg-[#00002E] text-white text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
           >
             {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            {submitting ? 'Dispatching…' : 'Dispatch Rider'}
+            {submitting ? 'Sending Request...' : 'Send Request'}
           </button>
         </div>
       </div>
@@ -816,7 +922,7 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
               ) : (
                 <Truck className="w-4 h-4" />
               )}
-              {loadingDeliveryStatus ? 'Checking…' : 'Dispatch Rider'}
+              {loadingDeliveryStatus ? 'Checking...' : 'Assign Delivery'}
             </button>
           )}
         </div>

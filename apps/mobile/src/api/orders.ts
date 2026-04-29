@@ -338,6 +338,7 @@ export const createDeliveryRequest = async (data: {
   estimatedEarnings?: number;
   customerName?: string;
   customerPhone?: string;
+  partnerId?: number;
 }) => {
   try {
     const token = await getToken();
@@ -366,6 +367,29 @@ export const createDeliveryRequest = async (data: {
 };
 
 // Request cancellation — requires a reason so admin can evaluate the request
+export const getAvailableRiders = async (pickupLatitude: number, pickupLongitude: number) => {
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const query = `pickupLatitude=${encodeURIComponent(pickupLatitude)}&pickupLongitude=${encodeURIComponent(pickupLongitude)}`;
+    const response = await fetch(`${getApiUrl()}/delivery-requests/available-riders?${query}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || result.message || 'Failed to load available riders');
+    return result;
+  } catch (error) {
+    console.error('getAvailableRiders error:', error);
+    throw error;
+  }
+};
+
 export const cancelOrder = async (orderId: string, reason: string) => {
   try {
     const token = await getToken();

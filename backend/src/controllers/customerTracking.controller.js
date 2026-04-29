@@ -121,10 +121,13 @@ export const getOrderDeliveryStatus = async (req, res) => {
 
     const jobResult = await riderQuery(
       `SELECT rdj.id, rdj.status, rdj.order_number, rdj.customer_name, rdj.customer_phone,
-              rdj.pickup_address, rdj.dropoff_address, rdj.distance_km,
+              rdj.pickup_address, rdj.pickup_latitude, rdj.pickup_longitude,
+              rdj.dropoff_address, rdj.dropoff_latitude, rdj.dropoff_longitude,
+              rdj.distance_km,
               rdj.assigned_at, rdj.picked_up_at, rdj.delivered_at,
               rdp.full_name AS rider_name, rdp.phone AS rider_phone,
-              rdp.vehicle_type, rdp.vehicle_number, rdp.rating AS rider_rating
+              rdp.vehicle_type, rdp.vehicle_number, rdp.rating AS rider_rating,
+              rdp.current_latitude, rdp.current_longitude
        FROM rider_delivery_jobs rdj
        LEFT JOIN rider_delivery_partners rdp ON rdj.partner_id = rdp.id
        WHERE rdj.marketplace_order_id = $1
@@ -157,6 +160,13 @@ export const getOrderDeliveryStatus = async (req, res) => {
               rating: job.rider_rating,
             }
           : null,
+        riderLocation:
+          job.current_latitude && job.current_longitude
+            ? {
+                latitude: parseFloat(job.current_latitude),
+                longitude: parseFloat(job.current_longitude),
+              }
+            : null,
         timeline: {
           assignedAt: job.assigned_at,
           pickedUpAt: job.picked_up_at,
@@ -166,6 +176,18 @@ export const getOrderDeliveryStatus = async (req, res) => {
           pickup: job.pickup_address,
           dropoff: job.dropoff_address,
           distanceKm: job.distance_km,
+        },
+        route: {
+          pickup: {
+            latitude: parseFloat(job.pickup_latitude),
+            longitude: parseFloat(job.pickup_longitude),
+            address: job.pickup_address,
+          },
+          dropoff: {
+            latitude: parseFloat(job.dropoff_latitude),
+            longitude: parseFloat(job.dropoff_longitude),
+            address: job.dropoff_address,
+          },
         },
       },
     });

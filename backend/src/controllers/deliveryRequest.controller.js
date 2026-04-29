@@ -1,6 +1,10 @@
 import prisma from '../lib/prisma.js';
 import { riderQuery } from '../lib/riderDb.js';
-import { dispatchJobToNextEligibleDriver } from '../services/riderRealtimeDispatch.js';
+import {
+  dispatchJobToNextEligibleDriver,
+  dispatchJobToSelectedDriver,
+  listEligibleDeliveryPartners,
+} from '../services/riderRealtimeDispatch.js';
 
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
 const normalizePaymentType = (value) => {
@@ -17,6 +21,9 @@ export const createDeliveryRequest = async (req, res) => {
   try {
     const {
       orderId,
+      partnerId,
+      riderId,
+      selectedRiderId,
       pickupLatitude,
       pickupLongitude,
       pickupAddress,
@@ -152,19 +159,35 @@ export const createDeliveryRequest = async (req, res) => {
     );
 
     const job = result.rows[0];
+    const selectedPartnerId = partnerId || riderId || selectedRiderId;
 
     // Dispatch is best-effort — a failure must NOT roll back the already-committed job
     let offer = null;
-    try {
-      offer = await dispatchJobToNextEligibleDriver(job.id);
-    } catch (dispatchError) {
-      console.error('Dispatch failed (job still created, will retry):', dispatchError.message);
+    if (selectedPartnerId) {
+      const selectedDispatch = await dispatchJobToSelectedDriver(job.id, Number(selectedPartnerId));
+      if (!selectedDispatch.success) {
+        await riderQuery('DELETE FROM rider_delivery_jobs WHERE id = $1 AND status = $2 AND partner_id IS NULL', [job.id, 'pending']);
+        return res.status(selectedDispatch.statusCode || 400).json({
+          success: false,
+          message: selectedDispatch.message,
+          data: job,
+        });
+      }
+      offer = selectedDispatch.data;
+    } else {
+      try {
+        offer = await dispatchJobToNextEligibleDriver(job.id);
+      } catch (dispatchError) {
+        console.error('Dispatch failed (job still created, will retry):', dispatchError.message);
+      }
     }
 
     return res.status(201).json({
       success: true,
       message: offer
-        ? 'Delivery request created and sent to nearby riders'
+        ? selectedPartnerId
+          ? 'Delivery request sent to selected rider'
+          : 'Delivery request created and sent to nearby riders'
         : 'Delivery request created. Searching for available riders.',
       data: {
         ...job,
@@ -176,6 +199,34 @@ export const createDeliveryRequest = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || 'Failed to create delivery request',
+      error: error.message,
+    });
+  }
+};
+
+export const getAvailableDeliveryPartners = async (req, res) => {
+  try {
+    const pickupLatitude = Number(req.query.pickupLatitude);
+    const pickupLongitude = Number(req.query.pickupLongitude);
+
+    if (!isFiniteNumber(pickupLatitude) || !isFiniteNumber(pickupLongitude)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Pickup latitude and longitude are required',
+      });
+    }
+
+    const partners = await listEligibleDeliveryPartners({
+      pickupLatitude,
+      pickupLongitude,
+    });
+
+    return res.json({ success: true, data: partners });
+  } catch (error) {
+    console.error('Get available riders error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch available riders',
       error: error.message,
     });
   }
@@ -208,4 +259,3 @@ export const getDeliveryRequest = async (req, res) => {
     });
   }
 };
-

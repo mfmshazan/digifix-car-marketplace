@@ -24,7 +24,8 @@ const register = async (req, res) => {
   }
 
   try {
-    const { email, password, name, phone, role = 'CUSTOMER' } = req.body;
+    const { password, name, phone, role = 'CUSTOMER' } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
 
     // Admin restrictions
     if (role === 'ADMIN') {
@@ -124,7 +125,8 @@ const register = async (req, res) => {
 // Login user
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
 
     // Validate input
     if (!email || !password) {

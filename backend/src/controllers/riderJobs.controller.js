@@ -40,7 +40,7 @@ export const getActiveRiderJob = async (req, res, next) => {
               distance_km, payment_amount, items_description, special_instructions,
               status, assigned_at, picked_up_at, created_at
          FROM rider_delivery_jobs
-        WHERE partner_id = $1 AND status IN ('assigned', 'picked_up', 'in_transit')
+        WHERE partner_id = $1 AND status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
         ORDER BY assigned_at DESC
         LIMIT 1`,
       [req.user.id]
@@ -371,6 +371,22 @@ export const updateRiderJobStatus = async (req, res, next) => {
       [jobId, req.user.id, status, reason || null, latitude || null, longitude || null]
     );
 
+    if (isFloatInRange(latitude, -90, 90) && isFloatInRange(longitude, -180, 180)) {
+      await client.query(
+        `UPDATE rider_delivery_partners
+            SET current_latitude = $1,
+                current_longitude = $2
+          WHERE id = $3`,
+        [latitude, longitude, req.user.id]
+      );
+
+      await client.query(
+        `INSERT INTO rider_job_tracking (job_id, partner_id, latitude, longitude)
+         VALUES ($1, $2, $3, $4)`,
+        [jobId, req.user.id, latitude, longitude]
+      );
+    }
+
     if (status === 'delivered' || status === 'failed') {
       await client.query(
         "UPDATE rider_delivery_partners SET status = 'online', total_deliveries = total_deliveries + (CASE WHEN $2 = 'delivered' THEN 1 ELSE 0 END) WHERE id = $1",
@@ -413,6 +429,14 @@ export const addRiderJobLocation = async (req, res, next) => {
       [jobId, req.user.id, latitude, longitude, accuracy || null, speed || null, heading || null]
     );
 
+    await riderQuery(
+      `UPDATE rider_delivery_partners
+          SET current_latitude = $1,
+              current_longitude = $2
+        WHERE id = $3`,
+      [latitude, longitude, req.user.id]
+    );
+
     return res.json({ success: true, message: 'Location tracked successfully' });
   } catch (error) {
     return next(error);
@@ -424,10 +448,53 @@ export const submitRiderProof = async (req, res, next) => {
 
   try {
     const jobId = Number.parseInt(req.params.id, 10);
-    const { photoUrl, signatureData, recipientName, notes, latitude, longitude } = req.body;
+    if (!Number.isInteger(jobId)) {
+      return res.status(400).json({ success: false, message: 'Invalid delivery job id' });
+    }
 
-    if (!photoUrl && !signatureData) {
-      return res.status(400).json({ success: false, message: 'Please provide a delivery photo or signature' });
+    const body = req.body || {};
+    const files = Array.isArray(req.files) ? req.files : [];
+    const findUploadedFileUrl = (fieldNames) => {
+      const match = files.find((file) => fieldNames.includes(file.fieldname));
+      const file = match || files[0];
+      return file?.filename ? `/uploads/${file.filename}` : null;
+    };
+
+    const photoUrl =
+      body.photoUrl ||
+      body.photo_url ||
+      body.photo ||
+      body.deliveryPhoto ||
+      body.delivery_photo ||
+      body.proofImage ||
+      body.proof_image ||
+      body.image ||
+      findUploadedFileUrl([
+        'photo',
+        'photoUrl',
+        'photo_url',
+        'deliveryPhoto',
+        'delivery_photo',
+        'proof',
+        'proofImage',
+        'proof_image',
+        'image',
+      ]) ||
+      null;
+    const signatureData =
+      body.signatureData ||
+      body.signature_data ||
+      body.signature ||
+      findUploadedFileUrl(['signature', 'signatureData', 'signature_data']) ||
+      null;
+    const recipientName = body.recipientName || body.recipient_name || body.receiverName || body.receiver_name || null;
+    const notes = body.notes || body.note || null;
+    const latitude = body.latitude ?? body.deliveryLatitude ?? body.delivery_latitude ?? null;
+    const longitude = body.longitude ?? body.deliveryLongitude ?? body.delivery_longitude ?? null;
+    const proofNotes = notes || null;
+
+    if (!photoUrl) {
+      return res.status(400).json({ success: false, message: 'Delivery photo proof is required' });
     }
 
     await client.query('BEGIN');
@@ -443,7 +510,7 @@ export const submitRiderProof = async (req, res, next) => {
     }
 
     const job = jobCheck.rows[0];
-    if (!['in_transit', 'arrived_at_dropoff', 'delivered'].includes(job.status)) {
+    if (!['assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff', 'delivered'].includes(job.status)) {
       await client.query('ROLLBACK');
       return res.status(400).json({ success: false, message: 'Proof can only be submitted when the delivery is ready to complete' });
     }
@@ -461,7 +528,7 @@ export const submitRiderProof = async (req, res, next) => {
         delivery_latitude = COALESCE(EXCLUDED.delivery_latitude, rider_proof_of_delivery.delivery_latitude),
         delivery_longitude = COALESCE(EXCLUDED.delivery_longitude, rider_proof_of_delivery.delivery_longitude)
        RETURNING id, photo_url, signature_data, recipient_name, notes, created_at`,
-      [jobId, req.user.id, photoUrl || null, signatureData || null, recipientName || null, notes || null, latitude || null, longitude || null]
+      [jobId, req.user.id, photoUrl, signatureData, recipientName, proofNotes, latitude || null, longitude || null]
     );
 
     let deliveredAt = job.delivered_at;
@@ -488,7 +555,9 @@ export const submitRiderProof = async (req, res, next) => {
     }
 
     await client.query('COMMIT');
-    await dispatchAvailableJobs();
+    dispatchAvailableJobs().catch((error) => {
+      console.error('Failed to dispatch available jobs after proof submission:', error);
+    });
 
     return res.json({
       success: true,
@@ -508,4 +577,3 @@ export const submitRiderProof = async (req, res, next) => {
     client.release();
   }
 };
-

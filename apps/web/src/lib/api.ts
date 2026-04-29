@@ -281,8 +281,17 @@ export const deliveryRequestsApi = {
     estimatedEarnings?: number;
     customerName?: string;
     customerPhone?: string;
+    partnerId?: number;
   }) => {
     const response = await api.post('/delivery-requests', data);
+    return response.data;
+  },
+
+  // Get online riders who can receive a delivery request from this pickup point
+  getAvailableRiders: async (pickupLatitude: number, pickupLongitude: number) => {
+    const response = await api.get('/delivery-requests/available-riders', {
+      params: { pickupLatitude, pickupLongitude },
+    });
     return response.data;
   },
 

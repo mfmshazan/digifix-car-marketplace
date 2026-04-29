@@ -16,7 +16,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import MapView, { Marker } from "react-native-maps";
-import { getSalesmanOrders, updateOrderStatus, createDeliveryRequest, getOrderDeliveryStatus } from "../../src/api/orders";
+import { getSalesmanOrders, updateOrderStatus, createDeliveryRequest, getOrderDeliveryStatus, getAvailableRiders } from "../../src/api/orders";
 import { usePendingOrders } from "../../src/store/pendingOrdersStore";
 
 // ─── Delivery status label map ────────────────────────────────────────────────
@@ -32,6 +32,17 @@ const DELIVERY_LABEL: Record<string, string> = {
   delivered: "Delivered ✓",
   failed: "Delivery Failed",
 };
+
+interface AvailableRider {
+  id: number;
+  fullName: string;
+  phone: string;
+  vehicleType?: string;
+  vehicleNumber?: string;
+  rating?: number | null;
+  totalDeliveries: number;
+  distanceToPickupKm: number | null;
+}
 
 // ─── Dispatch Modal ───────────────────────────────────────────────────────────
 
@@ -55,6 +66,9 @@ function DispatchModal({
   const [earnings, setEarnings] = useState("");
   const [gettingGps, setGettingGps] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingRiders, setLoadingRiders] = useState(false);
+  const [availableRiders, setAvailableRiders] = useState<AvailableRider[]>([]);
+  const [selectedRiderId, setSelectedRiderId] = useState<number | null>(null);
   // Map picker state for delivery location
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [tempPin, setTempPin] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -78,6 +92,29 @@ function DispatchModal({
     }
   };
 
+  const loadAvailableRiders = async () => {
+    if (!pickupLat || !pickupLng) {
+      Alert.alert("Missing Info", "Pickup coordinates are required before loading available riders.");
+      return;
+    }
+
+    setLoadingRiders(true);
+    setSelectedRiderId(null);
+    try {
+      const res = await getAvailableRiders(parseFloat(pickupLat), parseFloat(pickupLng));
+      const riders = res?.data || [];
+      setAvailableRiders(riders);
+      if (!riders.length) {
+        Alert.alert("No Riders", "No online delivery persons are available right now.");
+      }
+    } catch (err: any) {
+      setAvailableRiders([]);
+      Alert.alert("Error", err.message || "Failed to load available riders.");
+    } finally {
+      setLoadingRiders(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!pickupLat || !pickupLng) {
       Alert.alert("Missing Info", "Pickup coordinates are required. Tap 'Use My Location' or enter manually.");
@@ -89,6 +126,10 @@ function DispatchModal({
     }
     if (!deliveryAddress.trim()) {
       Alert.alert("Missing Info", "Please enter a delivery address label.");
+      return;
+    }
+    if (!selectedRiderId) {
+      Alert.alert("Missing Info", "Select an available delivery person before dispatching.");
       return;
     }
     setSubmitting(true);
@@ -105,8 +146,9 @@ function DispatchModal({
         packageNotes: notes.trim() || undefined,
         estimatedEarnings: earnings ? parseFloat(earnings) : undefined,
         customerName: order.customer?.name,
+        partnerId: selectedRiderId,
       });
-      Alert.alert("Dispatched!", "Searching for a nearby rider. The status will update automatically.");
+      Alert.alert("Dispatched!", "Delivery request sent to the selected rider.");
       onDispatched();
       onClose();
     } catch (err: any) {
@@ -276,6 +318,44 @@ function DispatchModal({
             <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Rider pay (Rs)" keyboardType="decimal-pad" value={earnings} onChangeText={setEarnings} />
             <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Package notes" value={notes} onChangeText={setNotes} />
           </View>
+
+          <View style={dispatchStyles.riderHeader}>
+            <Text style={dispatchStyles.label}>Available Delivery Persons</Text>
+            <TouchableOpacity style={dispatchStyles.loadRidersBtn} onPress={loadAvailableRiders} disabled={loadingRiders}>
+              {loadingRiders ? <ActivityIndicator size="small" color="#00002E" /> : <Ionicons name="refresh" size={15} color="#00002E" />}
+              <Text style={dispatchStyles.loadRidersText}>{loadingRiders ? "Loading" : "Load Riders"}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {availableRiders.map((rider) => {
+            const selected = selectedRiderId === rider.id;
+            return (
+              <TouchableOpacity
+                key={rider.id}
+                style={[dispatchStyles.riderCard, selected && dispatchStyles.riderCardSelected]}
+                onPress={() => setSelectedRiderId(rider.id)}
+              >
+                <View style={{ flex: 1 }}>
+                  <View style={dispatchStyles.riderNameRow}>
+                    <Text style={dispatchStyles.riderName} numberOfLines={1}>{rider.fullName}</Text>
+                    {selected && <Ionicons name="checkmark-circle" size={17} color="#16A34A" />}
+                  </View>
+                  <Text style={dispatchStyles.riderMeta} numberOfLines={1}>
+                    {rider.vehicleType || "Vehicle"} {rider.vehicleNumber ? `- ${rider.vehicleNumber}` : ""}
+                  </Text>
+                  <Text style={dispatchStyles.riderPhone}>{rider.phone}</Text>
+                </View>
+                <View style={dispatchStyles.riderDistanceBox}>
+                  <Text style={dispatchStyles.riderDistance}>
+                    {rider.distanceToPickupKm !== null ? `${rider.distanceToPickupKm.toFixed(1)} km` : "Location pending"}
+                  </Text>
+                  <Text style={dispatchStyles.riderTrips}>
+                    {rider.rating ? `${rider.rating.toFixed(1)} stars` : "New"} - {rider.totalDeliveries} trips
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         <View style={dispatchStyles.footer}>
@@ -935,6 +1015,47 @@ const dispatchStyles = StyleSheet.create({
   payBtnActive: { backgroundColor: "#00002E", borderColor: "#00002E" },
   payBtnText: { fontSize: 13, fontWeight: "600", color: "#374151" },
   payBtnTextActive: { color: "#FFF" },
+  riderHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  loadRidersBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  loadRidersText: { fontSize: 12, fontWeight: "700", color: "#00002E" },
+  riderCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    backgroundColor: "#FFF",
+  },
+  riderCardSelected: {
+    borderColor: "#00002E",
+    backgroundColor: "#F0F4FF",
+  },
+  riderNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  riderName: { flex: 1, fontSize: 14, fontWeight: "700", color: "#111827" },
+  riderMeta: { fontSize: 12, color: "#6B7280", marginTop: 3 },
+  riderPhone: { fontSize: 12, color: "#9CA3AF", marginTop: 2 },
+  riderDistanceBox: { alignItems: "flex-end", maxWidth: 116 },
+  riderDistance: { fontSize: 12, fontWeight: "700", color: "#111827", textAlign: "right" },
+  riderTrips: { fontSize: 11, color: "#9CA3AF", marginTop: 3, textAlign: "right" },
   footer: {
     flexDirection: "row",
     gap: 12,

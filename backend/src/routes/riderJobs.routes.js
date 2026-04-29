@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticateRider } from '../middleware/riderAuth.middleware.js';
+import upload from '../middleware/upload.middleware.js';
 import {
   acceptRiderJob,
   acceptRiderRequestOffer,
@@ -30,7 +31,6 @@ router.post('/:id/accept', acceptRiderJob);
 router.post('/:id/reject', rejectRiderAssignedJob);
 router.put('/:id/status', updateRiderJobStatus);
 router.post('/:id/location', addRiderJobLocation);
-router.post('/:id/proof', submitRiderProof);
+router.post('/:id/proof', upload.any(), submitRiderProof);
 
 export default router;
-

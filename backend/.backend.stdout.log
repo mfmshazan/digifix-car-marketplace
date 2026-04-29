@@ -1,726 +1,136 @@
-[dotenv@17.2.3] injecting env (11) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+🛠️  Development mode: Auth rate limiters are bypassed.
+[dotenv@17.2.3] injecting env (11) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
 🚀 Server running on port 3000
 🔌 Socket.io ready on port 3000
 📱 Mobile access: http://0.0.0.0:3000/api
-🔌 Socket connected: a4ZKkAOlykPex6yxAAAB
-👤 Socket a4ZKkAOlykPex6yxAAAB joined room user:cmoewk563000au086l7jup2n0
+🔌 Socket connected: eR5HwgM3JYLAZCwYAAAB
+👤 Socket eR5HwgM3JYLAZCwYAAAB joined room user:cmoewk563000au086l7jup2n0
 prisma:query BEGIN
 prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."description", "public"."CarPart"."partNumber", "public"."CarPart"."price", "public"."CarPart"."discountPrice", "public"."CarPart"."stock", "public"."CarPart"."condition", "public"."CarPart"."images", "public"."CarPart"."isActive", "public"."CarPart"."createdAt", "public"."CarPart"."updatedAt", "public"."CarPart"."carId", "public"."CarPart"."categoryId", "public"."CarPart"."sellerId" FROM "public"."CarPart" WHERE "public"."CarPart"."isActive" = $1 ORDER BY "public"."CarPart"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name", "public"."Category"."icon" FROM "public"."Category" WHERE "public"."Category"."id" IN ($1,$2,$3,$4,$5,$6,$7) OFFSET $8
-prisma:query SELECT "public"."User"."id", "public"."User"."name" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Car"."id", "public"."Car"."numberPlate", "public"."Car"."make", "public"."Car"."model", "public"."Car"."year" FROM "public"."Car" WHERE "public"."Car"."id" IN ($1,$2,$3) OFFSET $4
-prisma:query COMMIT
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."isActive" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT "public"."CartItem"."id", "public"."CartItem"."quantity", "public"."CartItem"."itemType", "public"."CartItem"."createdAt", "public"."CartItem"."updatedAt", "public"."CartItem"."userId", "public"."CartItem"."productId", "public"."CartItem"."carPartId" FROM "public"."CartItem" WHERE "public"."CartItem"."userId" = $1 ORDER BY "public"."CartItem"."createdAt" DESC OFFSET $2
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."price", "public"."CarPart"."discountPrice", "public"."CarPart"."stock", "public"."CarPart"."images", "public"."CarPart"."isActive" FROM "public"."CarPart" WHERE ("public"."CarPart"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CartItem"."id", "public"."CartItem"."quantity" FROM "public"."CartItem" WHERE (("public"."CartItem"."userId" = $1 AND "public"."CartItem"."carPartId" = $2) AND 1=1) LIMIT $3 OFFSET $4
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query INSERT INTO "public"."CartItem" ("id","quantity","itemType","createdAt","updatedAt","userId","carPartId") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "public"."CartItem"."id", "public"."CartItem"."quantity"
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CartItem"."id", "public"."CartItem"."quantity", "public"."CartItem"."itemType", "public"."CartItem"."createdAt", "public"."CartItem"."updatedAt", "public"."CartItem"."userId", "public"."CartItem"."productId", "public"."CartItem"."carPartId" FROM "public"."CartItem" WHERE "public"."CartItem"."userId" = $1 ORDER BY "public"."CartItem"."createdAt" DESC OFFSET $2
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."price", "public"."CarPart"."discountPrice", "public"."CarPart"."images", "public"."CarPart"."stock", "public"."CarPart"."categoryId", "public"."CarPart"."carId", "public"."CarPart"."sellerId" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1) OFFSET $2
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name" FROM "public"."Category" WHERE "public"."Category"."id" IN ($1) OFFSET $2
-prisma:query SELECT "public"."Car"."id", "public"."Car"."make", "public"."Car"."model", "public"."Car"."year" FROM "public"."Car" WHERE "public"."Car"."id" IN ($1) OFFSET $2
-prisma:query SELECT "public"."User"."id", "public"."User"."name" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."password", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."authProvider"::text, "public"."User"."googleId", "public"."User"."isVerified", "public"."User"."status"::text, "public"."User"."createdAt", "public"."User"."updatedAt" FROM "public"."User" WHERE ("public"."User"."email" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
 prisma:query COMMIT
 prisma:query SELECT 1
 prisma:query BEGIN
 prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."price", "public"."CarPart"."discountPrice", "public"."CarPart"."stock", "public"."CarPart"."images", "public"."CarPart"."isActive" FROM "public"."CarPart" WHERE ("public"."CarPart"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query COMMIT
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) OFFSET $17
+prisma:query BEGIN
 prisma:query BEGIN
 prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CartItem"."id", "public"."CartItem"."quantity" FROM "public"."CartItem" WHERE (("public"."CartItem"."userId" = $1 AND "public"."CartItem"."carPartId" = $2) AND 1=1) LIMIT $3 OFFSET $4
-prisma:query COMMIT
-prisma:query BEGIN
 prisma:query DEALLOCATE ALL
-prisma:query INSERT INTO "public"."CartItem" ("id","quantity","itemType","createdAt","updatedAt","userId","carPartId") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "public"."CartItem"."id", "public"."CartItem"."quantity"
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CartItem"."id", "public"."CartItem"."quantity", "public"."CartItem"."itemType", "public"."CartItem"."createdAt", "public"."CartItem"."updatedAt", "public"."CartItem"."userId", "public"."CartItem"."productId", "public"."CartItem"."carPartId" FROM "public"."CartItem" WHERE "public"."CartItem"."userId" = $1 ORDER BY "public"."CartItem"."createdAt" DESC OFFSET $2
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."price", "public"."CarPart"."discountPrice", "public"."CarPart"."images", "public"."CarPart"."stock", "public"."CarPart"."categoryId", "public"."CarPart"."carId", "public"."CarPart"."sellerId" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name" FROM "public"."Category" WHERE "public"."Category"."id" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."Car"."id", "public"."Car"."make", "public"."Car"."model", "public"."Car"."year" FROM "public"."Car" WHERE "public"."Car"."id" IN ($1) OFFSET $2
-prisma:query SELECT "public"."User"."id", "public"."User"."name" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Product"."id", "public"."Product"."name", "public"."Product"."description", "public"."Product"."price", "public"."Product"."discountPrice", "public"."Product"."sku", "public"."Product"."stock", "public"."Product"."images", "public"."Product"."isActive", "public"."Product"."createdAt", "public"."Product"."updatedAt", "public"."Product"."categoryId", "public"."Product"."salesmanId", "public"."Product"."storeId" FROM "public"."Product" WHERE "public"."Product"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."description", "public"."CarPart"."partNumber", "public"."CarPart"."price", "public"."CarPart"."discountPrice", "public"."CarPart"."stock", "public"."CarPart"."condition", "public"."CarPart"."images", "public"."CarPart"."isActive", "public"."CarPart"."createdAt", "public"."CarPart"."updatedAt", "public"."CarPart"."carId", "public"."CarPart"."categoryId", "public"."CarPart"."sellerId" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."User"."id", "public"."User"."name" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query INSERT INTO "public"."Order" ("id","orderNumber","status","paymentStatus","paymentMethod","subtotal","deliveryFee","discount","total","createdAt","updatedAt","customerId","salesmanId") VALUES ($1,$2,CAST($3::text AS "public"."OrderStatus"),CAST($4::text AS "public"."PaymentStatus"),$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING "public"."Order"."id"
-prisma:query INSERT INTO "public"."OrderItem" ("id","quantity","price","total","itemName","itemType","createdAt","orderId","productId","carPartId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING "public"."OrderItem"."id"
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."id" = $1 LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4,$5,$6,$7,$8) OFFSET $9
+prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) ORDER BY "public"."Order"."createdAt" DESC LIMIT $3 OFFSET $4
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2,$3,$4,$5) OFFSET $6
+prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
 prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1) OFFSET $2
-prisma:query SELECT "public"."User"."id", "public"."User"."name" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query INSERT INTO "public"."OrderTracking" ("id","status","description","createdAt","orderId") VALUES ($1,CAST($2::text AS "public"."OrderStatus"),$3,$4,$5) RETURNING "public"."OrderTracking"."id", "public"."OrderTracking"."status"::text, "public"."OrderTracking"."description", "public"."OrderTracking"."location", "public"."OrderTracking"."createdAt", "public"."OrderTracking"."orderId"
-prisma:query INSERT INTO "public"."Order" ("id","orderNumber","status","paymentStatus","paymentMethod","subtotal","deliveryFee","discount","total","createdAt","updatedAt","customerId","salesmanId") VALUES ($1,$2,CAST($3::text AS "public"."OrderStatus"),CAST($4::text AS "public"."PaymentStatus"),$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING "public"."Order"."id"
-prisma:query INSERT INTO "public"."OrderItem" ("id","quantity","price","total","itemName","itemType","createdAt","orderId","productId","carPartId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING "public"."OrderItem"."id"
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."id" = $1 LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1) OFFSET $2
-prisma:query SELECT "public"."User"."id", "public"."User"."name" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query INSERT INTO "public"."OrderTracking" ("id","status","description","createdAt","orderId") VALUES ($1,CAST($2::text AS "public"."OrderStatus"),$3,$4,$5) RETURNING "public"."OrderTracking"."id", "public"."OrderTracking"."status"::text, "public"."OrderTracking"."description", "public"."OrderTracking"."location", "public"."OrderTracking"."createdAt", "public"."OrderTracking"."orderId"
 prisma:query COMMIT
-📡 Emitted newOrder ORD-MOFPH9N4-5V77-1 → salesman cmoewk563000au086l7jup2n0
-📡 Emitted newOrder ORD-MOFPH9N4-5V77-2 → salesman cmoewk64a000bu086zt0ra0j3
-prisma:query BEGIN
-prisma:query SELECT 1
-prisma:query DEALLOCATE ALL
-prisma:query BEGIN
-🔔 OneSignal push sent → salesman cmoewk563000au086l7jup2n0 | order ORD-MOFPH9N4-5V77-1 
-🔔 OneSignal push sent → salesman cmoewk64a000bu086zt0ra0j3 | order ORD-MOFPH9N4-5V77-2 
-prisma:query DEALLOCATE ALL
-prisma:query DELETE FROM "public"."CartItem" WHERE "public"."CartItem"."userId" = $1
-prisma:query COMMIT
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-🔌 Socket connected: CFSOCx4ZLuiPpJPGAAAD
-👤 Socket CFSOCx4ZLuiPpJPGAAAD joined room user:cmofo1oyy0000vlm0o56wx0k0
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-🔌 Socket disconnected: a4ZKkAOlykPex6yxAAAB
-prisma:query SELECT 1
-🔌 Socket connected: HkFF8qRicjSCCeNlAAAF
-prisma:query BEGIN
-prisma:query SELECT 1
-prisma:query DEALLOCATE ALL
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
 prisma:query BEGIN
 prisma:query COMMIT
 prisma:query DEALLOCATE ALL
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."password", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."authProvider"::text, "public"."User"."googleId", "public"."User"."isVerified", "public"."User"."createdAt", "public"."User"."updatedAt" FROM "public"."User" WHERE ("public"."User"."email" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-🔌 Socket disconnected: HkFF8qRicjSCCeNlAAAF
-prisma:query BEGIN
-🔌 Socket connected: TvOYrE-2yYEhDg9AAAAH
-👤 Socket TvOYrE-2yYEhDg9AAAAH joined room user:cmoewk563000au086l7jup2n0
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query BEGIN
-prisma:query COMMIT
-prisma:query DEALLOCATE ALL
-prisma:query BEGIN
-prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name", "public"."Category"."description", "public"."Category"."icon", "public"."Category"."image", "public"."Category"."parentId", "public"."Category"."createdAt", "public"."Category"."updatedAt" FROM "public"."Category" WHERE "public"."Category"."parentId" IS NULL OFFSET $1
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name", "public"."Category"."description", "public"."Category"."icon", "public"."Category"."image", "public"."Category"."parentId", "public"."Category"."createdAt", "public"."Category"."updatedAt" FROM "public"."Category" WHERE "public"."Category"."parentId" IN ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) OFFSET $11
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Product"."id" FROM "public"."Product" WHERE "public"."Product"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query COMMIT
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Product"."id" FROM "public"."Product" WHERE "public"."Product"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Product"."id" FROM "public"."Product" WHERE "public"."Product"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Product"."id" FROM "public"."Product" WHERE "public"."Product"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Product"."id" FROM "public"."Product" WHERE "public"."Product"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Product"."id" FROM "public"."Product" WHERE "public"."Product"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Product"."id" FROM "public"."Product" WHERE "public"."Product"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Product"."id" FROM "public"."Product" WHERE "public"."Product"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Product"."id" FROM "public"."Product" WHERE "public"."Product"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Product"."id" FROM "public"."Product" WHERE "public"."Product"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."categoryId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."createdAt" >= $2 AND "public"."Order"."createdAt" <= $3) ORDER BY "public"."Order"."createdAt" DESC OFFSET $4
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) ORDER BY "public"."Order"."createdAt" DESC LIMIT $3 OFFSET $4
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images", "public"."CarPart"."categoryId" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2) OFFSET $3
 prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1) OFFSET $2
 prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name" FROM "public"."Category" WHERE "public"."Category"."id" IN ($1,$2) OFFSET $3
+prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
+prisma:query COMMIT
 prisma:query COMMIT
 prisma:query BEGIN
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query DEALLOCATE ALL
 prisma:query BEGIN
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) OFFSET $3) AS "sub"
-prisma:query DEALLOCATE ALL
-prisma:query COMMIT
-prisma:query SELECT "public"."Order"."id", "public"."Order"."total", "public"."Order"."createdAt" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."createdAt" >= $2) OFFSET $3
-prisma:query BEGIN
-prisma:query COMMIT
-prisma:query DEALLOCATE ALL
 prisma:query BEGIN
 prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) ORDER BY "public"."Order"."createdAt" DESC LIMIT $3 OFFSET $4
-prisma:query SELECT "public"."Order"."id", "public"."Order"."total" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."createdAt" >= $2) OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1) OFFSET $2
 prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
-prisma:query SELECT SUM("public"."OrderItem"."quantity") AS "_sum$quantity", SUM("public"."OrderItem"."total") AS "_sum$total", "public"."OrderItem"."productId" FROM "public"."OrderItem" LEFT JOIN "public"."Order" AS "j0" ON ("j0"."id") = ("public"."OrderItem"."orderId") WHERE ("public"."OrderItem"."productId" IS NOT NULL AND ("j0"."salesmanId" = $1 AND "j0"."createdAt" >= $2 AND ("j0"."id" IS NOT NULL))) GROUP BY "public"."OrderItem"."productId" ORDER BY SUM("public"."OrderItem"."quantity") DESC LIMIT $3 OFFSET $4
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query COMMIT
-prisma:query DEALLOCATE ALL
-prisma:query BEGIN
 prisma:query DEALLOCATE ALL
 prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) OFFSET $3) AS "sub"
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
 prisma:query COMMIT
-prisma:query SELECT SUM("public"."OrderItem"."quantity") AS "_sum$quantity", SUM("public"."OrderItem"."total") AS "_sum$total", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" LEFT JOIN "public"."Order" AS "j0" ON ("j0"."id") = ("public"."OrderItem"."orderId") WHERE ("public"."OrderItem"."carPartId" IS NOT NULL AND ("j0"."salesmanId" = $1 AND "j0"."createdAt" >= $2 AND ("j0"."id" IS NOT NULL))) GROUP BY "public"."OrderItem"."carPartId" ORDER BY SUM("public"."OrderItem"."quantity") DESC LIMIT $3 OFFSET $4
+prisma:query COMMIT
+prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) OFFSET $17
+prisma:query BEGIN
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4,$5,$6,$7,$8) OFFSET $9
+prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."password", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."authProvider"::text, "public"."User"."googleId", "public"."User"."isVerified", "public"."User"."status"::text, "public"."User"."createdAt", "public"."User"."updatedAt" FROM "public"."User" WHERE ("public"."User"."email" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2,$3,$4,$5) OFFSET $6
+prisma:query COMMIT
+prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
+prisma:query COMMIT
 prisma:query COMMIT
 prisma:query BEGIN
 prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images", "public"."CarPart"."price", "public"."CarPart"."categoryId" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name" FROM "public"."Category" WHERE "public"."Category"."id" IN ($1,$2,$3) OFFSET $4
-prisma:query COMMIT
+prisma:query BEGIN
 prisma:query BEGIN
 prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."createdAt" >= $2 AND "public"."Order"."createdAt" <= $3) ORDER BY "public"."Order"."createdAt" DESC OFFSET $4
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images", "public"."CarPart"."categoryId" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name" FROM "public"."Category" WHERE "public"."Category"."id" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."total", "public"."Order"."createdAt" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."createdAt" >= $2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."total" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."createdAt" >= $2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT SUM("public"."OrderItem"."quantity") AS "_sum$quantity", SUM("public"."OrderItem"."total") AS "_sum$total", "public"."OrderItem"."productId" FROM "public"."OrderItem" LEFT JOIN "public"."Order" AS "j0" ON ("j0"."id") = ("public"."OrderItem"."orderId") WHERE ("public"."OrderItem"."productId" IS NOT NULL AND ("j0"."salesmanId" = $1 AND "j0"."createdAt" >= $2 AND ("j0"."id" IS NOT NULL))) GROUP BY "public"."OrderItem"."productId" ORDER BY SUM("public"."OrderItem"."quantity") DESC LIMIT $3 OFFSET $4
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT SUM("public"."OrderItem"."quantity") AS "_sum$quantity", SUM("public"."OrderItem"."total") AS "_sum$total", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" LEFT JOIN "public"."Order" AS "j0" ON ("j0"."id") = ("public"."OrderItem"."orderId") WHERE ("public"."OrderItem"."carPartId" IS NOT NULL AND ("j0"."salesmanId" = $1 AND "j0"."createdAt" >= $2 AND ("j0"."id" IS NOT NULL))) GROUP BY "public"."OrderItem"."carPartId" ORDER BY SUM("public"."OrderItem"."quantity") DESC LIMIT $3 OFFSET $4
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images", "public"."CarPart"."price", "public"."CarPart"."categoryId" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name" FROM "public"."Category" WHERE "public"."Category"."id" IN ($1,$2,$3) OFFSET $4
-prisma:query COMMIT
-👤 Socket TvOYrE-2yYEhDg9AAAAH joined room user:cmoewk563000au086l7jup2n0
-👤 Socket TvOYrE-2yYEhDg9AAAAH joined room user:cmoewk563000au086l7jup2n0
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
 prisma:query DEALLOCATE ALL
 prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
 prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-👤 Socket TvOYrE-2yYEhDg9AAAAH joined room user:cmoewk563000au086l7jup2n0
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) ORDER BY "public"."Order"."createdAt" DESC LIMIT $3 OFFSET $4
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) OFFSET $3) AS "sub"
-prisma:query COMMIT
-👤 Socket TvOYrE-2yYEhDg9AAAAH joined room user:cmoewk563000au086l7jup2n0
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) ORDER BY "public"."Order"."createdAt" DESC LIMIT $3 OFFSET $4
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1) OFFSET $2
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) OFFSET $3) AS "sub"
-prisma:query COMMIT
-👤 Socket TvOYrE-2yYEhDg9AAAAH joined room user:cmoewk563000au086l7jup2n0
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) ORDER BY "public"."Order"."createdAt" DESC LIMIT $3 OFFSET $4
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) OFFSET $3) AS "sub"
-prisma:query COMMIT
-👤 Socket TvOYrE-2yYEhDg9AAAAH joined room user:cmoewk563000au086l7jup2n0
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) ORDER BY "public"."Order"."createdAt" DESC LIMIT $3 OFFSET $4
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1) OFFSET $2
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) OFFSET $3) AS "sub"
-prisma:query COMMIT
-👤 Socket TvOYrE-2yYEhDg9AAAAH joined room user:cmoewk563000au086l7jup2n0
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) ORDER BY "public"."Order"."createdAt" DESC LIMIT $3 OFFSET $4
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) OFFSET $3) AS "sub"
-prisma:query COMMIT
-👤 Socket TvOYrE-2yYEhDg9AAAAH joined room user:cmoewk563000au086l7jup2n0
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND "public"."Order"."salesmanId" = $2) LIMIT $3 OFFSET $4
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query UPDATE "public"."Order" SET "status" = CAST($1::text AS "public"."OrderStatus"), "updatedAt" = $2 WHERE ("public"."Order"."id" = $3 AND 1=1) RETURNING "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId"
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."id" = $1 LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query INSERT INTO "public"."OrderTracking" ("id","status","description","createdAt","orderId") VALUES ($1,CAST($2::text AS "public"."OrderStatus"),$3,$4,$5) RETURNING "public"."OrderTracking"."id", "public"."OrderTracking"."status"::text, "public"."OrderTracking"."description", "public"."OrderTracking"."location", "public"."OrderTracking"."createdAt", "public"."OrderTracking"."orderId"
-prisma:query COMMIT
-📡 Emitted orderStatusUpdated for order cmofph9xe0005vlf0wmiefxt0 → customer cmofo1oyy0000vlm0o56wx0k0
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND "public"."Order"."salesmanId" = $2) LIMIT $3 OFFSET $4
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query UPDATE "public"."Order" SET "status" = CAST($1::text AS "public"."OrderStatus"), "updatedAt" = $2 WHERE ("public"."Order"."id" = $3 AND 1=1) RETURNING "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId"
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."id" = $1 LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query INSERT INTO "public"."OrderTracking" ("id","status","description","createdAt","orderId") VALUES ($1,CAST($2::text AS "public"."OrderStatus"),$3,$4,$5) RETURNING "public"."OrderTracking"."id", "public"."OrderTracking"."status"::text, "public"."OrderTracking"."description", "public"."OrderTracking"."location", "public"."OrderTracking"."createdAt", "public"."OrderTracking"."orderId"
-prisma:query COMMIT
-📡 Emitted orderStatusUpdated for order cmofph9xe0005vlf0wmiefxt0 → customer cmofo1oyy0000vlm0o56wx0k0
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND "public"."Order"."salesmanId" = $2) LIMIT $3 OFFSET $4
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query UPDATE "public"."Order" SET "status" = CAST($1::text AS "public"."OrderStatus"), "updatedAt" = $2 WHERE ("public"."Order"."id" = $3 AND 1=1) RETURNING "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId"
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."id" = $1 LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query INSERT INTO "public"."OrderTracking" ("id","status","description","createdAt","orderId") VALUES ($1,CAST($2::text AS "public"."OrderStatus"),$3,$4,$5) RETURNING "public"."OrderTracking"."id", "public"."OrderTracking"."status"::text, "public"."OrderTracking"."description", "public"."OrderTracking"."location", "public"."OrderTracking"."createdAt", "public"."OrderTracking"."orderId"
-prisma:query COMMIT
-📡 Emitted orderStatusUpdated for order cmofph9xe0005vlf0wmiefxt0 → customer cmofo1oyy0000vlm0o56wx0k0
-🔌 Socket disconnected: TvOYrE-2yYEhDg9AAAAH
-🔌 Socket disconnected: CFSOCx4ZLuiPpJPGAAAD
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-🔌 Socket connected: 3DcfZS7AecW0I9XLAAAJ
-👤 Socket 3DcfZS7AecW0I9XLAAAJ joined room user:cmoewk563000au086l7jup2n0
-🔌 Socket disconnected: 3DcfZS7AecW0I9XLAAAJ
-🔌 Socket connected: F1kLq8Hrbh_JEW7zAAAL
-👤 Socket F1kLq8Hrbh_JEW7zAAAL joined room user:cmoewk563000au086l7jup2n0
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query SELECT "public"."CartItem"."id", "public"."CartItem"."quantity", "public"."CartItem"."itemType", "public"."CartItem"."createdAt", "public"."CartItem"."updatedAt", "public"."CartItem"."userId", "public"."CartItem"."productId", "public"."CartItem"."carPartId" FROM "public"."CartItem" WHERE "public"."CartItem"."userId" = $1 ORDER BY "public"."CartItem"."createdAt" DESC OFFSET $2
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query COMMIT
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query BEGIN
 prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) ORDER BY "public"."Order"."createdAt" DESC LIMIT $3 OFFSET $4
 prisma:query BEGIN
 prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query COMMIT
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."description", "public"."CarPart"."partNumber", "public"."CarPart"."price", "public"."CarPart"."discountPrice", "public"."CarPart"."stock", "public"."CarPart"."condition", "public"."CarPart"."images", "public"."CarPart"."isActive", "public"."CarPart"."createdAt", "public"."CarPart"."updatedAt", "public"."CarPart"."carId", "public"."CarPart"."categoryId", "public"."CarPart"."sellerId" FROM "public"."CarPart" WHERE "public"."CarPart"."isActive" = $1 ORDER BY "public"."CarPart"."createdAt" DESC LIMIT $2 OFFSET $3
-🔌 Socket disconnected: F1kLq8Hrbh_JEW7zAAAL
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."isActive" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name", "public"."Category"."icon" FROM "public"."Category" WHERE "public"."Category"."id" IN ($1,$2,$3,$4,$5,$6,$7) OFFSET $8
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query SELECT "public"."User"."id", "public"."User"."name" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Car"."id", "public"."Car"."numberPlate", "public"."Car"."make", "public"."Car"."model", "public"."Car"."year" FROM "public"."Car" WHERE "public"."Car"."id" IN ($1,$2,$3) OFFSET $4
-prisma:query COMMIT
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."password", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."authProvider"::text, "public"."User"."googleId", "public"."User"."isVerified", "public"."User"."createdAt", "public"."User"."updatedAt" FROM "public"."User" WHERE ("public"."User"."email" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
 prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
 prisma:query COMMIT
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
+prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
 prisma:query BEGIN
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-🔌 Socket connected: mBdb21qAUSiq64pxAAAN
-👤 Socket mBdb21qAUSiq64pxAAAN joined room user:cmoewk563000au086l7jup2n0
 prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) OFFSET $17
+prisma:query COMMIT
 prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query COMMIT
+prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4,$5,$6,$7,$8) OFFSET $9
 prisma:query BEGIN
+prisma:query DEALLOCATE ALL
 prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2,$3,$4,$5) OFFSET $6
+prisma:query COMMIT
+prisma:query COMMIT
+prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) OFFSET $3) AS "sub"
 prisma:query COMMIT
 prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
 prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
-prisma:query DEALLOCATE ALL
 prisma:query COMMIT
 prisma:query BEGIN
+prisma:query BEGIN
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) ORDER BY "public"."Order"."createdAt" DESC LIMIT $3 OFFSET $4
 prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."phone", "public"."User"."avatar", "public"."User"."role"::text, "public"."User"."isVerified", "public"."User"."createdAt", COALESCE("aggr_selection_0_Order"."_aggr_count_orders", 0) AS "_aggr_count_orders", COALESCE("aggr_selection_1_WishlistItem"."_aggr_count_wishlist", 0) AS "_aggr_count_wishlist", COALESCE("aggr_selection_2_Address"."_aggr_count_addresses", 0) AS "_aggr_count_addresses" FROM "public"."User" LEFT JOIN (SELECT "public"."Order"."customerId", COUNT(*) AS "_aggr_count_orders" FROM "public"."Order" WHERE 1=1 GROUP BY "public"."Order"."customerId") AS "aggr_selection_0_Order" ON ("public"."User"."id" = "aggr_selection_0_Order"."customerId") LEFT JOIN (SELECT "public"."WishlistItem"."userId", COUNT(*) AS "_aggr_count_wishlist" FROM "public"."WishlistItem" WHERE 1=1 GROUP BY "public"."WishlistItem"."userId") AS "aggr_selection_1_WishlistItem" ON ("public"."User"."id" = "aggr_selection_1_WishlistItem"."userId") LEFT JOIN (SELECT "public"."Address"."userId", COUNT(*) AS "_aggr_count_addresses" FROM "public"."Address" WHERE 1=1 GROUP BY "public"."Address"."userId") AS "aggr_selection_2_Address" ON ("public"."User"."id" = "aggr_selection_2_Address"."userId") WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."description", "public"."Store"."logo", "public"."Store"."banner", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."rating", "public"."Store"."isVerified", "public"."Store"."createdAt", "public"."Store"."updatedAt", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
 prisma:query COMMIT
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
+prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) OFFSET $17
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
 prisma:query BEGIN
 prisma:query DEALLOCATE ALL
-🔌 Socket connected: EnBbu8eh0ydA-y6aAAAP
-👤 Socket EnBbu8eh0ydA-y6aAAAP joined room user:cmofo1oyy0000vlm0o56wx0k0
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
-prisma:query BEGIN
+prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4,$5,$6,$7,$8) OFFSET $9
 prisma:query COMMIT
+prisma:query BEGIN
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2,$3,$4,$5) OFFSET $6
 prisma:query DEALLOCATE ALL
-prisma:query BEGIN
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query COMMIT
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4) OFFSET $5
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 OFFSET $2) AS "sub"
-prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
 prisma:query COMMIT
 prisma:query COMMIT
+prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE ("public"."Order"."salesmanId" = $1 AND "public"."Order"."status" = CAST($2::text AS "public"."OrderStatus")) OFFSET $3) AS "sub"
+prisma:query SELECT 1
 prisma:query BEGIN
+prisma:query COMMIT
 prisma:query DEALLOCATE ALL
 prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
 prisma:query COMMIT
 prisma:query SELECT 1
 prisma:query BEGIN
 prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2) OFFSET $3
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."customerId" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-🔌 Socket disconnected: mBdb21qAUSiq64pxAAAN
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
-🔌 Socket disconnected: EnBbu8eh0ydA-y6aAAAP
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CartItem"."id", "public"."CartItem"."quantity", "public"."CartItem"."itemType", "public"."CartItem"."createdAt", "public"."CartItem"."updatedAt", "public"."CartItem"."userId", "public"."CartItem"."productId", "public"."CartItem"."carPartId" FROM "public"."CartItem" WHERE "public"."CartItem"."userId" = $1 ORDER BY "public"."CartItem"."createdAt" DESC OFFSET $2
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."description", "public"."CarPart"."partNumber", "public"."CarPart"."price", "public"."CarPart"."discountPrice", "public"."CarPart"."stock", "public"."CarPart"."condition", "public"."CarPart"."images", "public"."CarPart"."isActive", "public"."CarPart"."createdAt", "public"."CarPart"."updatedAt", "public"."CarPart"."carId", "public"."CarPart"."categoryId", "public"."CarPart"."sellerId" FROM "public"."CarPart" WHERE "public"."CarPart"."isActive" = $1 ORDER BY "public"."CarPart"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."isActive" = $1 OFFSET $2) AS "sub"
-prisma:query COMMIT
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name", "public"."Category"."icon" FROM "public"."Category" WHERE "public"."Category"."id" IN ($1,$2,$3,$4,$5,$6,$7) OFFSET $8
-prisma:query SELECT "public"."User"."id", "public"."User"."name" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query SELECT "public"."Car"."id", "public"."Car"."numberPlate", "public"."Car"."make", "public"."Car"."model", "public"."Car"."year" FROM "public"."Car" WHERE "public"."Car"."id" IN ($1,$2,$3) OFFSET $4
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."price", "public"."CarPart"."discountPrice", "public"."CarPart"."stock", "public"."CarPart"."images", "public"."CarPart"."isActive" FROM "public"."CarPart" WHERE ("public"."CarPart"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
-prisma:query COMMIT
-prisma:query SELECT 1
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CartItem"."id", "public"."CartItem"."quantity", "public"."CartItem"."itemType", "public"."CartItem"."createdAt", "public"."CartItem"."updatedAt", "public"."CartItem"."userId", "public"."CartItem"."productId", "public"."CartItem"."carPartId" FROM "public"."CartItem" WHERE "public"."CartItem"."userId" = $1 ORDER BY "public"."CartItem"."createdAt" DESC OFFSET $2
-prisma:query COMMIT
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."description", "public"."CarPart"."partNumber", "public"."CarPart"."price", "public"."CarPart"."discountPrice", "public"."CarPart"."stock", "public"."CarPart"."condition", "public"."CarPart"."images", "public"."CarPart"."isActive", "public"."CarPart"."createdAt", "public"."CarPart"."updatedAt", "public"."CarPart"."carId", "public"."CarPart"."categoryId", "public"."CarPart"."sellerId" FROM "public"."CarPart" WHERE "public"."CarPart"."isActive" = $1 ORDER BY "public"."CarPart"."createdAt" DESC LIMIT $2 OFFSET $3
-prisma:query SELECT "public"."Category"."id", "public"."Category"."name", "public"."Category"."icon" FROM "public"."Category" WHERE "public"."Category"."id" IN ($1,$2,$3,$4,$5,$6,$7) OFFSET $8
-prisma:query SELECT "public"."User"."id", "public"."User"."name" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2) OFFSET $3
-prisma:query BEGIN
-prisma:query DEALLOCATE ALL
-prisma:query SELECT "public"."Car"."id", "public"."Car"."numberPlate", "public"."Car"."make", "public"."Car"."model", "public"."Car"."year" FROM "public"."Car" WHERE "public"."Car"."id" IN ($1,$2,$3) OFFSET $4
-prisma:query COMMIT
-prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."CarPart"."id" FROM "public"."CarPart" WHERE "public"."CarPart"."isActive" = $1 OFFSET $2) AS "sub"
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."phone", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."phone" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
+prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
 prisma:query COMMIT

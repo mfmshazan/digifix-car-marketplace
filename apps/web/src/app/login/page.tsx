@@ -24,7 +24,7 @@ export default function LoginPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await authApi.login(email, password);
+      const response = await authApi.login(email.trim().toLowerCase(), password);
 
       if (response.success) {
         const { user, token } = response.data;

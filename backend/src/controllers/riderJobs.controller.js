@@ -4,6 +4,33 @@ import { isFloatInRange, validationError } from '../utils/riderValidation.js';
 
 const ACTIVE_JOB_STATUSES = ['assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff'];
 
+const formatRiderJob = (job, riderLocation = null) => {
+  if (!job) return null;
+
+  return {
+    ...job,
+    pickupLatitude: job.pickup_latitude !== null ? Number(job.pickup_latitude) : null,
+    pickupLongitude: job.pickup_longitude !== null ? Number(job.pickup_longitude) : null,
+    dropoffLatitude: job.dropoff_latitude !== null ? Number(job.dropoff_latitude) : null,
+    dropoffLongitude: job.dropoff_longitude !== null ? Number(job.dropoff_longitude) : null,
+    distanceKm: job.distance_km !== null ? Number(job.distance_km) : null,
+    paymentAmount: job.payment_amount !== null ? Number(job.payment_amount) : null,
+    riderLocation,
+    route: {
+      pickup: {
+        latitude: job.pickup_latitude !== null ? Number(job.pickup_latitude) : null,
+        longitude: job.pickup_longitude !== null ? Number(job.pickup_longitude) : null,
+        address: job.pickup_address,
+      },
+      dropoff: {
+        latitude: job.dropoff_latitude !== null ? Number(job.dropoff_latitude) : null,
+        longitude: job.dropoff_longitude !== null ? Number(job.dropoff_longitude) : null,
+        address: job.dropoff_address,
+      },
+    },
+  };
+};
+
 export const getAvailableRiderJobs = async (req, res, next) => {
   try {
     const result = await riderQuery(
@@ -38,7 +65,7 @@ export const getActiveRiderJob = async (req, res, next) => {
               pickup_contact_name, pickup_contact_phone,
               dropoff_address, dropoff_latitude, dropoff_longitude,
               distance_km, payment_amount, items_description, special_instructions,
-              status, assigned_at, picked_up_at, created_at
+              status, assigned_at, accepted_at, picked_up_at, created_at
          FROM rider_delivery_jobs
         WHERE partner_id = $1 AND status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
         ORDER BY assigned_at DESC
@@ -46,7 +73,33 @@ export const getActiveRiderJob = async (req, res, next) => {
       [req.user.id]
     );
 
-    return res.json({ success: true, data: result.rows[0] || null });
+    const job = result.rows[0] || null;
+    if (!job) {
+      return res.json({ success: true, data: null });
+    }
+
+    const trackingResult = await riderQuery(
+      `SELECT latitude, longitude, accuracy, speed, heading, recorded_at
+         FROM rider_job_tracking
+        WHERE job_id = $1 AND partner_id = $2
+        ORDER BY recorded_at DESC
+        LIMIT 1`,
+      [job.id, req.user.id]
+    );
+
+    const trackingPoint = trackingResult.rows[0];
+    const riderLocation = trackingPoint
+      ? {
+          latitude: Number(trackingPoint.latitude),
+          longitude: Number(trackingPoint.longitude),
+          accuracy: trackingPoint.accuracy !== null ? Number(trackingPoint.accuracy) : null,
+          speed: trackingPoint.speed !== null ? Number(trackingPoint.speed) : null,
+          heading: trackingPoint.heading !== null ? Number(trackingPoint.heading) : null,
+          recordedAt: trackingPoint.recorded_at,
+        }
+      : null;
+
+    return res.json({ success: true, data: formatRiderJob(job, riderLocation) });
   } catch (error) {
     return next(error);
   }
@@ -112,7 +165,11 @@ export const acceptRiderRequestOffer = async (req, res, next) => {
       return res.status(result.statusCode || 400).json({ success: false, message: result.message });
     }
 
-    return res.json({ success: true, message: 'Incoming request accepted successfully', data: result.data });
+    return res.json({
+      success: true,
+      message: 'Incoming request accepted successfully',
+      data: formatRiderJob(result.data),
+    });
   } catch (error) {
     return next(error);
   }
@@ -219,7 +276,11 @@ export const acceptRiderJob = async (req, res, next) => {
     await client.query("UPDATE rider_delivery_partners SET status = 'busy' WHERE id = $1", [req.user.id]);
     await client.query('COMMIT');
 
-    return res.json({ success: true, message: 'Job accepted successfully', data: result.rows[0] });
+    return res.json({
+      success: true,
+      message: 'Job accepted successfully',
+      data: formatRiderJob(result.rows[0]),
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     return next(error);

@@ -28,6 +28,8 @@ export const getRiderLiveLocation = async (req, res) => {
 
     const jobResult = await riderQuery(
       `SELECT rdj.id, rdj.status, rdj.partner_id,
+              rdj.pickup_address, rdj.pickup_latitude, rdj.pickup_longitude,
+              rdj.dropoff_address, rdj.dropoff_latitude, rdj.dropoff_longitude,
               rdp.current_latitude, rdp.current_longitude, rdp.full_name AS rider_name
        FROM rider_delivery_jobs rdj
        LEFT JOIN rider_delivery_partners rdp ON rdj.partner_id = rdp.id
@@ -46,7 +48,23 @@ export const getRiderLiveLocation = async (req, res) => {
     if (!job.partner_id) {
       return res.status(200).json({
         success: true,
-        data: { status: job.status, hasRider: false, riderLocation: null },
+        data: {
+          status: job.status,
+          hasRider: false,
+          riderLocation: null,
+          route: {
+            pickup: {
+              latitude: parseFloat(job.pickup_latitude),
+              longitude: parseFloat(job.pickup_longitude),
+              address: job.pickup_address,
+            },
+            dropoff: {
+              latitude: parseFloat(job.dropoff_latitude),
+              longitude: parseFloat(job.dropoff_longitude),
+              address: job.dropoff_address,
+            },
+          },
+        },
       });
     }
 
@@ -86,6 +104,18 @@ export const getRiderLiveLocation = async (req, res) => {
         hasRider: true,
         riderName: job.rider_name,
         riderLocation,
+        route: {
+          pickup: {
+            latitude: parseFloat(job.pickup_latitude),
+            longitude: parseFloat(job.pickup_longitude),
+            address: job.pickup_address,
+          },
+          dropoff: {
+            latitude: parseFloat(job.dropoff_latitude),
+            longitude: parseFloat(job.dropoff_longitude),
+            address: job.dropoff_address,
+          },
+        },
       },
     });
   } catch (err) {

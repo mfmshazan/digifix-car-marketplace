@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, Polyline } from "react-native-maps";
 import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../../src/api/orders";
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
@@ -181,12 +181,17 @@ export default function OrdersScreen() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [actionMenuOrderId, setActionMenuOrderId] = useState<string | null>(null);
   const [riderLocation, setRiderLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [deliveryRoute, setDeliveryRoute] = useState<{
+    pickup: { latitude: number; longitude: number; address?: string };
+    dropoff: { latitude: number; longitude: number; address?: string };
+  } | null>(null);
   const [liveDeliveryStatus, setLiveDeliveryStatus] = useState<string | null>(null);
 
   // Poll rider's GPS every 6 s while the tracking modal is open
   useEffect(() => {
     if (!trackingOrder) {
       setRiderLocation(null);
+      setDeliveryRoute(null);
       setLiveDeliveryStatus(null);
       return;
     }
@@ -199,6 +204,9 @@ export default function OrdersScreen() {
         if (cancelled) return;
         if (res?.success && res.data?.riderLocation) {
           setRiderLocation(res.data.riderLocation);
+        }
+        if (res?.success && res.data?.route?.pickup && res.data?.route?.dropoff) {
+          setDeliveryRoute(res.data.route);
         }
         if (res?.success && res.data?.status) {
           setLiveDeliveryStatus(res.data.status);
@@ -543,22 +551,53 @@ export default function OrdersScreen() {
           <MapView
             style={styles.map}
             initialRegion={{
-              latitude: riderLocation?.latitude ?? 6.9271,
-              longitude: riderLocation?.longitude ?? 79.8612,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
+              latitude: riderLocation?.latitude ?? deliveryRoute?.pickup.latitude ?? 6.9271,
+              longitude: riderLocation?.longitude ?? deliveryRoute?.pickup.longitude ?? 79.8612,
+              latitudeDelta: 0.035,
+              longitudeDelta: 0.035,
             }}
             region={
-              riderLocation
+              riderLocation || deliveryRoute?.pickup
                 ? {
-                    latitude: riderLocation.latitude,
-                    longitude: riderLocation.longitude,
-                    latitudeDelta: 0.01,
-                    longitudeDelta: 0.01,
+                    latitude: riderLocation?.latitude ?? deliveryRoute!.pickup.latitude,
+                    longitude: riderLocation?.longitude ?? deliveryRoute!.pickup.longitude,
+                    latitudeDelta: 0.035,
+                    longitudeDelta: 0.035,
                   }
                 : undefined
             }
           >
+            {deliveryRoute && (
+              <>
+                <Polyline
+                  coordinates={[deliveryRoute.pickup, deliveryRoute.dropoff]}
+                  strokeColor="#94A3B8"
+                  strokeWidth={4}
+                  lineDashPattern={[8, 6]}
+                />
+                <Polyline
+                  coordinates={[
+                    deliveryRoute.pickup,
+                    ...(riderLocation ? [riderLocation] : []),
+                    deliveryRoute.dropoff,
+                  ]}
+                  strokeColor="#FF6B35"
+                  strokeWidth={5}
+                />
+                <Marker
+                  coordinate={deliveryRoute.pickup}
+                  title="Pickup"
+                  description={deliveryRoute.pickup.address || "Shop pickup location"}
+                  pinColor="#2563EB"
+                />
+                <Marker
+                  coordinate={deliveryRoute.dropoff}
+                  title="Customer"
+                  description={deliveryRoute.dropoff.address || "Customer delivery location"}
+                  pinColor="#16A34A"
+                />
+              </>
+            )}
             {riderLocation && (
               <Marker
                 coordinate={{ latitude: riderLocation.latitude, longitude: riderLocation.longitude }}

@@ -297,7 +297,7 @@ export default function OrdersScreen() {
     const isMenuOpen = actionMenuOrderId === item.id;
 
     return (
-      <TouchableOpacity style={styles.orderCard}>
+      <TouchableOpacity style={[styles.orderCard, isMenuOpen && styles.orderCardMenuOpen]}>
         <View style={styles.orderHeader}>
           <View>
             <Text style={styles.orderId}>{item.orderNumber || `ORD-${item.id.slice(-6).toUpperCase()}`}</Text>
@@ -631,11 +631,16 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
+    position: "relative",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 2,
+  },
+  orderCardMenuOpen: {
+    zIndex: 1000,
+    elevation: 20,
   },
   orderHeader: {
     flexDirection: "row",

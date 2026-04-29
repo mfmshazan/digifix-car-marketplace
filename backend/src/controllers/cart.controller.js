@@ -43,6 +43,8 @@ const getCart = async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
+    // The cart can hold either a Product or a CarPart, so we flatten both
+    // database shapes into one response shape that the frontend can render.
     const normalizedItems = cartItems.map((item) => {
       const isCarPart = item.itemType === 'CAR_PART';
       const data = isCarPart ? item.carPart : item.product;
@@ -69,7 +71,7 @@ const getCart = async (req, res) => {
       return sum + (item.discountPrice || item.price) * item.quantity;
     }, 0);
 
-    // 10% platform fee — shown here so the customer sees it before checkout
+    // The fee is calculated on the server so every client sees the same total.
     const serviceCharge = parseFloat((total * 0.10).toFixed(2));
 
     res.json({

@@ -22,9 +22,10 @@ export default function CartScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   
   const subtotal = getTotalPrice();
-  // 10% platform service charge — matches backend calculation
+  // We mirror the backend fee here so the customer sees the same checkout
+  // amount before placing the order.
   const serviceCharge = parseFloat((subtotal * 0.10).toFixed(2));
-  // Delivery fee will be added once distance calculation is integrated
+  // Delivery is intentionally left out for now because it depends on distance.
   const total = subtotal + serviceCharge;
 
   const handleIncreaseQuantity = async (id: string, currentQty: number) => {

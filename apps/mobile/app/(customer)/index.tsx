@@ -57,7 +57,13 @@ export default function CustomerHomeScreen() {
   const router = useRouter();
   const { addItem } = useCart();
 
-  // Handle adding item to cart
+  const handleCategoryPress = (categoryName: string) => {
+    router.push("/(customer)/categories");
+  };
+
+  // The backend expects a single ID field for both products and car parts,
+  // so we pass the part ID through the shared cart API instead of using a
+  // separate cart path.
   const handleAddToCart = async (part: CarPart) => {
     try {
       await addItem({
@@ -183,7 +189,10 @@ export default function CustomerHomeScreen() {
   };
 
   const renderCategoryItem = ({ item }: { item: (typeof categories)[0] }) => (
-    <TouchableOpacity style={styles.categoryItem}>
+    <TouchableOpacity
+      style={styles.categoryItem}
+      onPress={() => handleCategoryPress(item.name)}
+    >
       <View style={[styles.categoryIcon, { backgroundColor: item.color + "20" }]}>
         <Ionicons name={item.icon as any} size={24} color={item.color} />
       </View>

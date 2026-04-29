@@ -10,27 +10,23 @@ import { authenticate } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
-// All cart routes require authentication
+// Cart access is always tied to the logged-in user, so we protect the whole
+// group once instead of repeating auth checks on every route.
 router.use(authenticate);
 
 // Get user's cart
-// GET /api/cart
 router.get('/', getCart);
 
 // Add item to cart
-// POST /api/cart
 router.post('/', addToCart);
 
 // Update cart item quantity
-// PUT /api/cart/:id
 router.put('/:id', updateCartItem);
 
 // Remove item from cart
-// DELETE /api/cart/:id
 router.delete('/:id', removeFromCart);
 
 // Clear entire cart
-// DELETE /api/cart
 router.delete('/', clearCart);
 
 export default router;

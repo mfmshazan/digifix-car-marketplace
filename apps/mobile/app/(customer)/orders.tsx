@@ -20,7 +20,7 @@ import { getCustomerOrders, cancelOrder, Order } from "../../src/api/orders";
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
 
-// Status color mapping
+// Order badge colors are reused across the list, the tracking stepper, and socket updates.
 const getStatusColor = (status: string) => {
   switch (status.toUpperCase()) {
     case "DELIVERED":
@@ -61,6 +61,7 @@ const formatDate = (dateString: string) => {
   });
 };
 
+// The stepper shows how far the customer's order has progressed through fulfillment.
 const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
   const steps = [
     { key: "PENDING", title: "Placed" },

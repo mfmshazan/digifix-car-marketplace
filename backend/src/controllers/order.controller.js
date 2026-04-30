@@ -1062,16 +1062,37 @@ export const requestCancellation = async (req, res) => {
     // This is non-blocking to avoid delaying the customer's response
     const { sendCancellationRequestToAdmin } = await import('../lib/onesignal.js');
     const preferredAdminId = process.env.ADMIN_NOTIFICATION_USER_ID;
-    const admin = await prisma.user.findFirst({
-      where: {
-        role: 'ADMIN',
-        ...(preferredAdminId ? { id: preferredAdminId } : {}),
-      },
-      select: { id: true },
-      orderBy: { createdAt: 'asc' },
-    });
+    const preferredAdminIdsRaw = process.env.ADMIN_NOTIFICATION_USER_IDS;
 
-    const adminIds = admin ? [admin.id] : [];
+    let adminIds = [];
+
+    if (preferredAdminIdsRaw) {
+      adminIds = preferredAdminIdsRaw
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+    } else if (preferredAdminId) {
+      adminIds = [preferredAdminId];
+    }
+
+    if (adminIds.length < 3) {
+      const excludeIds = new Set(adminIds);
+      const extraAdmins = await prisma.user.findMany({
+        where: {
+          role: 'ADMIN',
+          ...(adminIds.length ? { id: { notIn: adminIds } } : {}),
+        },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+        take: 3 - adminIds.length,
+      });
+
+      extraAdmins.forEach((admin) => {
+        if (!excludeIds.has(admin.id)) {
+          adminIds.push(admin.id);
+        }
+      });
+    }
     sendCancellationRequestToAdmin({
       orderNumber: order.orderNumber,
       customerName: order.customer?.name || 'A customer',

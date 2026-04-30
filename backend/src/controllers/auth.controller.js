@@ -29,7 +29,7 @@ const register = async (req, res) => {
         where: { role: 'ADMIN' },
       });
 
-      if (adminCount >= 2) {
+      if (adminCount >= 3) {
         return res.status(403).json({
           success: false,
           message: 'Maximum number of admins has been reached',

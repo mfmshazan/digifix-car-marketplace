@@ -52,10 +52,25 @@ const getProducts = async (req, res) => {
             select: { id: true, name: true },
           },
           salesman: {
-            select: { id: true, name: true },
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              avatar: true,
+              store: {
+                select: {
+                  id: true,
+                  name: true,
+                  phone: true,
+                  logo: true,
+                  rating: true,
+                  isVerified: true,
+                },
+              },
+            },
           },
           store: {
-            select: { id: true, name: true, rating: true },
+            select: { id: true, name: true, phone: true, rating: true, logo: true, isVerified: true },
           },
           _count: {
             select: { reviews: true },
@@ -365,6 +380,23 @@ const getSalesmanProducts = async (req, res) => {
   }
 };
 
+// Upload product images
+const uploadProductImages = async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: 'No images uploaded' });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const urls = req.files.map(file => `${baseUrl}/uploads/${file.filename}`);
+
+    return res.json({ success: true, data: { urls } });
+  } catch (error) {
+    console.error('Upload product images error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to upload images' });
+  }
+};
+
 export {
   getProducts,
   getProductById,
@@ -372,4 +404,5 @@ export {
   updateProduct,
   deleteProduct,
   getSalesmanProducts,
+  uploadProductImages,
 };

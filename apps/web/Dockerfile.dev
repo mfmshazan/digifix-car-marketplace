@@ -9,8 +9,8 @@ RUN apk add --no-cache libc6-compat python3 make g++
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies with retry to handle flaky network
+RUN npm install || npm install || npm install
 
 # Copy source code
 COPY . .

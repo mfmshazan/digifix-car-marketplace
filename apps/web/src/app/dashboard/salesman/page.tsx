@@ -32,6 +32,12 @@ import {
   Bell,
   BellOff,
   MessageSquare,
+  Settings,
+  Lock,
+  ChevronRight,
+  ToggleLeft,
+  ToggleRight,
+  Save,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { resolveMediaUrl, ordersApi, productsApi, categoriesApi } from '@/lib/api';
@@ -162,6 +168,42 @@ interface AppNotification {
   total: number;
   time: Date;
   read: boolean;
+}
+
+// Product types
+type ProductStatus = 'IN_STORE' | 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'SOLD' | 'INACTIVE';
+
+interface Product {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  discountPrice?: number;
+  stock: number;
+  images: string[];
+  isActive: boolean;
+  computedStatus: ProductStatus;
+  category?: { id: string; name: string };
+  createdAt: string;
+}
+
+const PRODUCT_STATUS_META: Record<ProductStatus, { label: string; color: string; bg: string }> = {
+  IN_STORE:   { label: 'In Store',   color: 'text-emerald-700', bg: 'bg-emerald-100' },
+  PENDING:    { label: 'Pending',    color: 'text-amber-700',   bg: 'bg-amber-100'   },
+  PROCESSING: { label: 'Processing', color: 'text-blue-700',    bg: 'bg-blue-100'    },
+  SHIPPED:    { label: 'Shipped',    color: 'text-purple-700',  bg: 'bg-purple-100'  },
+  DELIVERED:  { label: 'Delivered',  color: 'text-green-700',   bg: 'bg-green-100'   },
+  SOLD:       { label: 'Sold',       color: 'text-gray-700',    bg: 'bg-gray-200'    },
+  INACTIVE:   { label: 'Inactive',   color: 'text-red-700',     bg: 'bg-red-100'     },
+};
+
+function ProductStatusBadge({ status }: { status: ProductStatus }) {
+  const meta = PRODUCT_STATUS_META[status] ?? PRODUCT_STATUS_META.IN_STORE;
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${meta.bg} ${meta.color}`}>
+      {meta.label}
+    </span>
+  );
 }
 
 
@@ -665,25 +707,154 @@ function SalesHistoryTab() {
   );
 }
 
+// ─── Edit Product Modal ──────────────────────────────────────────────────────
+
+function EditProductModal({ product, onClose, onSaved }: {
+  product: Product;
+  onClose: () => void;
+  onSaved: (updated: Product) => void;
+}) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    name: product.name,
+    description: product.description ?? '',
+    price: String(product.price),
+    stock: String(product.stock),
+    isActive: product.isActive,
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const res = await productsApi.updateProduct(product.id, {
+        ...formData,
+        price: parseFloat(formData.price),
+        stock: parseInt(formData.stock),
+      });
+      if (res.success) onSaved({ ...product, ...res.data });
+      onClose();
+    } catch (err) {
+      console.error('Failed to update product', err);
+      alert('Failed to update product');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-gray-200 p-5 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Edit Product</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors" aria-label="Close">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Product Name</label>
+            <input type="text" required value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] text-sm" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
+            <textarea value={formData.description}
+              onChange={e => setFormData({ ...formData, description: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] h-20 resize-none text-sm" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Price (Rs.)</label>
+              <input type="number" required value={formData.price}
+                onChange={e => setFormData({ ...formData, price: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Stock</label>
+              <input type="number" required value={formData.stock}
+                onChange={e => setFormData({ ...formData, stock: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] text-sm" />
+            </div>
+          </div>
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <div
+              onClick={() => setFormData(f => ({ ...f, isActive: !f.isActive }))}
+              className={`w-10 h-6 rounded-full transition-colors ${formData.isActive ? 'bg-emerald-500' : 'bg-gray-300'} flex items-center px-0.5`}
+            >
+              <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${formData.isActive ? 'translate-x-4' : 'translate-x-0'}`} />
+            </div>
+            <span className="text-sm font-medium text-gray-700">Product is active (visible to customers)</span>
+          </label>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose}
+              className="flex-1 px-4 py-2.5 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl text-sm transition-all">
+              Cancel
+            </button>
+            <button type="submit" disabled={isSubmitting}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50">
+              <Save className="w-4 h-4" />
+              {isSubmitting ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Products Tab ────────────────────────────────────────────────────────────
 
-function ProductsTab() {
-  const [products, setProducts] = useState<any[]>([]);
+function ProductsTab({ refreshTrigger }: { refreshTrigger: number }) {
+  const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [statusMenuId, setStatusMenuId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await productsApi.getSalesmanProducts();
-        if (res.success) setProducts(res.data);
-      } catch (err) {
-        console.error('Failed to load products', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
+  const loadProducts = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await productsApi.getSalesmanProducts();
+      if (res.success) setProducts(res.data.products ?? res.data);
+    } catch (err) {
+      console.error('Failed to load products', err);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => { loadProducts(); }, [loadProducts, refreshTrigger]);
+
+  const handleDelete = async (productId: string) => {
+    if (!confirm('Are you sure you want to delete this product? This cannot be undone.')) return;
+    setDeletingId(productId);
+    try {
+      await productsApi.deleteProduct(productId);
+      setProducts(prev => prev.filter(p => p.id !== productId));
+    } catch (err) {
+      console.error('Failed to delete product', err);
+      alert('Failed to delete product');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleToggleStatus = async (product: Product) => {
+    const newIsActive = !product.isActive;
+    // Optimistic update
+    setProducts(prev => prev.map(p => p.id === product.id ? { ...p, isActive: newIsActive } : p));
+    try {
+      await productsApi.toggleProductStatus(product.id, newIsActive);
+    } catch (err) {
+      // Revert on failure
+      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, isActive: product.isActive } : p));
+      alert('Failed to update status');
+    }
+    setStatusMenuId(null);
+  };
 
   if (isLoading) {
     return (
@@ -696,65 +867,296 @@ function ProductsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {products.length === 0 ? (
-          <div className="col-span-full py-20 text-center text-gray-400">
-            No products found. Add your first product!
+      {products.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <Package className="w-8 h-8 text-gray-400" />
           </div>
-        ) : (
-          products.map(product => {
-            const status = product.computedStatus || 'IN_STORE';
-            const statusLabel = status === 'IN_STORE' ? 'In Store' : (STATUS_META[status as OrderStatus]?.label || status);
-            const statusBg = status === 'IN_STORE' ? 'bg-emerald-100' : (STATUS_META[status as OrderStatus]?.bg || 'bg-gray-100');
-            const statusColor = status === 'IN_STORE' ? 'text-emerald-700' : (STATUS_META[status as OrderStatus]?.color || 'text-gray-700');
+          <h3 className="text-gray-700 font-semibold text-lg mb-1">No products yet</h3>
+          <p className="text-gray-500 text-sm">Click "Add Product" in the nav bar to list your first item.</p>
+        </div>
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {products.map(product => {
+            const computedStatus = (product.isActive ? (product.computedStatus ?? 'IN_STORE') : 'INACTIVE') as ProductStatus;
+            const imageUrl = product.images?.[0] ? resolveMediaUrl(product.images[0]) : null;
 
             return (
               <div key={product.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
-                <div className="h-48 bg-gray-100 relative">
-                  {product.images?.[0] ? (
-                    <Image src={product.images[0]} alt={product.name} fill className="object-cover" />
+                {/* Image */}
+                <div className="h-44 bg-gray-100 relative shrink-0">
+                  {imageUrl ? (
+                    <Image src={imageUrl} alt={product.name} fill className="object-cover" unoptimized />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Package className="w-10 h-10 text-gray-300" />
                     </div>
                   )}
-                  <div className="absolute top-3 right-3">
-                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase shadow-sm ${product.stock > 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-                      }`}>
+                  {/* Stock badge */}
+                  <div className="absolute top-2.5 right-2.5">
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase shadow-sm ${product.stock > 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
                       {product.stock > 0 ? `Stock: ${product.stock}` : 'Out of Stock'}
                     </span>
                   </div>
                 </div>
-                <div className="p-4 flex-1 flex flex-col">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-bold text-gray-900 text-sm line-clamp-1 flex-1">{product.name}</h3>
-                    <span className="text-sm font-bold text-[#00002E] ml-2">{formatRs(product.price)}</span>
-                  </div>
-                  <p className="text-xs text-gray-500 line-clamp-2 mb-4">{product.description}</p>
 
-                  <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-50">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Status</span>
-                      <span className={`text-xs font-semibold ${statusColor}`}>{statusLabel}</span>
-                    </div>
-                    <div className="flex gap-1">
-                      <button className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#00002E] transition-colors">
-                        <Edit className="w-4 h-4" />
+                {/* Body */}
+                <div className="p-4 flex-1 flex flex-col gap-3">
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-sm leading-snug line-clamp-2">{product.name}</h3>
+                    {product.description && (
+                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{product.description}</p>
+                    )}
+                  </div>
+
+                  {/* Price + Status */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-bold text-[#00002E]">{formatRs(product.price)}</span>
+                    <ProductStatusBadge status={computedStatus} />
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-1.5 pt-1 border-t border-gray-50">
+                    {/* Edit */}
+                    <button
+                      onClick={() => setEditingProduct(product)}
+                      title="Edit Product"
+                      className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-semibold text-gray-600 hover:text-[#00002E] hover:bg-gray-50 rounded-lg transition-colors border border-gray-200"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      Edit
+                    </button>
+
+                    {/* Change Status (Active/Inactive toggle) */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setStatusMenuId(prev => prev === product.id ? null : product.id)}
+                        title="Change Status"
+                        className="flex items-center justify-center gap-1 px-2 py-2 text-xs font-semibold text-gray-600 hover:text-[#00002E] hover:bg-gray-50 rounded-lg transition-colors border border-gray-200"
+                      >
+                        <ToggleLeft className="w-3.5 h-3.5" />
+                        <ChevronDown className="w-3 h-3" />
                       </button>
-                      <button className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-red-500 transition-colors">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {statusMenuId === product.id && (
+                        <div className="absolute bottom-full mb-1 right-0 z-20 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[160px]">
+                          <div className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Change Status</div>
+                          <button
+                            onClick={() => handleToggleStatus(product)}
+                            className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${product.isActive ? 'text-red-600' : 'text-emerald-700'}`}
+                          >
+                            {product.isActive ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
+                            {product.isActive ? 'Set as Inactive' : 'Set as Active'}
+                          </button>
+                        </div>
+                      )}
                     </div>
+
+                    {/* Delete */}
+                    <button
+                      onClick={() => handleDelete(product.id)}
+                      disabled={deletingId === product.id}
+                      title="Delete Product"
+                      className="flex items-center justify-center p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-gray-200"
+                    >
+                      {deletingId === product.id
+                        ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        : <Trash2 className="w-3.5 h-3.5" />}
+                    </button>
                   </div>
                 </div>
               </div>
             );
-          })
+          })}
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editingProduct && (
+        <EditProductModal
+          product={editingProduct}
+          onClose={() => setEditingProduct(null)}
+          onSaved={(updated) => {
+            setProducts(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p));
+            setEditingProduct(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Store Settings Modal ────────────────────────────────────────────────────
+
+function StoreSettingsModal({ user, onClose, onSaved }: { user: any; onClose: () => void; onSaved: () => void }) {
+  const { refreshProfile } = useAuthStore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    name: user.name ?? '',
+    phone: user.phone ?? '',
+    storeName: user.store?.name ?? '',
+    storePhone: user.store?.phone ?? '',
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const { authApi } = await import('@/lib/api');
+      await authApi.updateProfile({ name: formData.name, phone: formData.phone || null });
+      await refreshProfile();
+      onSaved();
+      onClose();
+    } catch (err) {
+      console.error('Failed to update settings', err);
+      alert('Failed to save settings');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-[#00002E]/10 rounded-xl flex items-center justify-center">
+              <Settings className="w-4.5 h-4.5 text-[#00002E]" />
+            </div>
+            <h2 className="text-lg font-bold text-gray-900">Store Settings</h2>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full" aria-label="Close">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Your Name</label>
+            <input type="text" value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] text-sm" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Contact Phone</label>
+            <input type="tel" value={formData.phone}
+              onChange={e => setFormData({ ...formData, phone: e.target.value })}
+              placeholder="+94 77 123 4567"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] text-sm" />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose}
+              className="flex-1 px-4 py-2.5 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl text-sm transition-all">
+              Cancel
+            </button>
+            <button type="submit" disabled={isSubmitting}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50">
+              <Save className="w-4 h-4" />
+              {isSubmitting ? 'Saving…' : 'Save Settings'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Account Security Modal ─────────────────────────────────────────────────
+
+function AccountSecurityModal({ onClose }: { onClose: () => void }) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (formData.newPassword !== formData.confirmPassword) {
+      setError('New passwords do not match');
+      return;
+    }
+    if (formData.newPassword.length < 8) {
+      setError('New password must be at least 8 characters');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const api = (await import('@/lib/api')).default;
+      await api.put('/auth/change-password', {
+        currentPassword: formData.currentPassword,
+        newPassword: formData.newPassword,
+      });
+      setSuccess(true);
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'Failed to update password');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-[#00002E]/10 rounded-xl flex items-center justify-center">
+              <Lock className="w-4.5 h-4.5 text-[#00002E]" />
+            </div>
+            <h2 className="text-lg font-bold text-gray-900">Account Security</h2>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full" aria-label="Close">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+        {success ? (
+          <div className="p-8 text-center">
+            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 className="w-7 h-7 text-green-600" />
+            </div>
+            <h3 className="font-bold text-gray-900 mb-1">Password Updated</h3>
+            <p className="text-sm text-gray-500 mb-5">Your password has been changed successfully.</p>
+            <button onClick={onClose} className="px-6 py-2.5 bg-[#00002E] text-white font-semibold rounded-xl text-sm">
+              Done
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            {error && <p className="text-sm text-red-600 bg-red-50 px-4 py-2.5 rounded-xl">{error}</p>}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Current Password</label>
+              <input type="password" required value={formData.currentPassword}
+                onChange={e => setFormData({ ...formData, currentPassword: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">New Password</label>
+              <input type="password" required value={formData.newPassword}
+                onChange={e => setFormData({ ...formData, newPassword: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirm New Password</label>
+              <input type="password" required value={formData.confirmPassword}
+                onChange={e => setFormData({ ...formData, confirmPassword: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] text-sm" />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={onClose}
+                className="flex-1 px-4 py-2.5 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl text-sm transition-all">
+                Cancel
+              </button>
+              <button type="submit" disabled={isSubmitting}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50">
+                <Lock className="w-4 h-4" />
+                {isSubmitting ? 'Updating…' : 'Update Password'}
+              </button>
+            </div>
+          </form>
         )}
       </div>
     </div>
   );
-
 }
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
@@ -767,6 +1169,12 @@ export default function SalesmanDashboard() {
 
   const [activeTab, setActiveTab] = useState<Tab>('orders');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [productRefreshTrigger, setProductRefreshTrigger] = useState(0);
+
+  // Store profile / account modals
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showStoreSettings, setShowStoreSettings] = useState(false);
+  const [showAccountSecurity, setShowAccountSecurity] = useState(false);
 
   // App Notifications (in-app messages)
   const [appNotifs, setAppNotifs] = useState<AppNotification[]>([]);
@@ -855,37 +1263,89 @@ export default function SalesmanDashboard() {
       <nav className="sticky top-0 z-30 bg-[#00002E] shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
-            {/* Brand */}
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
-                {avatarUrl ? (
-                  <Image
-                    src={avatarUrl}
-                    alt={user.name || ''}
-                    width={48}
-                    height={48}
-                    className="rounded-xl object-cover"
-                    unoptimized
-                  />
-                ) : (
-                  <Store className="w-6 h-6 text-white" />
-                )}
-              </div>
-              <div>
-                <p className="text-white font-bold leading-tight text-lg">{user.store?.name ?? `${user.name}'s Store`}</p>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-white/50 text-xs">
-                  <span>Salesman Dashboard</span>
-                  {user.phone && (
-                    <span className="hidden sm:inline">·</span>
-                  )}
-                  {user.phone && (
-                    <span className="flex items-center gap-1 text-white/70 font-medium">
-                      <Phone className="w-3 h-3" />
-                      {user.phone}
-                    </span>
+            {/* Brand — clickable profile menu */}
+            <div className="relative flex items-center gap-4">
+              <button
+                onClick={() => setShowProfileMenu(v => !v)}
+                className="flex items-center gap-3 group"
+                aria-label="Store profile menu"
+              >
+                <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center border border-white/20 group-hover:border-white/40 transition-colors">
+                  {avatarUrl ? (
+                    <Image
+                      src={avatarUrl}
+                      alt={user.name || ''}
+                      width={48}
+                      height={48}
+                      className="rounded-xl object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <Store className="w-6 h-6 text-white" />
                   )}
                 </div>
-              </div>
+                <div className="text-left">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-white font-bold leading-tight text-lg group-hover:text-white/90 transition-colors">
+                      {user.store?.name ?? `${user.name}'s Store`}
+                    </p>
+                    <ChevronDown className={`w-4 h-4 text-white/60 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} />
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-white/50 text-xs">
+                    <span>Salesman Dashboard</span>
+                    {user.phone && <span className="hidden sm:inline">·</span>}
+                    {user.phone && (
+                      <span className="flex items-center gap-1 text-white/70 font-medium">
+                        <Phone className="w-3 h-3" />
+                        {user.phone}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </button>
+
+              {/* Profile Dropdown */}
+              {showProfileMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowProfileMenu(false)} />
+                  <div className="absolute top-full left-0 mt-3 z-50 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 py-1.5 overflow-hidden">
+                    <button
+                      onClick={() => { setShowProfileMenu(false); setShowStoreSettings(true); }}
+                      className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-[#00002E]/8 rounded-lg flex items-center justify-center">
+                          <Settings className="w-4 h-4 text-[#00002E]" />
+                        </div>
+                        <span className="font-medium">Store Settings</span>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+                    </button>
+                    <button
+                      onClick={() => { setShowProfileMenu(false); setShowAccountSecurity(true); }}
+                      className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-[#00002E]/8 rounded-lg flex items-center justify-center">
+                          <Lock className="w-4 h-4 text-[#00002E]" />
+                        </div>
+                        <span className="font-medium">Account Security</span>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+                    </button>
+                    <div className="my-1 border-t border-gray-100" />
+                    <button
+                      onClick={() => { setShowProfileMenu(false); handleLogout(); }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center">
+                        <LogOut className="w-4 h-4 text-red-500" />
+                      </div>
+                      <span className="font-medium">Logout</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Tabs (Desktop) */}
@@ -1085,24 +1545,47 @@ export default function SalesmanDashboard() {
         {/* Greeting */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">
-            {activeTab === 'orders' ? '📦 Current Orders' : '📊 Sales History'}
+            {activeTab === 'orders' ? '📦 Current Orders' : activeTab === 'products' ? '🛍️ My Products' : '📊 Sales History'}
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">
             {activeTab === 'orders'
               ? 'Manage and update orders placed by your customers.'
+              : activeTab === 'products'
+              ? 'Manage your listed products — edit, set status, or remove them.'
               : 'Track your revenue, completed orders, and top products.'}
           </p>
-
         </div>
 
         {activeTab === 'orders' && <CurrentOrdersTab userId={user.id} />}
-        {activeTab === 'products' && <ProductsTab />}
+        {activeTab === 'products' && <ProductsTab refreshTrigger={productRefreshTrigger} />}
         {activeTab === 'history' && <SalesHistoryTab />}
 
       </main>
 
       {/* Add Product Modal */}
-      {showAddModal && <AddProductModal onClose={() => setShowAddModal(false)} />}
+      {showAddModal && (
+        <AddProductModal
+          onClose={() => setShowAddModal(false)}
+          onProductAdded={() => {
+            setProductRefreshTrigger(t => t + 1);
+            setActiveTab('products');
+          }}
+        />
+      )}
+
+      {/* Store Settings Modal */}
+      {showStoreSettings && (
+        <StoreSettingsModal
+          user={user}
+          onClose={() => setShowStoreSettings(false)}
+          onSaved={() => setShowStoreSettings(false)}
+        />
+      )}
+
+      {/* Account Security Modal */}
+      {showAccountSecurity && (
+        <AccountSecurityModal onClose={() => setShowAccountSecurity(false)} />
+      )}
       
       {/* Toast Notification */}
       {toastNotif && (
@@ -1145,12 +1628,13 @@ export default function SalesmanDashboard() {
   );
 }
 
-// ─── Add Product Modal (unchanged) ──────────────────────────────────────────
+// ─── Add Product Modal ──────────────────────────────────────────────────────
 
-function AddProductModal({ onClose }: { onClose: () => void }) {
+function AddProductModal({ onClose, onProductAdded }: { onClose: () => void; onProductAdded: () => void }) {
   const [categories, setCategories] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<string[]>([]); // blob preview URLs
+  const [imageFiles, setImageFiles] = useState<File[]>([]); // actual File objects
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -1174,16 +1658,20 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-
     const files = e.target.files;
     if (files) {
-      const newImages = Array.from(files).map(file => URL.createObjectURL(file));
-      setImages(prev => [...prev, ...newImages].slice(0, 5));
+      const newFiles = Array.from(files);
+      const available = 5 - images.length;
+      const toAdd = newFiles.slice(0, available);
+      const newPreviews = toAdd.map(file => URL.createObjectURL(file));
+      setImages(prev => [...prev, ...newPreviews]);
+      setImageFiles(prev => [...prev, ...toAdd]);
     }
   };
 
   const removeImage = (index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index));
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1191,17 +1679,22 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     // Category is now optional
     setIsSubmitting(true);
     try {
-      // In a real app, you'd upload images first and get URLs.
-      // For now, we'll send the dummy local URLs if any, or empty array.
+      // Upload images first if any were selected
+      let imageUrls: string[] = [];
+      if (imageFiles.length > 0) {
+        const uploadRes = await productsApi.uploadProductImages(imageFiles);
+        if (uploadRes.success) {
+          imageUrls = uploadRes.data.urls;
+        }
+      }
       await productsApi.createProduct({
         ...formData,
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock),
-        images: [], // Assuming backend handles image upload separately or we use placeholders
+        images: imageUrls,
       });
-      alert('Product added successfully!');
+      onProductAdded();
       onClose();
-      window.location.reload(); // Quick refresh to show new product
     } catch (err) {
       console.error('Failed to add product', err);
       alert('Failed to add product');

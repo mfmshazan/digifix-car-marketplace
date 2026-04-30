@@ -34,6 +34,15 @@ export default function CustomerTabLayout() {
           height: 60,
           paddingBottom: 8,
           paddingTop: 8,
+          width: "100%",
+          flexDirection: "row",
+          justifyContent: "space-evenly",
+          alignItems: "center",
+        },
+        tabBarItemStyle: {
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
         },
         tabBarLabelStyle: {
           fontSize: 12,
@@ -92,6 +101,22 @@ export default function CustomerTabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="category-results"
+        options={{
+          title: "Category",
+          tabBarButton: () => null,
+          tabBarStyle: { display: "none" },
+        }}
+      />
+      <Tabs.Screen
+        name="product-detail"
+        options={{
+          title: "Details",
+          tabBarButton: () => null,
+          tabBarStyle: { display: "none" },
         }}
       />
     </Tabs>

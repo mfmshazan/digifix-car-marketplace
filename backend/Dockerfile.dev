@@ -8,7 +8,9 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 RUN apk add --no-cache python3 make g++
-RUN npm install
+
+# Install dependencies with retry to handle flaky network
+RUN npm install || npm install || npm install
 
 # Generate Prisma Client
 RUN npx prisma generate

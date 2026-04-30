@@ -104,14 +104,54 @@ export interface Category {
 // API Functions
 export const productsApi = {
   // Get salesman's own products
-  getSalesmanProducts: async () => {
-    const response = await api.get('/products/salesman/my-products');
+  getSalesmanProducts: async (params?: { page?: number; limit?: number }) => {
+    const response = await api.get('/products/salesman/my-products', { params });
+    return response.data;
+  },
+
+  // Get all public products (for customers)
+  getAll: async (params?: { page?: number; limit?: number; category?: string; search?: string; minPrice?: number; maxPrice?: number }) => {
+    const response = await api.get('/products', { params });
     return response.data;
   },
 
   // Create a new product
   createProduct: async (data: any) => {
     const response = await api.post('/products', data);
+    return response.data;
+  },
+
+  // Upload product images, returns array of hosted URLs
+  uploadProductImages: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach(file => formData.append('images', file));
+    const response = await api.post('/products/upload-images', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data as { success: boolean; data: { urls: string[] } };
+  },
+
+  // Update a product
+  updateProduct: async (id: string, data: any) => {
+    const response = await api.put(`/products/${id}`, data);
+    return response.data;
+  },
+
+  // Delete a product
+  deleteProduct: async (id: string) => {
+    const response = await api.delete(`/products/${id}`);
+    return response.data;
+  },
+
+  // Toggle product active status
+  toggleProductStatus: async (id: string, isActive: boolean) => {
+    const response = await api.put(`/products/${id}`, { isActive });
+    return response.data;
+  },
+
+  // Update store info
+  updateStore: async (data: { name?: string; phone?: string; description?: string }) => {
+    const response = await api.put('/users/store', data);
     return response.data;
   },
 };

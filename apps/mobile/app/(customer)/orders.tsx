@@ -13,8 +13,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import MapView, { Marker } from "react-native-maps";
 import { getCustomerOrders, Order } from "../../src/api/orders";
+import OrderTrackingMap from "../../src/components/OrderTrackingMap";
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
 
@@ -411,25 +411,11 @@ export default function OrdersScreen() {
             <View style={{ width: 28 }} />
           </View>
           
-          <MapView
+          <OrderTrackingMap
             style={styles.map}
-            initialRegion={{
-              latitude: 6.9271, // Colombo default
-              longitude: 79.8612,
-              latitudeDelta: 0.0922,
-              longitudeDelta: 0.0421,
-            }}
-          >
-            <Marker
-              coordinate={{ latitude: 6.9271, longitude: 79.8612 }}
-              title="Rider Location"
-              description="Your rider is here"
-            >
-              <View style={styles.markerContainer}>
-                <Ionicons name="bicycle" size={24} color="#FFF" />
-              </View>
-            </Marker>
-          </MapView>
+            latitude={6.9271}
+            longitude={79.8612}
+          />
           
           <View style={styles.trackingInfoCard}>
             <View style={styles.trackingInfoHeader}>
@@ -647,13 +633,6 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
-  },
-  markerContainer: {
-    backgroundColor: "#FF6B35",
-    padding: 8,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "#FFF",
   },
   trackingInfoCard: {
     position: "absolute",

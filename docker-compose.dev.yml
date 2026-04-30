@@ -13,6 +13,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
+      network: host
     container_name: digifix-backend
     restart: unless-stopped
     environment:
@@ -46,11 +47,13 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile.dev
+      network: host
     container_name: digifix-web
     restart: unless-stopped
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-3000}/api
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
       # Enable polling for hot-reload on Windows
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"

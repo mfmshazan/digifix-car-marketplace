@@ -3,6 +3,9 @@
   "compilerOptions": {
     "strict": true,
     "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "module": "ESNext",
+    "forceConsistentCasingInFileNames": true,
     "paths": {
       "@/*": [
         "./*"

@@ -50,8 +50,6 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "extra": {
-      "oneSignalAppId": "YOUR_ONESIGNAL_APP_ID_HERE"
-    }
+    "extra": {}
   }
 }

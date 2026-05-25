@@ -102,6 +102,13 @@ export interface Category {
 }
 
 // API Functions
+export const commonApi = {
+  getStats: async () => {
+    const response = await api.get('/stats');
+    return response.data;
+  },
+};
+
 export const carPartsApi = {
   // Get all car parts
   getAll: async (params?: { limit?: number; page?: number; categoryId?: string; condition?: string }) => {

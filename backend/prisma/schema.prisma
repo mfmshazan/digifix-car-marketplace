@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,103 +8,85 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// Enum for user roles
-enum UserRole {
-  CUSTOMER
-  SALESMAN
-}
-
-// Enum for authentication provider
-enum AuthProvider {
-  EMAIL
-  GOOGLE
-}
-
-// User model
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
-  password     String? // Nullable for Google auth users
-  name         String?
-  phone        String?
-  avatar       String?
-  role         UserRole     @default(CUSTOMER)
-  authProvider AuthProvider @default(EMAIL)
-  googleId     String?      @unique
-  isVerified   Boolean      @default(false)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id              String         @id @default(cuid())
+  email           String         @unique
+  password        String?
+  name            String?
+  phone           String?
+  avatar          String?
+  role            UserRole       @default(CUSTOMER)
+  authProvider    AuthProvider   @default(EMAIL)
+  googleId        String?        @unique
+  isVerified      Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  status          UserStatus     @default(ACTIVE)
+  stripeAccountId String?        @unique
+  
+  // Delivery Partner specific fields
+  vehicleType      String?
+  vehicleNumber    String?
+  deliveryStatus   String?        @default("offline")
+  total_deliveries Int            @default(0)
+  rating           Float          @default(5.0)
 
-  // Relations
-  addresses Address[]
-  orders    Order[]        @relation("CustomerOrders")
-  cart      CartItem[]
-  wishlist  WishlistItem[]
-  reviews   Review[]
-
-  // Salesman specific relations
-  products    Product[] @relation("SalesmanProducts")
-  salesOrders Order[]   @relation("SalesmanOrders")
-  store       Store?
-  carParts    CarPart[] @relation("SellerCarParts")
+  addresses       Address[]
+  carParts        CarPart[]      @relation("SellerCarParts")
+  cart            CartItem[]
+  orders          Order[]        @relation("CustomerOrders")
+  salesOrders     Order[]        @relation("SalesmanOrders")
+  products        Product[]      @relation("SalesmanProducts")
+  reviews         Review[]
+  store           Store?
+  wishlist        WishlistItem[]
 
   @@index([email])
   @@index([role])
 }
 
-// Store model for salesmen
 model Store {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
   description String?
   logo        String?
   banner      String?
   address     String?
   phone       String?
-  rating      Float    @default(0)
-  isVerified  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  ownerId  String    @unique
-  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  products Product[]
+  rating      Float     @default(0)
+  isVerified  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  ownerId     String    @unique
+  products    Product[]
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
 }
 
-// Product model
 model Product {
-  id            String   @id @default(cuid())
-  name          String
-  description   String?
-  price         Float
-  discountPrice Float?
-  sku           String?  @unique
-  stock         Int      @default(0)
-  images        String[]
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Relations
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id])
-
-  salesmanId String
-  salesman   User   @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
-
-  storeId String?
-  store   Store?  @relation(fields: [storeId], references: [id])
-
-  cartItems     CartItem[]
-  wishlistItems WishlistItem[]
-  orderItems    OrderItem[]
-  reviews       Review[]
-
-  // Vehicle compatibility
+  id                 String                 @id @default(cuid())
+  name               String
+  description        String?
+  price              Float
+  discountPrice      Float?
+  sku                String?                @unique
+  stock              Int                    @default(0)
+  images             String[]
+  isActive           Boolean                @default(true)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  categoryId         String?
+  salesmanId         String
+  storeId            String?
+  cartItems          CartItem[]
+  orderItems         OrderItem[]
+  category           Category?              @relation(fields: [categoryId], references: [id])
+  salesman           User                   @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
+  store              Store?                 @relation(fields: [storeId], references: [id])
+  reviews            Review[]
   compatibleVehicles VehicleCompatibility[]
+  wishlistItems      WishlistItem[]
 
   @@index([categoryId])
   @@index([salesmanId])
@@ -115,7 +94,6 @@ model Product {
   @@index([name])
 }
 
-// Category model
 model Category {
   id          String     @id @default(cuid())
   name        String     @unique
@@ -123,27 +101,23 @@ model Category {
   icon        String?
   image       String?
   parentId    String?
-  parent      Category?  @relation("CategoryChildren", fields: [parentId], references: [id])
-  children    Category[] @relation("CategoryChildren")
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
-
-  // Relations
-  products Product[]
-  carParts CarPart[]
+  carParts    CarPart[]
+  parent      Category?  @relation("CategoryChildren", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryChildren")
+  products    Product[]
 
   @@index([parentId])
 }
 
-// Vehicle compatibility for parts
 model VehicleCompatibility {
   id        String  @id @default(cuid())
-  make      String // e.g., Toyota, Honda
-  model     String // e.g., Camry, Civic
-  yearStart Int // Starting year
-  yearEnd   Int? // Ending year (null means current)
-  engine    String? // Engine type if specific
-
+  make      String
+  model     String
+  yearStart Int
+  yearEnd   Int?
+  engine    String?
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
@@ -151,10 +125,9 @@ model VehicleCompatibility {
   @@index([productId])
 }
 
-// Address model
 model Address {
   id         String   @id @default(cuid())
-  label      String? // e.g., "Home", "Office"
+  label      String?
   street     String
   city       String
   state      String
@@ -163,100 +136,71 @@ model Address {
   isDefault  Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-
-  // Relations
-  userId String
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders Order[]
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders     Order[]
 
   @@index([userId])
 }
 
-// Cart item model
 model CartItem {
   id        String   @id @default(cuid())
   quantity  Int      @default(1)
-  itemType  String   @default("PRODUCT") // PRODUCT or CAR_PART
+  itemType  String   @default("PRODUCT")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // Relations
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // Can reference either Product or CarPart
   productId String?
-  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
-
   carPartId String?
   carPart   CarPart? @relation(fields: [carPartId], references: [id], onDelete: Cascade)
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
   @@unique([userId, carPartId])
   @@index([userId])
 }
 
-// Wishlist item model
 model WishlistItem {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
-
-  // Relations
   userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String?
+  carPartId String?
+  itemType  String   @default("PRODUCT")
+  CarPart   CarPart? @relation(fields: [carPartId], references: [id], onDelete: Cascade)
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
+  @@unique([userId, carPartId])
   @@index([userId])
 }
 
-// Order status enum
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PROCESSING
-  SHIPPED
-  DELIVERED
-  CANCELLED
-  REFUNDED
-}
-
-// Payment status enum
-enum PaymentStatus {
-  PENDING
-  PAID
-  FAILED
-  REFUNDED
-}
-
-// Order model - represents a customer order for items from a single seller
 model Order {
-  id            String        @id @default(cuid())
-  orderNumber   String        @unique @default(cuid())
-  status        OrderStatus   @default(PENDING)
-  paymentStatus PaymentStatus @default(PENDING)
-  paymentMethod String?
-  subtotal      Float
-  deliveryFee   Float         @default(0)
-  discount      Float         @default(0)
-  total         Float
-  notes         String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-
-  // Relations
-  customerId String
-  customer   User   @relation("CustomerOrders", fields: [customerId], references: [id])
-
-  salesmanId String
-  salesman   User   @relation("SalesmanOrders", fields: [salesmanId], references: [id])
-
-  addressId String?
-  address   Address? @relation(fields: [addressId], references: [id])
-
-  items    OrderItem[]
-  tracking OrderTracking[]
+  id                  String                @id @default(cuid())
+  orderNumber         String                @unique @default(cuid())
+  status              OrderStatus           @default(PENDING)
+  paymentStatus       PaymentStatus         @default(PENDING)
+  paymentMethod       String?
+  subtotal            Float
+  deliveryFee         Float                 @default(0)
+  discount            Float                 @default(0)
+  total               Float
+  notes               String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  customerId          String
+  salesmanId          String
+  addressId           String?
+  cancellationReason  String?
+  serviceCharge       Float                 @default(0)
+  address             Address?              @relation(fields: [addressId], references: [id])
+  customer            User                  @relation("CustomerOrders", fields: [customerId], references: [id])
+  salesman            User                  @relation("SalesmanOrders", fields: [salesmanId], references: [id])
+  items               OrderItem[]
+  tracking            OrderTracking[]
+  rider_delivery_jobs rider_delivery_jobs[]
 
   @@index([customerId])
   @@index([salesmanId])
@@ -264,126 +208,99 @@ model Order {
   @@index([orderNumber])
 }
 
-// Order item model
 model OrderItem {
   id        String   @id @default(cuid())
   quantity  Int
-  price     Float // Price at time of order
+  price     Float
   total     Float
-  itemName  String? // Store item name at time of order
-  itemType  String   @default("PRODUCT") // PRODUCT or CAR_PART
+  itemName  String?
+  itemType  String   @default("PRODUCT")
   createdAt DateTime @default(now())
-
-  // Relations
-  orderId String
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  // Can reference either Product or CarPart
+  orderId   String
   productId String?
-  product   Product? @relation(fields: [productId], references: [id])
-
   carPartId String?
   carPart   CarPart? @relation(fields: [carPartId], references: [id])
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product? @relation(fields: [productId], references: [id])
 
   @@index([orderId])
   @@index([productId])
   @@index([carPartId])
 }
 
-// Order tracking model
 model OrderTracking {
   id          String      @id @default(cuid())
   status      OrderStatus
   description String?
   location    String?
   createdAt   DateTime    @default(now())
-
-  // Relations
-  orderId String
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId     String
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
 }
 
-// Review model
 model Review {
   id         String   @id @default(cuid())
-  rating     Int // 1-5
+  rating     Int
   title      String?
   comment    String?
   images     String[]
-  isVerified Boolean  @default(false) // Verified purchase
+  isVerified Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-
-  // Relations
-  userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId     String
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
   @@index([productId])
   @@index([rating])
 }
 
-// ================================
-// Car and Car Parts Models
-// ================================
-
-// Car model - represents a vehicle by number plate
 model Car {
-  id          String   @id @default(cuid())
-  numberPlate String   @unique // e.g., "CAB-1234", "WP-AB-5678"
-  make        String // e.g., Toyota, Honda, Nissan
-  model       String // e.g., Corolla, Civic, Sunny
-  year        Int // e.g., 2020
-  engineType  String? // e.g., "1.8L Petrol", "2.0L Diesel"
+  id          String    @id @default(cuid())
+  numberPlate String    @unique
+  make        String
+  model       String
+  year        Int
+  engineType  String?
   color       String?
-  vinNumber   String?  @unique // Vehicle Identification Number
+  vinNumber   String?   @unique
   description String?
-  images      String[] // Car images
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  parts CarPart[]
+  images      String[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  parts       CarPart[]
 
   @@index([numberPlate])
   @@index([make, model])
   @@index([year])
 }
 
-// Car Part model - parts available for specific cars
 model CarPart {
-  id            String   @id @default(cuid())
-  name          String // e.g., "Front Brake Pad Set"
+  id            String         @id @default(cuid())
+  name          String
   description   String?
-  partNumber    String? // Manufacturer part number
+  partNumber    String?
   price         Float
   discountPrice Float?
-  stock         Int      @default(0)
-  condition     String   @default("NEW") // NEW, USED, REFURBISHED
+  stock         Int            @default(0)
+  condition     String         @default("NEW")
   images        String[]
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Relations
-  carId String
-  car   Car    @relation(fields: [carId], references: [id], onDelete: Cascade)
-
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id])
-
-  sellerId String
-  seller   User   @relation("SellerCarParts", fields: [sellerId], references: [id], onDelete: Cascade)
-
-  // Cart items containing this car part
-  cartItems  CartItem[]
-
-  // Order items containing this car part
-  orderItems OrderItem[]
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  carId         String
+  categoryId    String
+  sellerId      String
+  car           Car            @relation(fields: [carId], references: [id], onDelete: Cascade)
+  category      Category       @relation(fields: [categoryId], references: [id])
+  seller        User           @relation("SellerCarParts", fields: [sellerId], references: [id], onDelete: Cascade)
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  WishlistItem  WishlistItem[]
 
   @@index([carId])
   @@index([categoryId])
@@ -392,14 +309,215 @@ model CarPart {
   @@index([partNumber])
 }
 
-// OTP for forgot-password flow
 model PasswordResetOtp {
   id        String   @id @default(cuid())
   email     String
-  otpHash   String   // bcrypt hash of the 6-digit OTP
+  otpHash   String
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
 
   @@index([email])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model rider_delivery_jobs {
+  id                            Int                             @id @default(autoincrement())
+  partner_id                    Int?
+  marketplace_order_id          String?
+  order_number                  String                          @unique @db.VarChar(100)
+  customer_name                 String                          @db.VarChar(255)
+  customer_phone                String                          @db.VarChar(20)
+  pickup_address                String
+  pickup_latitude               Decimal                         @db.Decimal(10, 8)
+  pickup_longitude              Decimal                         @db.Decimal(11, 8)
+  pickup_contact_name           String?                         @db.VarChar(255)
+  pickup_contact_phone          String?                         @db.VarChar(20)
+  dropoff_address               String
+  dropoff_latitude              Decimal                         @db.Decimal(10, 8)
+  dropoff_longitude             Decimal                         @db.Decimal(11, 8)
+  distance_km                   Decimal?                        @db.Decimal(6, 2)
+  payment_amount                Decimal                         @db.Decimal(10, 2)
+  items_description             String?
+  special_instructions          String?
+  status                        String                          @default("pending") @db.VarChar(30)
+  created_at                    DateTime                        @default(now())
+  assigned_at                   DateTime?
+  accepted_at                   DateTime?
+  arrived_at_pickup_at          DateTime?
+  picked_up_at                  DateTime?
+  arrived_at_dropoff_at         DateTime?
+  delivered_at                  DateTime?
+  failed_at                     DateTime?
+  updated_at                    DateTime                        @default(now())
+  package_notes                 String?
+  package_type                  String?                         @db.VarChar(80)
+  package_weight                Decimal?                        @db.Decimal(8, 2)
+  payment_type                  String                          @default("PREPAID") @db.VarChar(30)
+  Order                         Order?                          @relation(fields: [marketplace_order_id], references: [id])
+  rider_delivery_partners       rider_delivery_partners?        @relation(fields: [partner_id], references: [id])
+  rider_delivery_request_offers rider_delivery_request_offers[]
+  rider_job_status_logs         rider_job_status_logs[]
+  rider_job_tracking            rider_job_tracking[]
+  rider_proof_of_delivery       rider_proof_of_delivery?
+
+  @@index([marketplace_order_id], map: "idx_rider_jobs_marketplace_order")
+  @@index([order_number], map: "idx_rider_jobs_order_number")
+  @@index([partner_id], map: "idx_rider_jobs_partner")
+  @@index([pickup_latitude, pickup_longitude], map: "idx_rider_jobs_pickup_location")
+  @@index([status], map: "idx_rider_jobs_status")
+}
+
+model rider_delivery_partners {
+  id                            Int                             @id @default(autoincrement())
+  email                         String                          @unique @db.VarChar(255)
+  password_hash                 String                          @db.VarChar(255)
+  full_name                     String                          @db.VarChar(255)
+  phone                         String                          @db.VarChar(20)
+  vehicle_type                  String?                         @db.VarChar(50)
+  vehicle_number                String?                         @db.VarChar(50)
+  profile_photo_url             String?
+  bio                           String?
+  address                       String?
+  emergency_contact_name        String?                         @db.VarChar(255)
+  emergency_contact_phone       String?                         @db.VarChar(20)
+  push_token                    String?
+  push_platform                 String?                         @db.VarChar(20)
+  push_token_updated_at         DateTime?
+  status                        String                          @default("offline") @db.VarChar(20)
+  current_latitude              Decimal?                        @db.Decimal(10, 8)
+  current_longitude             Decimal?                        @db.Decimal(11, 8)
+  rating                        Decimal                         @default(0.00) @db.Decimal(3, 2)
+  total_deliveries              Int                             @default(0)
+  created_at                    DateTime                        @default(now())
+  updated_at                    DateTime                        @default(now())
+  rider_delivery_jobs           rider_delivery_jobs[]
+  rider_delivery_request_offers rider_delivery_request_offers[]
+  rider_job_status_logs         rider_job_status_logs[]
+  rider_job_tracking            rider_job_tracking[]
+  rider_proof_of_delivery       rider_proof_of_delivery[]
+  rider_refresh_tokens          rider_refresh_tokens[]
+
+  @@index([email], map: "idx_rider_partners_email")
+  @@index([status], map: "idx_rider_partners_status")
+}
+
+model rider_delivery_request_offers {
+  id                      Int                     @id @default(autoincrement())
+  job_id                  Int
+  partner_id              Int
+  offer_status            String                  @db.VarChar(20)
+  distance_to_pickup_km   Decimal?                @db.Decimal(8, 3)
+  offered_at              DateTime                @default(now())
+  expires_at              DateTime
+  responded_at            DateTime?
+  response_reason         String?
+  rider_delivery_jobs     rider_delivery_jobs     @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  rider_delivery_partners rider_delivery_partners @relation(fields: [partner_id], references: [id], onDelete: Cascade)
+
+  @@index([job_id], map: "idx_rider_dispatch_offers_job_id")
+  @@index([partner_id], map: "idx_rider_dispatch_offers_partner_id")
+  @@index([offer_status, expires_at], map: "idx_rider_dispatch_offers_status")
+}
+
+model rider_job_status_logs {
+  id                      Int                      @id @default(autoincrement())
+  job_id                  Int
+  partner_id              Int?
+  status                  String                   @db.VarChar(30)
+  reason                  String?
+  latitude                Decimal?                 @db.Decimal(10, 8)
+  longitude               Decimal?                 @db.Decimal(11, 8)
+  created_at              DateTime                 @default(now())
+  rider_delivery_jobs     rider_delivery_jobs      @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  rider_delivery_partners rider_delivery_partners? @relation(fields: [partner_id], references: [id])
+}
+
+model rider_job_tracking {
+  id                      Int                     @id @default(autoincrement())
+  job_id                  Int
+  partner_id              Int
+  latitude                Decimal                 @db.Decimal(10, 8)
+  longitude               Decimal                 @db.Decimal(11, 8)
+  accuracy                Decimal?                @db.Decimal(6, 2)
+  speed                   Decimal?                @db.Decimal(6, 2)
+  heading                 Decimal?                @db.Decimal(5, 2)
+  recorded_at             DateTime                @default(now())
+  rider_delivery_jobs     rider_delivery_jobs     @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  rider_delivery_partners rider_delivery_partners @relation(fields: [partner_id], references: [id], onDelete: Cascade)
+
+  @@index([job_id], map: "idx_rider_tracking_job")
+  @@index([recorded_at], map: "idx_rider_tracking_recorded_at")
+}
+
+model rider_proof_of_delivery {
+  id                      Int                     @id @default(autoincrement())
+  job_id                  Int                     @unique
+  partner_id              Int
+  photo_url               String?
+  signature_data          String?
+  recipient_name          String?                 @db.VarChar(255)
+  notes                   String?
+  delivery_latitude       Decimal?                @db.Decimal(10, 8)
+  delivery_longitude      Decimal?                @db.Decimal(11, 8)
+  created_at              DateTime                @default(now())
+  rider_delivery_jobs     rider_delivery_jobs     @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  rider_delivery_partners rider_delivery_partners @relation(fields: [partner_id], references: [id], onDelete: Cascade)
+}
+
+model rider_refresh_tokens {
+  id                      Int                     @id @default(autoincrement())
+  partner_id              Int
+  token                   String                  @unique @db.VarChar(500)
+  expires_at              DateTime
+  created_at              DateTime                @default(now())
+  rider_delivery_partners rider_delivery_partners @relation(fields: [partner_id], references: [id], onDelete: Cascade)
+
+  @@index([partner_id], map: "idx_rider_refresh_tokens_partner")
+  @@index([token], map: "idx_rider_refresh_tokens_token")
+}
+
+enum UserRole {
+  CUSTOMER
+  SALESMAN
+  ADMIN
+  RIDER
+  DELIVERY_PARTNER
+}
+
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+  AVAILABLE
+  ASSIGNED
+  ACCEPTED
+  ARRIVED_AT_PICKUP
+  PICKED_UP
+  IN_TRANSIT
+  ARRIVED_AT_DROPOFF
+  FAILED
+  REFUND_REQUESTED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
 }

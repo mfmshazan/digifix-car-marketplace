@@ -13,7 +13,8 @@ const generateToken = (userId, role) => {
 // Register new user
 const register = async (req, res) => {
   try {
-    const { email, password, name, phone, role = 'CUSTOMER' } = req.body;
+    const { email, password, name, phone, role = 'CUSTOMER', vehicleType, vehicleNumber } = req.body;
+    console.log(`[Registration] Starting for ${email} with role ${role}`);
 
     // Validate input
     if (!email || !password) {
@@ -29,6 +30,7 @@ const register = async (req, res) => {
     });
 
     if (existingUser) {
+      console.log(`[Registration] User ${email} already exists.`);
       return res.status(400).json({
         success: false,
         message: 'User with this email already exists',
@@ -39,51 +41,73 @@ const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user
+    console.log(`[Registration] Creating user in DB...`);
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
-        name,
-        phone,
+        name: name || '',
+        phone: phone || '',
         role: role,
         authProvider: 'EMAIL',
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        createdAt: true,
+        vehicleType: role === 'DELIVERY_PARTNER' ? vehicleType : null,
+        vehicleNumber: role === 'DELIVERY_PARTNER' ? vehicleNumber : null,
+        deliveryStatus: role === 'DELIVERY_PARTNER' ? 'offline' : null,
       },
     });
+    console.log(`[Registration] User ${user.id} created successfully.`);
 
     // If salesman, create a store
-    if (role === 'SALESMAN') {
-      await prisma.store.create({
-        data: {
-          name: name ? `${name}'s Store` : 'My Store',
-          ownerId: user.id,
-        },
-      });
+    if (String(role).toUpperCase() === 'SALESMAN') {
+      try {
+        await prisma.store.create({
+          data: {
+            name: name ? `${name}'s Store` : 'My Store',
+            ownerId: user.id,
+          },
+        });
+      } catch (storeError) {
+        console.error('[Registration] Warning: Failed to create store for salesman:', storeError.message);
+        // We continue anyway as the user is created
+      }
     }
 
     // Generate token
-    const token = generateToken(user.id, user.role);
+    let token;
+    try {
+      token = generateToken(user.id, user.role);
+    } catch (tokenError) {
+      console.error('[Registration] Token generation failed:', tokenError.message);
+      throw new Error(`Token generation failed: ${tokenError.message}`);
+    }
+
+    console.log(`[Registration] Everything successful for ${email}. Sending response.`);
 
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
       data: {
-        user,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          phone: user.phone,
+          role: user.role,
+          avatar: user.avatar || null,
+        },
         token,
       },
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('[Registration Error Details]:', {
+      message: error.message,
+      stack: error.stack,
+      role: req.body?.role
+    });
     res.status(500).json({
       success: false,
       message: 'Failed to register user',
+      error: error.message,
     });
   }
 };

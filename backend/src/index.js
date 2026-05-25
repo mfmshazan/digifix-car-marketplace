@@ -13,6 +13,8 @@ import orderRoutes from './routes/order.routes.js';
 import carPartRoutes from './routes/carPart.routes.js';
 import cartRoutes from './routes/cart.routes.js';
 import clerkRoutes from './routes/clerk.routes.js';
+import partnerRoutes from './routes/partner.routes.js';
+import statsRoutes from './routes/stats.routes.js';
 
 // Load environment variables early
 dotenv.config({ override: true });
@@ -74,6 +76,8 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/car-parts', carPartRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/partner', partnerRoutes);
+app.use('/api/stats', statsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

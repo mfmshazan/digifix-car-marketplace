@@ -13,6 +13,7 @@ import {
   Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { searchPartsByNumberPlate, getAllCarParts, CarPart, Car } from "../../src/api/carParts";
 import { useCart } from "../../src/store/cartStore";
 
@@ -47,8 +48,10 @@ export default function CustomerHomeScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<{ car: Car; parts: CarPart[] } | null>(null);
   const [showResults, setShowResults] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [featuredParts, setFeaturedParts] = useState<CarPart[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
   const { addItem } = useCart();
 
   // Handle adding item to cart
@@ -67,7 +70,10 @@ export default function CustomerHomeScreen() {
       Alert.alert(
         "Added to Cart",
         `${part.name} has been added to your cart.`,
-        [{ text: "OK" }]
+        [
+          { text: "Continue", style: "cancel" },
+          { text: "View Cart", onPress: () => router.push("/(customer)/cart") },
+        ]
       );
     } catch (error: any) {
       Alert.alert("Add to Cart Failed", error?.message || "Please try again.");
@@ -137,17 +143,23 @@ export default function CustomerHomeScreen() {
     <TouchableOpacity style={styles.productCard}>
       <View style={styles.productImageContainer}>
         {item.images && item.images.length > 0 ? (
-          <Image
-            source={{ uri: item.images[0] }}
-            style={styles.productImage}
-            resizeMode="cover"
-          />
+          <TouchableOpacity
+            style={styles.productImageTouchable}
+            activeOpacity={0.9}
+            onPress={() => setSelectedImage(item.images[0])}
+          >
+            <Image
+              source={{ uri: item.images[0] }}
+              style={styles.productImage}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
         ) : (
           <View style={styles.productImagePlaceholder}>
             <Ionicons name="car-sport" size={40} color="#00002E" />
           </View>
         )}
-        <View style={[styles.conditionBadge, {
+        <View pointerEvents="none" style={[styles.conditionBadge, {
           backgroundColor: item.condition === 'NEW' ? '#16A34A' : item.condition === 'USED' ? '#00002E' : '#1A1A1A'
         }]}>
           <Text style={styles.conditionText}>{item.condition}</Text>
@@ -245,11 +257,17 @@ export default function CustomerHomeScreen() {
                 <TouchableOpacity style={styles.partListItem}>
                   <View style={styles.partImageContainer}>
                     {item.images && item.images.length > 0 ? (
-                      <Image
-                        source={{ uri: item.images[0] }}
-                        style={styles.partListImage}
-                        resizeMode="cover"
-                      />
+                      <TouchableOpacity
+                        style={styles.partListImageTouchable}
+                        activeOpacity={0.9}
+                        onPress={() => setSelectedImage(item.images[0])}
+                      >
+                        <Image
+                          source={{ uri: item.images[0] }}
+                          style={styles.partListImage}
+                          resizeMode="cover"
+                        />
+                      </TouchableOpacity>
                     ) : (
                       <View style={styles.partListImagePlaceholder}>
                         <Ionicons name="construct" size={24} color="#FF6B35" />
@@ -445,6 +463,40 @@ export default function CustomerHomeScreen() {
 
       {/* Search Results Modal */}
       {renderSearchResultsModal()}
+
+      {/* Image Zoom Modal */}
+      <Modal
+        visible={!!selectedImage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+      >
+        <TouchableOpacity
+          style={styles.imageModalOverlay}
+          activeOpacity={1}
+          onPress={() => setSelectedImage(null)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(event) => event.stopPropagation()}
+            style={styles.imageModalContent}
+          >
+            <TouchableOpacity
+              style={styles.imageModalCloseButton}
+              onPress={() => setSelectedImage(null)}
+            >
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+            {selectedImage && (
+              <Image
+                source={{ uri: selectedImage }}
+                style={styles.imageModalImage}
+                resizeMode="contain"
+              />
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -593,6 +645,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     width: "100%",
+  },
+  productImageTouchable: {
+    width: "100%",
+    height: 120,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: "hidden",
   },
   productImagePlaceholder: {
     height: 120,
@@ -814,6 +873,12 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 8,
   },
+  partListImageTouchable: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
   partListImagePlaceholder: {
     width: 80,
     height: 80,
@@ -881,6 +946,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginLeft: 8,
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  imageModalContent: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageModalCloseButton: {
+    position: "absolute",
+    top: 40,
+    right: 8,
+    zIndex: 2,
+    padding: 8,
+  },
+  imageModalImage: {
+    width: "100%",
+    height: "85%",
   },
 });
 

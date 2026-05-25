@@ -171,7 +171,7 @@ export default function SalesmanOrdersScreen() {
       <TouchableOpacity style={[styles.orderCard, isPending && styles.pendingOrderCard]}>
         <View style={styles.orderHeader}>
           <View>
-            <Text style={styles.orderId}>{item.orderNumber}</Text>
+            <Text style={styles.orderId}>Order #{(item.orderNumber || item.id).slice(-8).toUpperCase()}</Text>
             <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
           </View>
           <View

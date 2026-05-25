@@ -220,9 +220,6 @@ export default function RegisterScreen() {
         const dashboardRoute =
           userRole === "SALESMAN" ? "/(salesman)" : "/(customer)";
 
-        // Set OneSignal user ID and role for targeted notifications
-        // setOneSignalUserId(response.data.user.id);
-        // setUserRoleTag(userRole);
 
         Alert.alert("Success", "Registration successful! Welcome to DIGIFIX!");
         router.replace(dashboardRoute as any);

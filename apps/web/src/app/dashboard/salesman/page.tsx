@@ -29,12 +29,85 @@ import {
   CalendarDays,
   Receipt,
   Users,
+  Bell,
+  BellOff,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { resolveMediaUrl, ordersApi } from '@/lib/api';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
+// OneSignal helpers kept for backend-side push (logoutOneSignalUser used on logout)
+import { logoutOneSignalUser } from '@/lib/onesignal';
+
+// ─── Push Notification Hook ───────────────────────────────────────────────────
+
+function useOneSignalPush(_userId: string | undefined) {
+  const getPermission = (): NotificationPermission => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return 'denied';
+    return window.Notification.permission;
+  };
+
+  const [permission, setPermission] = useState<NotificationPermission>('default');
+  const [subscribed, setSubscribed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const isReady = typeof window !== 'undefined' && 'Notification' in window;
+
+  // Sync state from browser on mount
+  useEffect(() => {
+    const perm = getPermission();
+    setPermission(perm);
+    setSubscribed(perm === 'granted');
+  }, []);
+
+  const toggle = async () => {
+    if (!isReady) {
+      alert('Your browser does not support push notifications.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (subscribed) {
+        // Can't programmatically revoke permission — guide user
+        alert(
+          'To disable notifications:\n' +
+          'Click the 🔒 lock icon in the browser URL bar → Notifications → Block.'
+        );
+        setSubscribed(false);
+      } else {
+        // Register service worker first so background delivery works
+        if ('serviceWorker' in navigator) {
+          try {
+            await navigator.serviceWorker.register('/OneSignalSDKWorker.js', { scope: '/' });
+          } catch { /* ignore */ }
+        }
+
+        const perm = await window.Notification.requestPermission();
+        setPermission(perm);
+        if (perm === 'granted') {
+          setSubscribed(true);
+          // Show a test notification
+          new window.Notification('✅ Notifications enabled!', {
+            body: 'You will now receive alerts when customers place orders.',
+            icon: '/favicon.ico',
+          });
+        } else if (perm === 'denied') {
+          alert(
+            'Notifications were blocked.\n\n' +
+            'To fix: Click the 🔒 lock icon in the URL bar → Notifications → Allow.'
+          );
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { subscribed, loading, isReady, permission, toggle };
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
 
 type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
 
@@ -82,6 +155,16 @@ interface SalesSummary {
     totalRevenue: number;
   }[];
 }
+
+interface AppNotification {
+  id: string;
+  orderNumber: string;
+  total: number;
+  time: Date;
+  read: boolean;
+}
+
+
 
 // ─── Status Helpers ─────────────────────────────────────────────────────────
 
@@ -226,7 +309,12 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
               <div key={item.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
                 <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
                   {item.product?.images?.[0] ? (
-                    <button onClick={() => setPreviewImage(item.product.images[0])} className="w-full h-full p-0 border-0 bg-transparent rounded-lg hover:opacity-80 transition-opacity">
+                    <button
+                      onClick={() => setPreviewImage(item.product.images[0])}
+                      className="w-full h-full p-0 border-0 bg-transparent rounded-lg hover:opacity-80 transition-opacity"
+                      aria-label="Preview product image"
+                      title="Preview product image"
+                    >
                       <Image src={item.product.images[0]} alt={item.product?.name ?? ''} width={40} height={40} className="object-cover w-full h-full rounded-lg" />
                     </button>
                   ) : (
@@ -266,6 +354,8 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
             <button
               onClick={() => setPreviewImage(null)}
               className="absolute -top-4 -right-4 md:-top-10 md:-right-10 p-2 bg-white/20 hover:bg-white/40 text-white rounded-full transition-colors backdrop-blur-md"
+              aria-label="Close image preview"
+              title="Close image preview"
             >
               <X className="w-6 h-6" />
             </button>
@@ -311,11 +401,12 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     if (!userId) return;
     const socket = connectSocket(userId);
 
-    // A customer placed a new order → pull fresh list and flash an alert
-    const handleNewOrder = (payload: { orderNumber: string }) => {
+    // A customer placed a new order → refresh list and flash an alert banner
+    // (OneSignal push notification is sent server-side by the backend)
+    const handleNewOrder = (payload: { orderNumber: string; total?: number }) => {
       setNewOrderAlert(`🆕 New order received: ${payload.orderNumber}`);
       loadOrders();
-      setTimeout(() => setNewOrderAlert(null), 6000);
+      setTimeout(() => setNewOrderAlert(null), 10000);
     };
 
     // Salesman updated status elsewhere (e.g., another tab) → update in-place
@@ -583,8 +674,16 @@ export default function SalesmanDashboard() {
   const { user, logout, isAuthenticated, refreshProfile } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState<Tab>('orders');
-
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // App Notifications (in-app messages)
+  const [appNotifs, setAppNotifs] = useState<AppNotification[]>([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [toastNotif, setToastNotif] = useState<AppNotification | null>(null);
+
+  // ── OneSignal push notifications ─────────────────────────────────────────────
+  const { subscribed: pushEnabled, loading: pushLoading, isReady: pushReady, permission: pushPermission, toggle: togglePush } = useOneSignalPush(user?.id);
+
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -604,14 +703,39 @@ export default function SalesmanDashboard() {
   // ── Connect socket when user is available, disconnect on logout ──────────────
   useEffect(() => {
     if (user?.id) {
-      connectSocket(user.id);
+      const socket = connectSocket(user.id);
+      
+      const handleNewOrder = (orderData: any) => {
+        const notif: AppNotification = {
+          id: orderData.orderId,
+          orderNumber: orderData.orderNumber,
+          total: orderData.total,
+          time: new Date(),
+          read: false
+        };
+        
+        setAppNotifs(prev => [notif, ...prev]);
+        setToastNotif(notif);
+        
+        // Auto hide toast after 10 seconds without deleting from messages
+        setTimeout(() => {
+          setToastNotif(current => current?.id === notif.id ? null : current);
+        }, 10000);
+      };
+      
+      socket.on('newOrder', handleNewOrder);
+      
+      return () => {
+        socket.off('newOrder', handleNewOrder);
+        disconnectSocket();
+      };
     }
-    return () => {
-      disconnectSocket();
-    };
   }, [user?.id]);
 
-  const handleLogout = () => {
+
+
+  const handleLogout = async () => {
+    await logoutOneSignalUser();
     disconnectSocket();
     logout();
     router.push('/login');
@@ -699,6 +823,135 @@ export default function SalesmanDashboard() {
                 <Plus className="w-4 h-4" />
                 Add Product
               </button>
+
+              {/* App Notifications Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+                  className="relative flex items-center justify-center w-9 h-9 rounded-xl hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+                  title="Messages"
+                >
+                  <MessageSquare className="w-5 h-5" />
+                  {appNotifs.filter(n => !n.read).length > 0 && (
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-[#00002E]" />
+                  )}
+                </button>
+
+                {showNotifDropdown && (
+                  <div className="absolute top-full mt-2 right-0 w-80 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
+                    {/* Header */}
+                    <div className="px-4 py-2 border-b border-gray-50 flex justify-between items-center gap-2">
+                      <h3 className="font-bold text-gray-900 text-sm">Messages</h3>
+                      <div className="flex items-center gap-2">
+                        {appNotifs.filter(n => !n.read).length > 0 && (
+                          <button
+                            onClick={() => setAppNotifs(prev => prev.map(n => ({ ...n, read: true })))}
+                            className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                        {appNotifs.length > 0 && (
+                          <button
+                            onClick={() => setAppNotifs([])}
+                            className="text-xs text-red-500 hover:text-red-700 hover:underline whitespace-nowrap font-medium"
+                          >
+                            Delete all
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Message list */}
+                    <div className="max-h-80 overflow-y-auto">
+                      {appNotifs.length === 0 ? (
+                        <div className="px-4 py-8 text-center text-sm text-gray-400">
+                          No messages yet
+                        </div>
+                      ) : (
+                        appNotifs.map(notif => (
+                          <div
+                            key={notif.id}
+                            className={`flex items-start gap-2 px-4 py-3 border-b border-gray-50 last:border-0 transition-colors group ${!notif.read ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`}
+                          >
+                            {/* Main clickable area — marks as read */}
+                            <div
+                              className="flex-1 cursor-pointer"
+                              onClick={() => setAppNotifs(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n))}
+                            >
+                              <div className="flex justify-between items-start mb-0.5">
+                                <span className="font-semibold text-sm text-gray-900 flex items-center gap-1.5">
+                                  {!notif.read && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />}
+                                  Order {notif.orderNumber}
+                                </span>
+                                <span className="text-xs text-gray-400 shrink-0 ml-2">{timeAgo(notif.time.toISOString())}</span>
+                              </div>
+                              <p className="text-xs text-gray-600">Total: Rs. {notif.total.toLocaleString()}</p>
+                            </div>
+
+                            {/* Individual delete button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAppNotifs(prev => prev.filter(n => n.id !== notif.id));
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all shrink-0"
+                              title="Delete this message"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Push Notification Toggle */}
+              <button
+                id="push-toggle-btn"
+                onClick={togglePush}
+                disabled={pushLoading}
+                title={
+                  !pushReady
+                    ? 'Push not configured — click for setup instructions'
+                    : pushPermission === 'denied'
+                    ? 'Notifications blocked — click the lock icon in URL bar to allow'
+                    : pushEnabled
+                    ? 'Click to disable order notifications'
+                    : 'Click to enable push notifications for new orders'
+                }
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl transition-all ${
+                  pushLoading
+                    ? 'opacity-60 cursor-wait text-white/40'
+                    : !pushReady
+                    ? 'text-yellow-400/70 hover:text-yellow-400 hover:bg-yellow-500/10 border border-yellow-500/20'
+                    : pushEnabled
+                    ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30'
+                    : pushPermission === 'denied'
+                    ? 'text-red-400/70 hover:text-red-400 hover:bg-red-500/10'
+                    : 'text-white/50 hover:text-white/80 hover:bg-white/10'
+                }`}
+              >
+                {pushLoading ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : pushEnabled ? (
+                  <Bell className="w-4 h-4" />
+                ) : (
+                  <BellOff className="w-4 h-4" />
+                )}
+                <span className="hidden sm:inline">
+                  {pushLoading
+                    ? 'Enabling…'
+                    : !pushReady
+                    ? 'Setup Needed'
+                    : pushEnabled
+                    ? 'Notifs On'
+                    : 'Notifs Off'}
+                </span>
+              </button>
+
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-1.5 px-3 py-2 text-white/70 hover:text-red-400 text-sm font-medium rounded-xl transition-all hover:bg-white/10"
@@ -745,6 +998,7 @@ export default function SalesmanDashboard() {
               ? 'Manage and update orders placed by your customers.'
               : 'Track your revenue, completed orders, and top products.'}
           </p>
+
         </div>
 
         {activeTab === 'orders' && <CurrentOrdersTab userId={user.id} />}
@@ -753,6 +1007,44 @@ export default function SalesmanDashboard() {
 
       {/* Add Product Modal */}
       {showAddModal && <AddProductModal onClose={() => setShowAddModal(false)} />}
+      
+      {/* Toast Notification */}
+      {toastNotif && (
+        <div className="fixed bottom-4 right-4 z-50 bg-white rounded-xl shadow-xl border border-gray-100 p-4 max-w-sm w-full animate-in slide-in-from-bottom-5">
+          <div className="flex items-start justify-between">
+            <div className="flex gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <ShoppingCart className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h4 className="font-bold text-gray-900 text-sm">New Order!</h4>
+                <p className="text-xs text-gray-500 mt-0.5">Order {toastNotif.orderNumber} for Rs. {toastNotif.total.toLocaleString()}</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => {
+                // Clicking X removes it from the messages list entirely
+                setAppNotifs(prev => prev.filter(n => n.id !== toastNotif.id));
+                setToastNotif(null);
+              }}
+              className="text-gray-400 hover:bg-gray-100 p-1 rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <button 
+            onClick={() => {
+              // Clicking to view marks it as read and keeps it in messages
+              setAppNotifs(prev => prev.map(n => n.id === toastNotif.id ? { ...n, read: true } : n));
+              setToastNotif(null);
+              setActiveTab('orders'); // Jump to orders tab
+            }}
+            className="mt-3 w-full py-2 bg-blue-50 text-blue-700 text-xs font-semibold rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            Mark as read & View
+          </button>
+        </div>
+      )}
     </div>
   );
 }

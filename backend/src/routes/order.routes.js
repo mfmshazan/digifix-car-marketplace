@@ -3,6 +3,7 @@ import { authenticate, authorize } from '../middleware/auth.middleware.js';
 import {
   getSalesmanSalesSummary,
   getSalesmanOrders,
+  getSalesmanPendingCount,
   updateOrderStatus,
   getCustomerOrders,
   createOrder
@@ -19,6 +20,7 @@ router.get('/', getCustomerOrders);   // Get customer orders
 
 // Salesman routes - They see only their orders
 router.get('/salesman/summary', authorize('SALESMAN'), getSalesmanSalesSummary);
+router.get('/salesman/pending-count', authorize('SALESMAN'), getSalesmanPendingCount);
 router.get('/salesman/orders', authorize('SALESMAN'), getSalesmanOrders);
 router.put('/:id/status', authorize('SALESMAN'), updateOrderStatus);
 

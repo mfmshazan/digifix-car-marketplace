@@ -51,6 +51,8 @@ export const fetchCart = async (): Promise<CartResponse> => {
 };
 
 // Add item to backend cart
+// We send the item type because the backend uses one endpoint for both regular
+// products and car parts, and it needs to know which table to read from.
 export const addItemToCart = async (
   productId: string,
   quantity: number = 1,

@@ -30,8 +30,11 @@ export default function CartScreen() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   
   const subtotal = getTotalPrice();
-  const deliveryFee = subtotal > 5000 ? 0 : 300;
-  const total = subtotal + deliveryFee;
+  // We mirror the backend fee here so the customer sees the same checkout
+  // amount before placing the order.
+  const serviceCharge = parseFloat((subtotal * 0.10).toFixed(2));
+  // Delivery is intentionally left out for now because it depends on distance.
+  const total = subtotal + serviceCharge;
 
   const handleIncreaseQuantity = async (id: string, currentQty: number) => {
     try {
@@ -296,16 +299,9 @@ export default function CartScreen() {
               <Text style={styles.summaryValue}>Rs. {subtotal.toLocaleString()}</Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Delivery</Text>
-              <Text style={[styles.summaryValue, deliveryFee === 0 && styles.freeDelivery]}>
-                {deliveryFee === 0 ? "FREE" : `Rs. ${deliveryFee.toLocaleString()}`}
-              </Text>
+              <Text style={styles.summaryLabel}>Service Charge (10%)</Text>
+              <Text style={styles.summaryValue}>Rs. {serviceCharge.toLocaleString()}</Text>
             </View>
-            {deliveryFee > 0 && (
-              <Text style={styles.freeDeliveryHint}>
-                Add Rs. {(5000 - subtotal).toLocaleString()} more for free delivery
-              </Text>
-            )}
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={styles.totalLabel}>Total</Text>
               <Text style={styles.totalValue}>Rs. {total.toLocaleString()}</Text>

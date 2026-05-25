@@ -19,14 +19,16 @@ datasource db {
 enum UserRole {
   CUSTOMER
   SALESMAN
-  DELIVERY_PERSON   // Delivery personnel who collect COD and earn delivery fees
-  ADMIN             // Added Admin to hold the "Master System Wallet" for platform fees
+  ADMIN
+  RIDER
+  DELIVERY_PERSON
 }
 
 // Enum for user account status
 enum UserStatus {
   ACTIVE
-  DEACTIVATED
+  INACTIVE
+  SUSPENDED
 }
 
 // Enum for authentication provider
@@ -89,10 +91,10 @@ model User {
   phone        String?
   avatar       String?
   role         UserRole     @default(CUSTOMER)
-  status       UserStatus   @default(ACTIVE) 
+  status       UserStatus   @default(ACTIVE)
   authProvider AuthProvider @default(EMAIL)
   googleId     String?      @unique
-  stripeAccountId String?      @unique
+  stripeAccountId String?   @unique
   isVerified   Boolean      @default(false)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -203,8 +205,8 @@ model Product {
   updatedAt     DateTime @updatedAt
 
   // Relations
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
 
   salesmanId String
   salesman   User   @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
@@ -315,10 +317,17 @@ model WishlistItem {
   // Relations
   userId    String
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  itemType  String   @default("PRODUCT") // PRODUCT or CAR_PART
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  carPartId String?
+  carPart   CarPart? @relation(fields: [carPartId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
+  @@unique([userId, carPartId])
   @@index([userId])
 }
 
@@ -328,18 +337,20 @@ model WishlistItem {
 
 // Order model
 model Order {
-  id            String        @id @default(cuid())
-  orderNumber   String        @unique @default(cuid())
-  status        OrderStatus   @default(PENDING)
-  paymentStatus PaymentStatus @default(PENDING)
-  paymentMethod String?
-  subtotal      Float
-  deliveryFee   Float         @default(0)
-  discount      Float         @default(0)
-  total         Float
-  notes         String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id                 String        @id @default(cuid())
+  orderNumber        String        @unique @default(cuid())
+  status             OrderStatus   @default(PENDING)
+  paymentStatus      PaymentStatus @default(PENDING)
+  paymentMethod      String?
+  subtotal           Float
+  serviceCharge      Float         @default(0) // 10% platform fee charged to customer
+  deliveryFee        Float         @default(0) // Calculated as distance_km * 250 once distance is available
+  discount           Float         @default(0)
+  total              Float
+  notes              String?
+  cancellationReason String?       // Customer must provide a reason so admin can make an informed decision
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   // Relations
   customerId String
@@ -481,6 +492,8 @@ model CarPart {
 
   // Order items containing this car part
   orderItems OrderItem[]
+
+  wishlistItems WishlistItem[]
 
   @@index([carId])
   @@index([categoryId])

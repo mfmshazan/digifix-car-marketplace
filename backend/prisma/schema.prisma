@@ -31,6 +31,7 @@ model User {
   total_deliveries Int            @default(0)
   rating           Float          @default(5.0)
 
+  wallet       Wallet?
   addresses       Address[]
   carParts        CarPart[]      @relation("SellerCarParts")
   cart            CartItem[]
@@ -40,6 +41,7 @@ model User {
   reviews         Review[]
   store           Store?
   wishlist        WishlistItem[]
+}
 // ================================
 // Enums
 // ================================
@@ -48,14 +50,18 @@ model User {
 enum UserRole {
   CUSTOMER
   SALESMAN
-  DELIVERY_PERSON   // Delivery personnel who collect COD and earn delivery fees
-  ADMIN             // Added Admin to hold the "Master System Wallet" for platform fees
+  DELIVERY_PERSON
+  ADMIN
+  RIDER
+  DELIVERY_PARTNER
 }
 
 // Enum for user account status
 enum UserStatus {
   ACTIVE
   DEACTIVATED
+  INACTIVE
+  SUSPENDED
 }
 
 // Enum for authentication provider
@@ -95,6 +101,14 @@ enum OrderStatus {
   CANCELLED
   REFUNDED
   REFUND_REQUESTED
+  AVAILABLE
+  ASSIGNED
+  ACCEPTED
+  ARRIVED_AT_PICKUP
+  PICKED_UP
+  IN_TRANSIT
+  ARRIVED_AT_DROPOFF
+  FAILED
 }
 
 // Payment status enum
@@ -109,40 +123,7 @@ enum PaymentStatus {
 // Core Models
 // ================================
 
-// User model
-model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
-  password     String?      // Nullable for Google auth users
-  name         String?
-  phone        String?
-  avatar       String?
-  role         UserRole     @default(CUSTOMER)
-  status       UserStatus   @default(ACTIVE) 
-  authProvider AuthProvider @default(EMAIL)
-  googleId     String?      @unique
-  stripeAccountId String?      @unique
-  isVerified   Boolean      @default(false)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
 
-  // Relations
-  wallet       Wallet?
-  addresses    Address[]
-  orders       Order[]        @relation("CustomerOrders")
-  cart         CartItem[]
-  wishlist     WishlistItem[]
-  reviews      Review[]
-
-  // Salesman specific relations
-  products     Product[] @relation("SalesmanProducts")
-  salesOrders  Order[]   @relation("SalesmanOrders")
-  store        Store?
-  carParts     CarPart[] @relation("SellerCarParts")
-
-  @@index([email])
-  @@index([role])
-}
 
 // ================================
 // Financial & Wallet Models
@@ -351,39 +332,8 @@ model Order {
   salesman            User                  @relation("SalesmanOrders", fields: [salesmanId], references: [id])
   items               OrderItem[]
   tracking            OrderTracking[]
+  walletTransactions  WalletTransaction[]
   rider_delivery_jobs rider_delivery_jobs[]
-// ================================
-// Order Management Models
-// ================================
-
-// Order model
-model Order {
-  id            String        @id @default(cuid())
-  orderNumber   String        @unique @default(cuid())
-  status        OrderStatus   @default(PENDING)
-  paymentStatus PaymentStatus @default(PENDING)
-  paymentMethod String?
-  subtotal      Float
-  deliveryFee   Float         @default(0)
-  discount      Float         @default(0)
-  total         Float
-  notes         String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-
-  // Relations
-  customerId String
-  customer   User   @relation("CustomerOrders", fields: [customerId], references: [id])
-
-  salesmanId String
-  salesman   User   @relation("SalesmanOrders", fields: [salesmanId], references: [id])
-
-  addressId String?
-  address   Address? @relation(fields: [addressId], references: [id])
-
-  items               OrderItem[]
-  tracking            OrderTracking[]
-  walletTransactions  WalletTransaction[] 
 
   @@index([customerId])
   @@index([salesmanId])
@@ -443,25 +393,6 @@ model Review {
 }
 
 model Car {
-  id          String    @id @default(cuid())
-  numberPlate String    @unique
-  make        String
-  model       String
-  year        Int
-  engineType  String?
-  color       String?
-  vinNumber   String?   @unique
-  description String?
-  images      String[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  parts       CarPart[]
-// ================================
-// Car and Car Parts Models
-// ================================
-
-// Car model
-model Car {
   id          String   @id @default(cuid())
   numberPlate String   @unique 
   make        String 
@@ -474,9 +405,7 @@ model Car {
   images      String[] 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  // Relations
-  parts CarPart[]
+  parts       CarPart[]
 
   @@index([numberPlate])
   @@index([make, model])
@@ -682,47 +611,3 @@ model rider_refresh_tokens {
   @@index([token], map: "idx_rider_refresh_tokens_token")
 }
 
-enum UserRole {
-  CUSTOMER
-  SALESMAN
-  ADMIN
-  RIDER
-  DELIVERY_PARTNER
-}
-
-enum AuthProvider {
-  EMAIL
-  GOOGLE
-}
-
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PROCESSING
-  SHIPPED
-  DELIVERED
-  CANCELLED
-  REFUNDED
-  AVAILABLE
-  ASSIGNED
-  ACCEPTED
-  ARRIVED_AT_PICKUP
-  PICKED_UP
-  IN_TRANSIT
-  ARRIVED_AT_DROPOFF
-  FAILED
-  REFUND_REQUESTED
-}
-
-enum PaymentStatus {
-  PENDING
-  PAID
-  FAILED
-  REFUNDED
-}
-
-enum UserStatus {
-  ACTIVE
-  INACTIVE
-  SUSPENDED
-}

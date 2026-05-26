@@ -197,28 +197,33 @@ model Store {
 }
 
 model Product {
-  id                 String                 @id @default(cuid())
-  name               String
-  description        String?
-  price              Float
-  discountPrice      Float?
-  sku                String?                @unique
-  stock              Int                    @default(0)
-  images             String[]
-  isActive           Boolean                @default(true)
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
-  categoryId         String?
-  salesmanId         String
-  storeId            String?
-  cartItems          CartItem[]
-  orderItems         OrderItem[]
-  category           Category?              @relation(fields: [categoryId], references: [id])
-  salesman           User                   @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
-  store              Store?                 @relation(fields: [storeId], references: [id])
-  reviews            Review[]
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  price         Float
+  discountPrice Float?
+  sku           String?  @unique
+  stock         Int      @default(0)
+  images        String[]
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  salesmanId String
+  salesman   User @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
+
+  storeId String?
+  store   Store? @relation(fields: [storeId], references: [id])
+
+  cartItems     CartItem[]
+  wishlistItems WishlistItem[]
+  orderItems    OrderItem[]
+  reviews       Review[]
+
   compatibleVehicles VehicleCompatibility[]
-  wishlistItems      WishlistItem[]
 
   @@index([categoryId])
   @@index([salesmanId])
@@ -297,12 +302,15 @@ model WishlistItem {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
   userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  itemType  String   @default("PRODUCT") // PRODUCT or CAR_PART
+
   productId String?
-  carPartId String?
-  itemType  String   @default("PRODUCT")
-  CarPart   CarPart? @relation(fields: [carPartId], references: [id], onDelete: Cascade)
   product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  carPartId String?
+  carPart   CarPart? @relation(fields: [carPartId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
   @@unique([userId, carPartId])
@@ -310,26 +318,31 @@ model WishlistItem {
 }
 
 model Order {
-  id                  String                @id @default(cuid())
-  orderNumber         String                @unique @default(cuid())
-  status              OrderStatus           @default(PENDING)
-  paymentStatus       PaymentStatus         @default(PENDING)
-  paymentMethod       String?
-  subtotal            Float
-  deliveryFee         Float                 @default(0)
-  discount            Float                 @default(0)
-  total               Float
-  notes               String?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  customerId          String
-  salesmanId          String
-  addressId           String?
-  cancellationReason  String?
-  serviceCharge       Float                 @default(0)
-  address             Address?              @relation(fields: [addressId], references: [id])
-  customer            User                  @relation("CustomerOrders", fields: [customerId], references: [id])
-  salesman            User                  @relation("SalesmanOrders", fields: [salesmanId], references: [id])
+  id                 String        @id @default(cuid())
+  orderNumber        String        @unique @default(cuid())
+  status             OrderStatus   @default(PENDING)
+  paymentStatus      PaymentStatus @default(PENDING)
+  paymentMethod      String?
+  subtotal           Float
+  serviceCharge      Float         @default(0) // 10% platform fee charged to customer
+  deliveryFee        Float         @default(0) // Calculated as distance_km * 250 once distance is available
+  discount           Float         @default(0)
+  total              Float
+  notes              String?
+  cancellationReason String?       // Customer must provide a reason so admin can make an informed decision
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  // Relations
+  customerId String
+  customer   User   @relation("CustomerOrders", fields: [customerId], references: [id])
+
+  salesmanId String
+  salesman   User   @relation("SalesmanOrders", fields: [salesmanId], references: [id])
+
+  addressId String?
+  address   Address? @relation(fields: [addressId], references: [id])
+
   items               OrderItem[]
   tracking            OrderTracking[]
   walletTransactions  WalletTransaction[]
@@ -435,6 +448,8 @@ model CarPart {
   cartItems     CartItem[]
   orderItems    OrderItem[]
   WishlistItem  WishlistItem[]
+
+  wishlistItems WishlistItem[]
 
   @@index([carId])
   @@index([categoryId])

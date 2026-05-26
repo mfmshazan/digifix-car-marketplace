@@ -70,6 +70,7 @@ const menuItems = [
     icon: "help-circle-outline",
     label: "Help & Support",
     color: "#6B7280",
+    route: "/help-support" as const,
   },
   {
     id: "8",

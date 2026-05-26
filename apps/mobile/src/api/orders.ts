@@ -66,12 +66,12 @@ export interface SalesSummaryResponse {
 export const getSalesmanSalesSummary = async (date?: string): Promise<SalesSummaryResponse> => {
   try {
     const token = await getToken();
-    
+
     if (!token) {
       throw new Error('Not authenticated');
     }
 
-    const url = date 
+    const url = date
       ? `${getApiUrl()}/orders/salesman/summary?date=${date}`
       : `${getApiUrl()}/orders/salesman/summary`;
 
@@ -87,7 +87,7 @@ export const getSalesmanSalesSummary = async (date?: string): Promise<SalesSumma
 
     // Get raw text first to handle non-JSON responses
     const text = await response.text();
-    
+
     // Check if response is HTML (server not reachable or wrong endpoint)
     if (text.startsWith('<') || text.startsWith('<!')) {
       console.error('Received HTML instead of JSON. Server may not be reachable.');
@@ -102,7 +102,7 @@ export const getSalesmanSalesSummary = async (date?: string): Promise<SalesSumma
       console.error('Invalid JSON response:', text.substring(0, 200));
       throw new Error('Invalid server response');
     }
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to get sales summary');
     }
@@ -122,7 +122,7 @@ export const getSalesmanOrders = async (
 ) => {
   try {
     const token = await getToken();
-    
+
     if (!token) {
       throw new Error('Not authenticated');
     }
@@ -141,7 +141,7 @@ export const getSalesmanOrders = async (
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to get orders');
     }
@@ -157,7 +157,7 @@ export const getSalesmanOrders = async (
 export const updateOrderStatus = async (orderId: string, status: string) => {
   try {
     const token = await getToken();
-    
+
     if (!token) {
       throw new Error('Not authenticated');
     }
@@ -172,7 +172,7 @@ export const updateOrderStatus = async (orderId: string, status: string) => {
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to update order status');
     }
@@ -208,7 +208,7 @@ export const getCustomerOrders = async (
 ) => {
   try {
     const token = await getToken();
-    
+
     if (!token) {
       throw new Error('Not authenticated');
     }
@@ -227,7 +227,7 @@ export const getCustomerOrders = async (
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to get orders');
     }
@@ -248,7 +248,7 @@ export const createOrder = async (
 ) => {
   try {
     const token = await getToken();
-    
+
     if (!token) {
       throw new Error('Not authenticated');
     }
@@ -280,7 +280,7 @@ export const createOrder = async (
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to create order');
     }
@@ -288,6 +288,37 @@ export const createOrder = async (
     return result;
   } catch (error) {
     console.error('Create order error:', error);
+    throw error;
+  }
+};
+
+// Request cancellation — requires a reason so admin can evaluate the request
+export const cancelOrder = async (orderId: string, reason: string) => {
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    const response = await fetch(`${getApiUrl()}/orders/${orderId}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reason }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to submit cancellation request');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Cancel order error:', error);
     throw error;
   }
 };

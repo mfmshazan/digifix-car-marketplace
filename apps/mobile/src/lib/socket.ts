@@ -1,32 +1,49 @@
 import { io, Socket } from 'socket.io-client';
-import { API_URL } from '../config/api.config';
-
-// Strip "/api" from the URL to get the base server URL (e.g., "http://192.168.x.x:3000")
-const BACKEND_URL = API_URL.replace(/\/api$/, '');
+import { getApiUrl } from '../config/api.config';
 
 let socket: Socket | null = null;
+let joinedUserId: string | null = null;
+let listenersAttached = false;
+
+const getBackendUrl = (): string => getApiUrl().replace(/\/api\/?$/, '');
+
+const joinUserRoom = (userId?: string | null): void => {
+  if (!userId || !socket?.connected) return;
+  socket.emit('join', userId);
+};
+
+const attachSocketListeners = (): void => {
+  if (!socket || listenersAttached) return;
+  listenersAttached = true;
+
+  socket.on('connect', () => {
+    console.log('🔌 Mobile socket connected:', socket?.id);
+    joinUserRoom(joinedUserId);
+  });
+
+  socket.on('reconnect', () => {
+    joinUserRoom(joinedUserId);
+  });
+
+  socket.on('connect_error', (err) => {
+    console.warn('🔌 Mobile socket connection error:', err.message);
+  });
+
+  socket.on('disconnect', (reason) => {
+    console.log('🔌 Mobile socket disconnected:', reason);
+  });
+};
 
 /**
  * Returns a singleton Socket.io client connected to the backend.
  */
 export function getSocket(): Socket {
   if (!socket) {
-    socket = io(BACKEND_URL, {
+    socket = io(getBackendUrl(), {
       transports: ['websocket', 'polling'],
       autoConnect: false,
     });
-
-    socket.on('connect', () => {
-      console.log('🔌 Mobile socket connected:', socket?.id);
-    });
-
-    socket.on('connect_error', (err) => {
-      console.warn('🔌 Mobile socket connection error:', err.message);
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.log('🔌 Mobile socket disconnected:', reason);
-    });
+    attachSocketListeners();
   }
   return socket;
 }
@@ -37,10 +54,11 @@ export function getSocket(): Socket {
  */
 export function connectSocket(userId: string): Socket {
   const s = getSocket();
+  joinedUserId = userId;
   if (!s.connected) {
     s.connect();
   }
-  s.emit('join', userId);
+  joinUserRoom(userId);
   return s;
 }
 
@@ -51,4 +69,5 @@ export function disconnectSocket(): void {
   if (socket?.connected) {
     socket.disconnect();
   }
+  joinedUserId = null;
 }

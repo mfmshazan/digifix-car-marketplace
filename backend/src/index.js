@@ -13,6 +13,8 @@ import orderRoutes from './routes/order.routes.js';
 import carPartRoutes from './routes/carPart.routes.js';
 import cartRoutes from './routes/cart.routes.js';
 import clerkRoutes from './routes/clerk.routes.js';
+import adminRoutes from './routes/admin.routes.js';
+import wishlistRoutes from './routes/wishlist.routes.js';
 import partnerRoutes from './routes/partner.routes.js';
 import statsRoutes from './routes/stats.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
@@ -44,10 +46,19 @@ app.set('io', io);
 io.on('connection', (socket) => {
   console.log(`Socket connected: ${socket.id}`);
 
+  // Each client joins their own room for targeted notifications (e.g. order updates)
   socket.on('join', (userId) => {
     if (userId) {
       socket.join(`user:${userId}`);
       console.log(`Socket ${socket.id} joined room user:${userId}`);
+    }
+  });
+
+  // Admins also join a shared room so we can broadcast cancellation requests to all of them
+  socket.on('joinRole', (role) => {
+    if (role === 'ADMIN') {
+      socket.join('role:ADMIN');
+      console.log(`🛡️ Socket ${socket.id} joined room role:ADMIN`);
     }
   });
 
@@ -57,10 +68,7 @@ io.on('connection', (socket) => {
 });
 
 // Middleware
-app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
-  credentials: true,
-}));
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -76,6 +84,8 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/car-parts', carPartRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/partner', partnerRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/wallet', walletRoutes);

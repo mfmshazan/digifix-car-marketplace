@@ -16,7 +16,7 @@ export default function RegisterPage() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const role = 'SALESMAN';
+  const [role, setRole] = useState('SALESMAN');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,7 +60,7 @@ export default function RegisterPage() {
       if (response.success) {
         const { user, token } = response.data;
         login(user, token);
-        router.push('/dashboard/salesman');
+        router.push(role === 'ADMIN' ? '/dashboard/admin' : '/dashboard/salesman');
       } else {
         setError(response.message || 'Registration failed');
       }
@@ -152,6 +152,24 @@ export default function RegisterPage() {
                 />
               </div>
               <p className="mt-1 text-xs text-gray-500">Enter 9 digits after +94</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Account Type</label>
+              <div className="relative">
+                <Store className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all appearance-none"
+                >
+                  <option value="SALESMAN">Salesman</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+                <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+              </div>
             </div>
 
             <div>

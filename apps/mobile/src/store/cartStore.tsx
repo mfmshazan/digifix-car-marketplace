@@ -71,12 +71,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const token = await getToken();
 
       if (token) {
-        // Authenticated → fetch from backend
+        // Authenticated → fetch from backend because the server is the source
+        // of truth for cart contents and prices.
         const response = await fetchCart();
         if (response.success && response.data) {
           const normalized = response.data.items.map(normalizeItem);
           setItems(normalized);
-          // Keep offline cache in sync
+          // Keep offline cache in sync so the user still sees the last cart if
+          // the network drops later.
           await AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(normalized));
           return;
         }
@@ -112,10 +114,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         throw new Error('You must be logged in to add items to cart.');
       }
 
-      // Call backend
+      // Call backend first so quantity checks and duplicate-item merging happen
+      // in one place.
       await addItemToCart(item.productId, 1, item.itemType);
 
-      // Refresh cart from backend to get canonical state (with the real cartItemId)
+      // Reload after the write because the backend assigns the real cart item
+      // ID and may merge with an existing row.
       await loadCart();
     },
     [loadCart]

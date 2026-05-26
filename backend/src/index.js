@@ -15,6 +15,8 @@ import cartRoutes from './routes/cart.routes.js';
 import clerkRoutes from './routes/clerk.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import wishlistRoutes from './routes/wishlist.routes.js';
+import partnerRoutes from './routes/partner.routes.js';
+import statsRoutes from './routes/stats.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import stripeRoutes from './routes/stripe.routes.js';
 
@@ -84,6 +86,8 @@ app.use('/api/car-parts', carPartRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/partner', partnerRoutes);
+app.use('/api/stats', statsRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/stripe', stripeRoutes);
 

@@ -316,7 +316,7 @@ export default function OrdersScreen() {
           </View>
         </View>
         <View style={styles.orderDivider} />
-        
+
         {/* Render Order Items */}
         {item.items && item.items.length > 0 && (
           <View style={styles.itemsContainer}>
@@ -475,17 +475,17 @@ export default function OrdersScreen() {
         onRequestClose={() => setSelectedImage(null)}
       >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={styles.modalCloseButton} 
+          <TouchableOpacity
+            style={styles.modalCloseButton}
             onPress={() => setSelectedImage(null)}
           >
             <Ionicons name="close" size={30} color="#FFF" />
           </TouchableOpacity>
           {selectedImage && (
-            <Image 
-              source={{ uri: selectedImage }} 
-              style={styles.modalImage} 
-              resizeMode="contain" 
+            <Image
+              source={{ uri: selectedImage }}
+              style={styles.modalImage}
+              resizeMode="contain"
             />
           )}
         </View>

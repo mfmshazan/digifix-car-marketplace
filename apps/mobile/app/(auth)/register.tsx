@@ -13,6 +13,7 @@ import {
   Animated,
   Pressable,
 } from "react-native";
+
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,6 +23,7 @@ import { saveToken, saveUser, getUserPrefs, saveUserPrefs, mergeServerUserAndPre
 import { useAuth, useSession } from "@clerk/expo";
 import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
 
+// import { setOneSignalUserId, setUserRoleTag } from "../../src/config/onesignal.config";
 
 const useNativeDriverForAnim = Platform.OS !== "web";
 
@@ -37,6 +39,7 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  //Clerk Google auth setup
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { session } = useSession();
   const { signInWithGoogle } = useGoogleSignIn();
@@ -44,6 +47,7 @@ export default function RegisterScreen() {
   // Ref to prevent infinite sync loops
   const hasAttemptedSyncRef = useRef(false);
 
+  //Backend sync function
   const handleBackendSync = useCallback(async (clerkToken: string, sessionId?: string) => {
     try {
       console.log("Finalizing backend sync with sessionId:", sessionId);
@@ -89,6 +93,7 @@ export default function RegisterScreen() {
     }
   }, [role]);
 
+  //Auto sync useEffect
   useEffect(() => {
     const checkExistingSession = async () => {
       // Only proceed if Clerk is loaded, a session exists, and we haven't tried syncing yet
@@ -145,6 +150,8 @@ export default function RegisterScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  //Button press animation
+
   const handlePressIn = (animValue: Animated.Value) => {
     Animated.spring(animValue, {
       toValue: 0.95,
@@ -161,6 +168,7 @@ export default function RegisterScreen() {
     }).start();
   };
 
+  //register function
   const handleRegister = async () => {
     if (!name || !email || !phone || !password || !confirmPassword) {
       setError("Please fill in all fields");
@@ -194,6 +202,7 @@ export default function RegisterScreen() {
     setIsLoading(true);
     setError("");
 
+    //Calling backend register API
     try {
       const response = await registerUser({
         name,
@@ -225,6 +234,8 @@ export default function RegisterScreen() {
       setIsLoading(false);
     }
   };
+
+  //Google sign-up function
 
   const handleGoogleSignUp = async () => {
     try {
@@ -266,7 +277,7 @@ export default function RegisterScreen() {
   };
 
 
-
+  //UI return section
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView

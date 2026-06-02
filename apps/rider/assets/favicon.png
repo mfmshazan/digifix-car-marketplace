@@ -1,0 +1,6 @@
+<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" fill="#2563EB"/>
+  <circle cx="512" cy="450" r="150" fill="white"/>
+  <path d="M512 350 L512 450 L562 500" stroke="#2563EB" stroke-width="20" fill="none" stroke-linecap="round"/>
+  <text x="512" y="650" font-family="Arial, sans-serif" font-size="60" fill="white" text-anchor="middle" font-weight="bold">Delivery Partner</text>
+</svg>

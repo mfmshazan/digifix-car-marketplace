@@ -21,8 +21,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.digifix.autoparts",
-      "googleServicesFile": "./google-services.json"
+      "package": "com.digifix.autoparts"
     },
     "web": {
       "output": "static",

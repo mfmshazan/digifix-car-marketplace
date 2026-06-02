@@ -72,21 +72,31 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       if (token) {
         // Authenticated → fetch from backend
-        const response = await fetchCart();
-        if (response.success && response.data) {
-          const normalized = response.data.items.map(normalizeItem);
-          setItems(normalized);
-          // Keep offline cache in sync
-          await AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(normalized));
-          return;
+        console.log('🛒 Cart: Found auth token, attempting backend fetch...');
+        try {
+          const response = await fetchCart();
+          if (response.success && response.data) {
+            console.log('🛒 Cart: Backend fetch successful, loaded', response.data.items.length, 'items');
+            const normalized = response.data.items.map(normalizeItem);
+            setItems(normalized);
+            // Keep offline cache in sync
+            await AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(normalized));
+            return;
+          }
+        } catch (backendError) {
+          console.warn('🛒 Cart: Backend fetch failed, falling back to offline cache:', String(backendError).substring(0, 100));
         }
+      } else {
+        console.log('🛒 Cart: No auth token, using offline cache');
       }
 
       // Not authenticated or backend failed → use offline cache
       const cached = await AsyncStorage.getItem(CART_OFFLINE_KEY);
-      setItems(cached ? JSON.parse(cached) : []);
+      const items = cached ? JSON.parse(cached) : [];
+      console.log('🛒 Cart: Loaded', items.length, 'items from offline cache');
+      setItems(items);
     } catch (error) {
-      console.error('Failed to load cart:', error);
+      console.error('🛒 Cart: Failed to load cart:', error);
       // Fallback to offline cache
       try {
         const cached = await AsyncStorage.getItem(CART_OFFLINE_KEY);

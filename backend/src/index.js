@@ -15,6 +15,12 @@ import cartRoutes from './routes/cart.routes.js';
 import clerkRoutes from './routes/clerk.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import wishlistRoutes from './routes/wishlist.routes.js';
+import riderPartnerRoutes from './routes/riderPartner.routes.js';
+import riderJobsRoutes from './routes/riderJobs.routes.js';
+import riderAdminRoutes from './routes/riderAdmin.routes.js';
+import deliveryRequestRoutes from './routes/deliveryRequest.routes.js';
+import customerTrackingRoutes from './routes/customerTracking.routes.js';
+import { initializeRiderRealtimeDispatch } from './services/riderRealtimeDispatch.js';
 import partnerRoutes from './routes/partner.routes.js';
 import statsRoutes from './routes/stats.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
@@ -69,8 +75,8 @@ io.on('connection', (socket) => {
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: process.env.REQUEST_BODY_LIMIT || '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: process.env.REQUEST_BODY_LIMIT || '50mb' }));
 
 // Static uploads
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
@@ -84,8 +90,13 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/car-parts', carPartRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/delivery-requests', deliveryRequestRoutes);
+app.use('/api/partner', riderPartnerRoutes);
+app.use('/api/jobs', riderJobsRoutes);
+app.use('/api/admin', riderAdminRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/tracking', customerTrackingRoutes);
 app.use('/api/partner', partnerRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/wallet', walletRoutes);
@@ -103,6 +114,11 @@ app.use((err, req, res, next) => {
     success: false,
     message: err.message || 'Internal Server Error',
   });
+});
+
+// ─── Start server ─────────────────────────────────────────────────────────────
+initializeRiderRealtimeDispatch(httpServer).catch((error) => {
+  console.warn('Rider realtime dispatch did not initialize:', error.message);
 });
 
 httpServer.listen(PORT, '0.0.0.0', () => {

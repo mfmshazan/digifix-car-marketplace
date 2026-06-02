@@ -6,6 +6,22 @@ import { getApiUrl } from '../config/api.config';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const REQUEST_TIMEOUT_MS = 15000;
+
+const fetchWithTimeout = async (url: string, options: RequestInit) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+        return await fetch(url, {
+            ...options,
+            signal: controller.signal,
+        });
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
 export const useGoogleSignIn = () => {
     const { startSSOFlow } = useSSO();
     const { isSignedIn } = useAuth();
@@ -73,7 +89,7 @@ export const syncClerkWithBackend = async (
             apiUrl: `${getApiUrl()}/auth/google`,
         });
 
-        const response = await fetch(`${getApiUrl()}/auth/google`, {
+        const response = await fetchWithTimeout(`${getApiUrl()}/auth/google`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -90,8 +106,14 @@ export const syncClerkWithBackend = async (
         console.log('Backend sync result:', result);
 
         return result;
-    } catch (error) {
+    } catch (error: any) {
         console.error('Backend sync error:', error);
+        if (error?.name === 'AbortError') {
+            return {
+                success: false,
+                message: `Could not connect to backend at ${getApiUrl()}. Check that the backend is running and reachable from your phone.`,
+            };
+        }
         return { success: false, message: 'Failed to sync with backend' };
     }
 };

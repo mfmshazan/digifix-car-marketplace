@@ -15,8 +15,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import MapView, { Marker } from "react-native-maps";
-import { getCustomerOrders, cancelOrder, Order } from "../../src/api/orders";
+import MapView, { Marker, Polyline } from "react-native-maps";
+import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../../src/api/orders";
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
 
@@ -61,6 +61,7 @@ const formatDate = (dateString: string) => {
   });
 };
 
+type Coordinate = { latitude: number; longitude: number };
 // The stepper shows how far the customer's order has progressed through fulfillment.
 const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
   const steps = [
@@ -71,11 +72,60 @@ const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
     { key: "DELIVERED", title: "Delivered" },
   ];
 
-  let currentIndex = steps.findIndex((s) => s.key === currentStatus.toUpperCase());
-  if (currentIndex === -1) {
-    if (currentStatus.toUpperCase() === "CANCELLED") currentIndex = 0; // Or handle separately
-    else currentIndex = 0;
-  }
+const DELIVERY_STEPS = [
+  { key: "pending", title: "Finding" },
+  { key: "assigned", title: "Assigned" },
+  { key: "accepted", title: "Accepted" },
+  { key: "arrived_at_pickup", title: "At Shop" },
+  { key: "picked_up", title: "Picked" },
+  { key: "in_transit", title: "On Way" },
+  { key: "arrived_at_dropoff", title: "Nearby" },
+  { key: "delivered", title: "Done" },
+];
+
+const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  pending: "Finding rider",
+  available: "Finding rider",
+  assigned: "Rider assigned",
+  accepted: "Rider accepted",
+  arrived_at_pickup: "Rider at shop",
+  picked_up: "Order picked up",
+  in_transit: "On the way",
+  arrived_at_dropoff: "Rider nearby",
+  delivered: "Delivered",
+  failed: "Delivery issue",
+};
+
+const normalizeDeliveryStatus = (status: string | null | undefined) =>
+  String(status || "pending").trim().toLowerCase();
+
+const distanceKm = (from: Coordinate, to: Coordinate) => {
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(to.latitude - from.latitude);
+  const dLon = toRadians(to.longitude - from.longitude);
+  const lat1 = toRadians(from.latitude);
+  const lat2 = toRadians(to.latitude);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const formatEta = (minutes: number | null) => {
+  if (minutes === null) return "GPS pending";
+  if (minutes <= 1) return "Arriving now";
+  if (minutes < 60) return `${Math.ceil(minutes)} min`;
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.ceil(minutes % 60);
+  return `${hours}h ${mins}m`;
+};
+
+const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
+  const steps = DELIVERY_STEPS;
+  const normalizedStatus = normalizeDeliveryStatus(currentStatus);
+  let currentIndex = steps.findIndex((s) => s.key === normalizedStatus);
+  if (currentIndex === -1) currentIndex = normalizedStatus === "delivered" ? steps.length - 1 : 0;
 
   const pulseAnim = React.useRef(new Animated.Value(0)).current;
 
@@ -170,6 +220,8 @@ const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
 };
 
 export default function OrdersScreen() {
+  const trackingMapRef = React.useRef<MapView | null>(null);
+  const hasFitTrackingMap = React.useRef(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -181,6 +233,92 @@ export default function OrdersScreen() {
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
   const [actionMenuOrderId, setActionMenuOrderId] = useState<string | null>(null);
+  const [riderLocation, setRiderLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [deliveryRoute, setDeliveryRoute] = useState<{
+    pickup: { latitude: number; longitude: number; address?: string };
+    dropoff: { latitude: number; longitude: number; address?: string };
+  } | null>(null);
+  const [liveDeliveryStatus, setLiveDeliveryStatus] = useState<string | null>(null);
+  const [lastTrackingUpdate, setLastTrackingUpdate] = useState<Date | null>(null);
+
+  const activeDeliveryStatus = normalizeDeliveryStatus(liveDeliveryStatus || trackingOrder?.status);
+  const etaMinutes =
+    riderLocation && deliveryRoute
+      ? (() => {
+          const averageCitySpeedKmh = 24;
+          const remainingKm =
+            ["pending", "available", "assigned", "accepted", "arrived_at_pickup"].includes(activeDeliveryStatus)
+              ? distanceKm(riderLocation, deliveryRoute.pickup) + distanceKm(deliveryRoute.pickup, deliveryRoute.dropoff)
+              : distanceKm(riderLocation, deliveryRoute.dropoff);
+          return Math.max(1, Math.round((remainingKm / averageCitySpeedKmh) * 60));
+        })()
+      : null;
+  const etaLabel = formatEta(etaMinutes);
+  const activeDeliveryLabel =
+    DELIVERY_STATUS_LABELS[activeDeliveryStatus] || formatStatus(activeDeliveryStatus);
+  const lastUpdatedLabel = lastTrackingUpdate
+    ? lastTrackingUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "Waiting";
+
+  // Poll rider's GPS every few seconds while the tracking modal is open.
+  useEffect(() => {
+    if (!trackingOrder) {
+      setRiderLocation(null);
+      setDeliveryRoute(null);
+      setLiveDeliveryStatus(null);
+      setLastTrackingUpdate(null);
+      hasFitTrackingMap.current = false;
+      return;
+    }
+
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await getRiderLiveLocation(trackingOrder.id);
+        if (cancelled) return;
+        if (res?.success && res.data?.riderLocation) {
+          setRiderLocation(res.data.riderLocation);
+        }
+        if (res?.success && res.data?.route?.pickup && res.data?.route?.dropoff) {
+          setDeliveryRoute(res.data.route);
+        }
+        if (res?.success && res.data?.status) {
+          setLiveDeliveryStatus(res.data.status);
+        }
+        setLastTrackingUpdate(new Date());
+      } catch {
+        // silently ignore network errors between polls
+      }
+    };
+
+    poll();
+    const intervalId = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [trackingOrder]);
+
+  useEffect(() => {
+    if (!trackingOrder || !deliveryRoute || !trackingMapRef.current || hasFitTrackingMap.current) return;
+
+    const coordinates = [
+      deliveryRoute.pickup,
+      ...(riderLocation ? [riderLocation] : []),
+      deliveryRoute.dropoff,
+    ];
+
+    const timeoutId = setTimeout(() => {
+      trackingMapRef.current?.fitToCoordinates(coordinates, {
+        edgePadding: { top: 80, right: 60, bottom: 220, left: 60 },
+        animated: true,
+      });
+      hasFitTrackingMap.current = true;
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [trackingOrder, deliveryRoute]);
 
   const fetchOrders = async (showRefresh = false) => {
     try {
@@ -507,31 +645,83 @@ export default function OrdersScreen() {
           </View>
           
           <MapView
+            ref={trackingMapRef}
             style={styles.map}
             initialRegion={{
-              latitude: 6.9271, // Colombo default
-              longitude: 79.8612,
-              latitudeDelta: 0.0922,
-              longitudeDelta: 0.0421,
+              latitude: riderLocation?.latitude ?? deliveryRoute?.pickup.latitude ?? 6.9271,
+              longitude: riderLocation?.longitude ?? deliveryRoute?.pickup.longitude ?? 79.8612,
+              latitudeDelta: 0.035,
+              longitudeDelta: 0.035,
             }}
           >
-            <Marker
-              coordinate={{ latitude: 6.9271, longitude: 79.8612 }}
-              title="Rider Location"
-              description="Your rider is here"
-            >
-              <View style={styles.markerContainer}>
-                <Ionicons name="bicycle" size={24} color="#FFF" />
-              </View>
-            </Marker>
+            {deliveryRoute && (
+              <>
+                <Polyline
+                  coordinates={[deliveryRoute.pickup, deliveryRoute.dropoff]}
+                  strokeColor="#94A3B8"
+                  strokeWidth={4}
+                  lineDashPattern={[8, 6]}
+                />
+                <Polyline
+                  coordinates={[
+                    deliveryRoute.pickup,
+                    ...(riderLocation ? [riderLocation] : []),
+                    deliveryRoute.dropoff,
+                  ]}
+                  strokeColor="#FF6B35"
+                  strokeWidth={5}
+                />
+                <Marker
+                  coordinate={deliveryRoute.pickup}
+                  title="Pickup"
+                  description={deliveryRoute.pickup.address || "Shop pickup location"}
+                  pinColor="#2563EB"
+                />
+                <Marker
+                  coordinate={deliveryRoute.dropoff}
+                  title="Customer"
+                  description={deliveryRoute.dropoff.address || "Customer delivery location"}
+                  pinColor="#16A34A"
+                />
+              </>
+            )}
+            {riderLocation && (
+              <Marker
+                coordinate={{ latitude: riderLocation.latitude, longitude: riderLocation.longitude }}
+                title="Rider Location"
+                description={`ETA ${etaLabel}`}
+              >
+                <View style={styles.markerContainer}>
+                  <Ionicons name="bicycle" size={24} color="#FFF" />
+                </View>
+              </Marker>
+            )}
           </MapView>
-          
+
+          {!riderLocation && (
+            <View style={styles.noRiderBanner} pointerEvents="none">
+              <Ionicons name="location-outline" size={32} color="#999" />
+              <Text style={styles.noRiderText}>Waiting for rider location…</Text>
+            </View>
+          )}
+
           <View style={styles.trackingInfoCard}>
             <View style={styles.trackingInfoHeader}>
-               <Text style={styles.trackingStatusText}>Order Status</Text>
-               <Text style={styles.trackingOrderText}>Order #{(trackingOrder?.orderNumber || trackingOrder?.id || '').slice(-8).toUpperCase()}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.trackingStatusText}>{activeDeliveryLabel}</Text>
+                <Text style={styles.trackingOrderText}>Order {trackingOrder?.orderNumber}</Text>
+              </View>
+              <View style={styles.etaPill}>
+                <Ionicons name="time-outline" size={14} color="#FF6B35" />
+                <Text style={styles.etaText}>{etaLabel}</Text>
+              </View>
             </View>
-            <OrderStepper currentStatus={trackingOrder?.status || 'PENDING'} />
+            <View style={styles.liveMetaRow}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveMetaText}>Live updates every 3s</Text>
+              <Text style={styles.liveMetaText}>Updated {lastUpdatedLabel}</Text>
+            </View>
+            <OrderStepper currentStatus={activeDeliveryStatus} />
           </View>
         </View>
       </Modal>
@@ -912,7 +1102,41 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 10,
+    gap: 12,
+  },
+  etaPill: {
+    minWidth: 92,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#FFF3EE",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    gap: 5,
+  },
+  etaText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#FF6B35",
+  },
+  liveMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginBottom: 16,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#16A34A",
+  },
+  liveMetaText: {
+    flexShrink: 1,
+    fontSize: 11,
+    color: "#6B7280",
   },
   stepperContainer: {
     flexDirection: "row",
@@ -922,12 +1146,12 @@ const styles = StyleSheet.create({
   },
   stepWrapper: {
     alignItems: "center",
-    width: 44, // Fixed width to center text properly
+    width: 36,
   },
   stepCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
@@ -958,7 +1182,7 @@ const styles = StyleSheet.create({
     color: "#999",
   },
   stepLabel: {
-    fontSize: 10,
+    fontSize: 9,
     textAlign: "center",
   },
   stepLabelActive: {
@@ -971,7 +1195,7 @@ const styles = StyleSheet.create({
   },
   lineWrapper: {
     flex: 1,
-    height: 28, // Matches circle height to center vertically
+    height: 24,
     justifyContent: "center",
     paddingHorizontal: 4,
   },
@@ -1114,5 +1338,30 @@ const styles = StyleSheet.create({
     color: "#FFF",
     fontSize: 16,
     fontWeight: "600",
+  },
+  noRiderBanner: {
+    position: "absolute",
+    top: 112,
+    left: 16,
+    right: 16,
+    minHeight: 54,
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  noRiderText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+    color: "#666",
+    fontWeight: "500",
   },
 });

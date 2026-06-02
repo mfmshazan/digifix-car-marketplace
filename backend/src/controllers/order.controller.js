@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { sendNewOrderNotificationToSalesman } from '../lib/onesignal.js';
+import { createRiderJobsForMarketplaceOrders } from '../services/riderDeliveryJobFactory.js';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
 
 /**
@@ -957,6 +958,10 @@ export const createOrder = async (req, res) => {
           total: order.total,
         }).catch(err => console.error('OneSignal error:', err.message))
       )
+    );
+
+    createRiderJobsForMarketplaceOrders(createdOrders).catch(err =>
+      console.error('Rider delivery job creation error:', err.message)
     );
 
     res.status(201).json({

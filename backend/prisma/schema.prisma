@@ -343,10 +343,10 @@ model Order {
   addressId String?
   address   Address? @relation(fields: [addressId], references: [id])
 
-  items               OrderItem[]
-  tracking            OrderTracking[]
+  items    OrderItem[]
+  tracking OrderTracking[]
   walletTransactions  WalletTransaction[]
-  rider_delivery_jobs rider_delivery_jobs[]
+  riderDeliveryJobs RiderDeliveryJob[]
 
   @@index([customerId])
   @@index([salesmanId])
@@ -469,160 +469,177 @@ model PasswordResetOtp {
   @@index([email])
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model rider_delivery_jobs {
-  id                            Int                             @id @default(autoincrement())
-  partner_id                    Int?
-  marketplace_order_id          String?
-  order_number                  String                          @unique @db.VarChar(100)
-  customer_name                 String                          @db.VarChar(255)
-  customer_phone                String                          @db.VarChar(20)
-  pickup_address                String
-  pickup_latitude               Decimal                         @db.Decimal(10, 8)
-  pickup_longitude              Decimal                         @db.Decimal(11, 8)
-  pickup_contact_name           String?                         @db.VarChar(255)
-  pickup_contact_phone          String?                         @db.VarChar(20)
-  dropoff_address               String
-  dropoff_latitude              Decimal                         @db.Decimal(10, 8)
-  dropoff_longitude             Decimal                         @db.Decimal(11, 8)
-  distance_km                   Decimal?                        @db.Decimal(6, 2)
-  payment_amount                Decimal                         @db.Decimal(10, 2)
-  items_description             String?
-  special_instructions          String?
-  status                        String                          @default("pending") @db.VarChar(30)
-  created_at                    DateTime                        @default(now())
-  assigned_at                   DateTime?
-  accepted_at                   DateTime?
-  arrived_at_pickup_at          DateTime?
-  picked_up_at                  DateTime?
-  arrived_at_dropoff_at         DateTime?
-  delivered_at                  DateTime?
-  failed_at                     DateTime?
-  updated_at                    DateTime                        @default(now())
-  package_notes                 String?
-  package_type                  String?                         @db.VarChar(80)
-  package_weight                Decimal?                        @db.Decimal(8, 2)
-  payment_type                  String                          @default("PREPAID") @db.VarChar(30)
-  Order                         Order?                          @relation(fields: [marketplace_order_id], references: [id])
-  rider_delivery_partners       rider_delivery_partners?        @relation(fields: [partner_id], references: [id])
-  rider_delivery_request_offers rider_delivery_request_offers[]
-  rider_job_status_logs         rider_job_status_logs[]
-  rider_job_tracking            rider_job_tracking[]
-  rider_proof_of_delivery       rider_proof_of_delivery?
+// ================================
+// Rider Delivery Models
+// ================================
 
-  @@index([marketplace_order_id], map: "idx_rider_jobs_marketplace_order")
-  @@index([order_number], map: "idx_rider_jobs_order_number")
-  @@index([partner_id], map: "idx_rider_jobs_partner")
-  @@index([pickup_latitude, pickup_longitude], map: "idx_rider_jobs_pickup_location")
-  @@index([status], map: "idx_rider_jobs_status")
-}
+model RiderDeliveryPartner {
+  id                    Int       @id @default(autoincrement())
+  email                 String    @unique @db.VarChar(255)
+  passwordHash          String    @map("password_hash") @db.VarChar(255)
+  fullName              String    @map("full_name") @db.VarChar(255)
+  phone                 String    @db.VarChar(20)
+  vehicleType           String?   @map("vehicle_type") @db.VarChar(50)
+  vehicleNumber         String?   @map("vehicle_number") @db.VarChar(50)
+  profilePhotoUrl       String?   @map("profile_photo_url")
+  bio                   String?
+  address               String?
+  emergencyContactName  String?   @map("emergency_contact_name") @db.VarChar(255)
+  emergencyContactPhone String?   @map("emergency_contact_phone") @db.VarChar(20)
+  pushToken             String?   @map("push_token")
+  pushPlatform          String?   @map("push_platform") @db.VarChar(20)
+  pushTokenUpdatedAt    DateTime? @map("push_token_updated_at")
+  status                String    @default("offline") @db.VarChar(20)
+  currentLatitude       Decimal?  @map("current_latitude") @db.Decimal(10, 8)
+  currentLongitude      Decimal?  @map("current_longitude") @db.Decimal(11, 8)
+  rating                Decimal   @default(0.00) @db.Decimal(3, 2)
+  totalDeliveries       Int       @default(0) @map("total_deliveries")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @default(now()) @map("updated_at")
 
-model rider_delivery_partners {
-  id                            Int                             @id @default(autoincrement())
-  email                         String                          @unique @db.VarChar(255)
-  password_hash                 String                          @db.VarChar(255)
-  full_name                     String                          @db.VarChar(255)
-  phone                         String                          @db.VarChar(20)
-  vehicle_type                  String?                         @db.VarChar(50)
-  vehicle_number                String?                         @db.VarChar(50)
-  profile_photo_url             String?
-  bio                           String?
-  address                       String?
-  emergency_contact_name        String?                         @db.VarChar(255)
-  emergency_contact_phone       String?                         @db.VarChar(20)
-  push_token                    String?
-  push_platform                 String?                         @db.VarChar(20)
-  push_token_updated_at         DateTime?
-  status                        String                          @default("offline") @db.VarChar(20)
-  current_latitude              Decimal?                        @db.Decimal(10, 8)
-  current_longitude             Decimal?                        @db.Decimal(11, 8)
-  rating                        Decimal                         @default(0.00) @db.Decimal(3, 2)
-  total_deliveries              Int                             @default(0)
-  created_at                    DateTime                        @default(now())
-  updated_at                    DateTime                        @default(now())
-  rider_delivery_jobs           rider_delivery_jobs[]
-  rider_delivery_request_offers rider_delivery_request_offers[]
-  rider_job_status_logs         rider_job_status_logs[]
-  rider_job_tracking            rider_job_tracking[]
-  rider_proof_of_delivery       rider_proof_of_delivery[]
-  rider_refresh_tokens          rider_refresh_tokens[]
+  refreshTokens RiderRefreshToken[]
+  jobs          RiderDeliveryJob[]
+  statusLogs    RiderJobStatusLog[]
+  tracking      RiderJobTracking[]
+  proofs        RiderProofOfDelivery[]
+  offers        RiderDeliveryRequestOffer[]
 
   @@index([email], map: "idx_rider_partners_email")
   @@index([status], map: "idx_rider_partners_status")
+  @@map("rider_delivery_partners")
 }
 
-model rider_delivery_request_offers {
-  id                      Int                     @id @default(autoincrement())
-  job_id                  Int
-  partner_id              Int
-  offer_status            String                  @db.VarChar(20)
-  distance_to_pickup_km   Decimal?                @db.Decimal(8, 3)
-  offered_at              DateTime                @default(now())
-  expires_at              DateTime
-  responded_at            DateTime?
-  response_reason         String?
-  rider_delivery_jobs     rider_delivery_jobs     @relation(fields: [job_id], references: [id], onDelete: Cascade)
-  rider_delivery_partners rider_delivery_partners @relation(fields: [partner_id], references: [id], onDelete: Cascade)
+model RiderRefreshToken {
+  id        Int      @id @default(autoincrement())
+  partnerId Int      @map("partner_id")
+  token     String   @unique @db.VarChar(500)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  @@index([job_id], map: "idx_rider_dispatch_offers_job_id")
-  @@index([partner_id], map: "idx_rider_dispatch_offers_partner_id")
-  @@index([offer_status, expires_at], map: "idx_rider_dispatch_offers_status")
-}
+  partner RiderDeliveryPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-model rider_job_status_logs {
-  id                      Int                      @id @default(autoincrement())
-  job_id                  Int
-  partner_id              Int?
-  status                  String                   @db.VarChar(30)
-  reason                  String?
-  latitude                Decimal?                 @db.Decimal(10, 8)
-  longitude               Decimal?                 @db.Decimal(11, 8)
-  created_at              DateTime                 @default(now())
-  rider_delivery_jobs     rider_delivery_jobs      @relation(fields: [job_id], references: [id], onDelete: Cascade)
-  rider_delivery_partners rider_delivery_partners? @relation(fields: [partner_id], references: [id])
-}
-
-model rider_job_tracking {
-  id                      Int                     @id @default(autoincrement())
-  job_id                  Int
-  partner_id              Int
-  latitude                Decimal                 @db.Decimal(10, 8)
-  longitude               Decimal                 @db.Decimal(11, 8)
-  accuracy                Decimal?                @db.Decimal(6, 2)
-  speed                   Decimal?                @db.Decimal(6, 2)
-  heading                 Decimal?                @db.Decimal(5, 2)
-  recorded_at             DateTime                @default(now())
-  rider_delivery_jobs     rider_delivery_jobs     @relation(fields: [job_id], references: [id], onDelete: Cascade)
-  rider_delivery_partners rider_delivery_partners @relation(fields: [partner_id], references: [id], onDelete: Cascade)
-
-  @@index([job_id], map: "idx_rider_tracking_job")
-  @@index([recorded_at], map: "idx_rider_tracking_recorded_at")
-}
-
-model rider_proof_of_delivery {
-  id                      Int                     @id @default(autoincrement())
-  job_id                  Int                     @unique
-  partner_id              Int
-  photo_url               String?
-  signature_data          String?
-  recipient_name          String?                 @db.VarChar(255)
-  notes                   String?
-  delivery_latitude       Decimal?                @db.Decimal(10, 8)
-  delivery_longitude      Decimal?                @db.Decimal(11, 8)
-  created_at              DateTime                @default(now())
-  rider_delivery_jobs     rider_delivery_jobs     @relation(fields: [job_id], references: [id], onDelete: Cascade)
-  rider_delivery_partners rider_delivery_partners @relation(fields: [partner_id], references: [id], onDelete: Cascade)
-}
-
-model rider_refresh_tokens {
-  id                      Int                     @id @default(autoincrement())
-  partner_id              Int
-  token                   String                  @unique @db.VarChar(500)
-  expires_at              DateTime
-  created_at              DateTime                @default(now())
-  rider_delivery_partners rider_delivery_partners @relation(fields: [partner_id], references: [id], onDelete: Cascade)
-
-  @@index([partner_id], map: "idx_rider_refresh_tokens_partner")
   @@index([token], map: "idx_rider_refresh_tokens_token")
+  @@index([partnerId], map: "idx_rider_refresh_tokens_partner")
+  @@map("rider_refresh_tokens")
 }
 
+model RiderDeliveryJob {
+  id                    Int       @id @default(autoincrement())
+  partnerId             Int?      @map("partner_id")
+  marketplaceOrderId    String?   @map("marketplace_order_id")
+  orderNumber           String    @unique @map("order_number") @db.VarChar(100)
+  customerName          String    @map("customer_name") @db.VarChar(255)
+  customerPhone         String    @map("customer_phone") @db.VarChar(20)
+  pickupAddress         String    @map("pickup_address")
+  pickupLatitude        Decimal   @map("pickup_latitude") @db.Decimal(10, 8)
+  pickupLongitude       Decimal   @map("pickup_longitude") @db.Decimal(11, 8)
+  pickupContactName     String?   @map("pickup_contact_name") @db.VarChar(255)
+  pickupContactPhone    String?   @map("pickup_contact_phone") @db.VarChar(20)
+  dropoffAddress        String    @map("dropoff_address")
+  dropoffLatitude       Decimal   @map("dropoff_latitude") @db.Decimal(10, 8)
+  dropoffLongitude      Decimal   @map("dropoff_longitude") @db.Decimal(11, 8)
+  distanceKm            Decimal?  @map("distance_km") @db.Decimal(6, 2)
+  paymentAmount         Decimal   @map("payment_amount") @db.Decimal(10, 2)
+  packageWeight         Decimal?  @map("package_weight") @db.Decimal(8, 2)
+  packageType           String?   @map("package_type") @db.VarChar(80)
+  packageNotes          String?   @map("package_notes")
+  paymentType           String    @default("PREPAID") @map("payment_type") @db.VarChar(30)
+  itemsDescription      String?   @map("items_description")
+  specialInstructions   String?   @map("special_instructions")
+  status                String    @default("pending") @db.VarChar(30)
+  createdAt             DateTime  @default(now()) @map("created_at")
+  assignedAt            DateTime? @map("assigned_at")
+  acceptedAt            DateTime? @map("accepted_at")
+  arrivedAtPickupAt     DateTime? @map("arrived_at_pickup_at")
+  pickedUpAt            DateTime? @map("picked_up_at")
+  arrivedAtDropoffAt    DateTime? @map("arrived_at_dropoff_at")
+  deliveredAt           DateTime? @map("delivered_at")
+  failedAt              DateTime? @map("failed_at")
+  updatedAt             DateTime  @default(now()) @map("updated_at")
+
+  partner         RiderDeliveryPartner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  marketplaceOrder Order?               @relation(fields: [marketplaceOrderId], references: [id], onDelete: SetNull)
+  statusLogs      RiderJobStatusLog[]
+  tracking        RiderJobTracking[]
+  proof           RiderProofOfDelivery?
+  offers          RiderDeliveryRequestOffer[]
+
+  @@index([status], map: "idx_rider_jobs_status")
+  @@index([partnerId], map: "idx_rider_jobs_partner")
+  @@index([orderNumber], map: "idx_rider_jobs_order_number")
+  @@index([marketplaceOrderId], map: "idx_rider_jobs_marketplace_order")
+  @@map("rider_delivery_jobs")
+}
+
+model RiderJobStatusLog {
+  id        Int      @id @default(autoincrement())
+  jobId     Int      @map("job_id")
+  partnerId Int?     @map("partner_id")
+  status    String   @db.VarChar(30)
+  reason    String?
+  latitude  Decimal? @db.Decimal(10, 8)
+  longitude Decimal? @db.Decimal(11, 8)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  job     RiderDeliveryJob      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  partner RiderDeliveryPartner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@map("rider_job_status_logs")
+}
+
+model RiderJobTracking {
+  id         Int      @id @default(autoincrement())
+  jobId      Int      @map("job_id")
+  partnerId  Int      @map("partner_id")
+  latitude   Decimal  @db.Decimal(10, 8)
+  longitude  Decimal  @db.Decimal(11, 8)
+  accuracy   Decimal? @db.Decimal(6, 2)
+  speed      Decimal? @db.Decimal(6, 2)
+  heading    Decimal? @db.Decimal(5, 2)
+  recordedAt DateTime @default(now()) @map("recorded_at")
+
+  job     RiderDeliveryJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  partner RiderDeliveryPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([jobId], map: "idx_rider_tracking_job")
+  @@index([recordedAt], map: "idx_rider_tracking_recorded_at")
+  @@map("rider_job_tracking")
+}
+
+model RiderProofOfDelivery {
+  id                Int      @id @default(autoincrement())
+  jobId             Int      @unique @map("job_id")
+  partnerId         Int      @map("partner_id")
+  photoUrl          String?  @map("photo_url")
+  signatureData     String?  @map("signature_data")
+  recipientName     String?  @map("recipient_name") @db.VarChar(255)
+  notes             String?
+  deliveryLatitude  Decimal? @map("delivery_latitude") @db.Decimal(10, 8)
+  deliveryLongitude Decimal? @map("delivery_longitude") @db.Decimal(11, 8)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  job     RiderDeliveryJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  partner RiderDeliveryPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@map("rider_proof_of_delivery")
+}
+
+model RiderDeliveryRequestOffer {
+  id                 Int       @id @default(autoincrement())
+  jobId              Int       @map("job_id")
+  partnerId          Int       @map("partner_id")
+  offerStatus        String    @map("offer_status") @db.VarChar(20)
+  distanceToPickupKm Decimal?  @map("distance_to_pickup_km") @db.Decimal(8, 3)
+  offeredAt          DateTime  @default(now()) @map("offered_at")
+  expiresAt          DateTime  @map("expires_at")
+  respondedAt        DateTime? @map("responded_at")
+  responseReason     String?   @map("response_reason")
+
+  job     RiderDeliveryJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  partner RiderDeliveryPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([jobId], map: "idx_rider_dispatch_offers_job_id")
+  @@index([partnerId], map: "idx_rider_dispatch_offers_partner_id")
+  @@index([offerStatus, expiresAt], map: "idx_rider_dispatch_offers_status")
+  @@map("rider_delivery_request_offers")
+}

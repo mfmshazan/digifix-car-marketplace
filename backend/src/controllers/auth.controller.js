@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
 import { isRiderRegisterPayload, loginRiderByEmail, registerRider } from './riderAuth.controller.js';
+import { createStripeAccountForSalesman } from './stripe.controller.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -26,6 +27,8 @@ const register = async (req, res) => {
   try {
     const { password, name, phone, role = 'CUSTOMER' } = req.body;
     const email = String(req.body.email || '').trim().toLowerCase();
+    const { email, password, name, phone, role = 'CUSTOMER', vehicleType, vehicleNumber } = req.body;
+    console.log(`[Registration] Starting for ${email} with role ${role}`);
 
     // Admin restrictions
     if (role === 'ADMIN') {
@@ -41,7 +44,7 @@ const register = async (req, res) => {
         where: { role: 'ADMIN' },
       });
 
-      if (adminCount >= 2) {
+      if (adminCount >= 3) {
         return res.status(403).json({
           success: false,
           message: 'Maximum number of admins has been reached',
@@ -63,6 +66,7 @@ const register = async (req, res) => {
     });
 
     if (existingUser) {
+      console.log(`[Registration] User ${email} already exists.`);
       return res.status(400).json({
         success: false,
         message: 'User with this email already exists',
@@ -73,26 +77,23 @@ const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user
+    console.log(`[Registration] Creating user in DB...`);
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
-        name,
-        phone,
+        name: name || '',
+        phone: phone || '',
         role: role,
         authProvider: 'EMAIL',
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        createdAt: true,
+        vehicleType: role === 'DELIVERY_PARTNER' ? vehicleType : null,
+        vehicleNumber: role === 'DELIVERY_PARTNER' ? vehicleNumber : null,
+        deliveryStatus: role === 'DELIVERY_PARTNER' ? 'offline' : null,
       },
     });
+    console.log(`[Registration] User ${user.id} created successfully.`);
 
-    // If salesman, create a store
+    // If salesman, create a store + Stripe connected account
     if (role === 'SALESMAN') {
       await prisma.store.create({
         data: {
@@ -100,24 +101,58 @@ const register = async (req, res) => {
           ownerId: user.id,
         },
       });
+
+      // Create Stripe Express connected account and save to user
+      try {
+        const { accountId } = await createStripeAccountForSalesman();
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { stripeAccountId: accountId },
+        });
+        user.stripeAccountId = accountId;
+        console.log(`Stripe connected account created for salesman ${user.email}: ${accountId}`);
+      } catch (stripeErr) {
+        // Non-fatal: user is created, they can connect Stripe later from profile
+        console.warn(`Stripe account creation failed for ${user.email}:`, stripeErr.message);
+      }
     }
 
     // Generate token
-    const token = generateToken(user.id, user.role);
+    let token;
+    try {
+      token = generateToken(user.id, user.role);
+    } catch (tokenError) {
+      console.error('[Registration] Token generation failed:', tokenError.message);
+      throw new Error(`Token generation failed: ${tokenError.message}`);
+    }
+
+    console.log(`[Registration] Everything successful for ${email}. Sending response.`);
 
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
       data: {
-        user,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          phone: user.phone,
+          role: user.role,
+          avatar: user.avatar || null,
+        },
         token,
       },
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('[Registration Error Details]:', {
+      message: error.message,
+      stack: error.stack,
+      role: req.body?.role
+    });
     res.status(500).json({
       success: false,
       message: 'Failed to register user',
+      error: error.message,
     });
   }
 };

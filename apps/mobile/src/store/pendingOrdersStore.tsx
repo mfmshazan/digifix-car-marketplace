@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { getSalesmanOrders } from '../api/orders';
+import { getSalesmanPendingCount } from '../api/orders';
 
 interface PendingOrdersContextType {
   pendingCount: number;
@@ -16,10 +16,8 @@ export function PendingOrdersProvider({ children }: { children: React.ReactNode 
   const refreshPendingCount = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await getSalesmanOrders('PENDING');
-      if (response.success && response.data) {
-        setPendingCount(response.data.pagination?.total || response.data.orders?.length || 0);
-      }
+      const count = await getSalesmanPendingCount();
+      setPendingCount(count);
     } catch (error) {
       console.error('Failed to fetch pending orders count:', error);
     } finally {

@@ -20,7 +20,7 @@ import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
 
-// Status color mapping
+// Order badge colors are reused across the list, the tracking stepper, and socket updates.
 const getStatusColor = (status: string) => {
   switch (status.toUpperCase()) {
     case "DELIVERED":
@@ -62,6 +62,15 @@ const formatDate = (dateString: string) => {
 };
 
 type Coordinate = { latitude: number; longitude: number };
+// The stepper shows how far the customer's order has progressed through fulfillment.
+const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
+  const steps = [
+    { key: "PENDING", title: "Placed" },
+    { key: "CONFIRMED", title: "Confirmed" },
+    { key: "PROCESSING", title: "Processing" },
+    { key: "SHIPPED", title: "Shipped" },
+    { key: "DELIVERED", title: "Delivered" },
+  ];
 
 const DELIVERY_STEPS = [
   { key: "pending", title: "Finding" },
@@ -427,10 +436,10 @@ export default function OrdersScreen() {
     const isMenuOpen = actionMenuOrderId === item.id;
 
     return (
-      <TouchableOpacity style={styles.orderCard}>
+      <TouchableOpacity style={[styles.orderCard, isMenuOpen && styles.orderCardMenuOpen]}>
         <View style={styles.orderHeader}>
           <View>
-            <Text style={styles.orderId}>{item.orderNumber || `ORD-${item.id.slice(-6).toUpperCase()}`}</Text>
+            <Text style={styles.orderId}>Order #{(item.orderNumber || item.id).slice(-8).toUpperCase()}</Text>
             <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
           </View>
           <View
@@ -445,7 +454,7 @@ export default function OrdersScreen() {
           </View>
         </View>
         <View style={styles.orderDivider} />
-        
+
         {/* Render Order Items */}
         {item.items && item.items.length > 0 && (
           <View style={styles.itemsContainer}>
@@ -604,17 +613,17 @@ export default function OrdersScreen() {
         onRequestClose={() => setSelectedImage(null)}
       >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={styles.modalCloseButton} 
+          <TouchableOpacity
+            style={styles.modalCloseButton}
             onPress={() => setSelectedImage(null)}
           >
             <Ionicons name="close" size={30} color="#FFF" />
           </TouchableOpacity>
           {selectedImage && (
-            <Image 
-              source={{ uri: selectedImage }} 
-              style={styles.modalImage} 
-              resizeMode="contain" 
+            <Image
+              source={{ uri: selectedImage }}
+              style={styles.modalImage}
+              resizeMode="contain"
             />
           )}
         </View>
@@ -813,11 +822,16 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
+    position: "relative",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 2,
+  },
+  orderCardMenuOpen: {
+    zIndex: 1000,
+    elevation: 20,
   },
   orderHeader: {
     flexDirection: "row",

@@ -18,19 +18,21 @@ export default function ForgotPassword() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
   const otpInputRefs = useRef<Array<TextInput | null>>([]);
 
+  //Request OTP
+
   const handleRequestOtp = async () => {
     if (!email) {
       setError('Please enter your email');
       return;
     }
-    
+
     try {
       setIsLoading(true);
       setError(null);
@@ -43,6 +45,7 @@ export default function ForgotPassword() {
     }
   };
 
+  //verify OtP
   const handleVerifyOtp = async () => {
     const otpValue = otp.join('');
     if (otpValue.length !== 6) {
@@ -66,7 +69,7 @@ export default function ForgotPassword() {
       setIsLoading(false);
     }
   };
-
+  //reset password
   const handleResetPassword = async () => {
     if (password !== confirmPassword) {
       setError('Passwords do not match');
@@ -108,177 +111,177 @@ export default function ForgotPassword() {
 
   if (isSuccess) {
     return (
-        <View style={styles.container}>
-            <View style={[styles.card, styles.successCard]}>
-                <View style={[styles.iconCircle, styles.successIconCircle]}>
-                    <Ionicons name="checkmark-circle" size={48} color="#10B981" />
-                </View>
-                <Text style={styles.title}>Success!</Text>
-                <Text style={styles.subtitle}>
-                    Your password has been successfully reset.
-                </Text>
-                <TouchableOpacity 
-                    style={styles.primaryButton}
-                    onPress={() => router.replace('/login')}
-                >
-                    <Text style={styles.primaryButtonText}>Sign In</Text>
-                </TouchableOpacity>
-            </View>
+      <View style={styles.container}>
+        <View style={[styles.card, styles.successCard]}>
+          <View style={[styles.iconCircle, styles.successIconCircle]}>
+            <Ionicons name="checkmark-circle" size={48} color="#10B981" />
+          </View>
+          <Text style={styles.title}>Success!</Text>
+          <Text style={styles.subtitle}>
+            Your password has been successfully reset.
+          </Text>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => router.replace('/login')}
+          >
+            <Text style={styles.primaryButtonText}>Sign In</Text>
+          </TouchableOpacity>
         </View>
+      </View>
     );
   }
 
-  const isButtonDisabled = isLoading || 
-    (step === 1 && !email) || 
-    (step === 2 && otp.join('').length !== 6) || 
+  const isButtonDisabled = isLoading ||
+    (step === 1 && !email) ||
+    (step === 2 && otp.join('').length !== 6) ||
     (step === 3 && (!password || !confirmPassword));
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        
+
         <View style={styles.card}>
-            <View style={styles.logoArea}>
-                <View style={styles.logoBox}>
-                    <Text style={styles.logoText}>D</Text>
-                </View>
+          <View style={styles.logoArea}>
+            <View style={styles.logoBox}>
+              <Text style={styles.logoText}>D</Text>
             </View>
+          </View>
 
-            <View style={styles.headerArea}>
-                <Text style={styles.title}>
-                    {step === 1 && "Forgot Password?"}
-                    {step === 2 && "Verify Code"}
-                    {step === 3 && "Secure Account"}
-                </Text>
-                <Text style={styles.subtitle}>
-                    {step === 1 && "Enter your email address and we'll send you a 6-digit OTP to reset your password."}
-                    {step === 2 && `Enter the code sent to:\n${email}`}
-                    {step === 3 && "Create a strong new password to protect your account."}
-                </Text>
+          <View style={styles.headerArea}>
+            <Text style={styles.title}>
+              {step === 1 && "Forgot Password?"}
+              {step === 2 && "Verify Code"}
+              {step === 3 && "Secure Account"}
+            </Text>
+            <Text style={styles.subtitle}>
+              {step === 1 && "Enter your email address and we'll send you a 6-digit OTP to reset your password."}
+              {step === 2 && `Enter the code sent to:\n${email}`}
+              {step === 3 && "Create a strong new password to protect your account."}
+            </Text>
+          </View>
+
+          {error && (
+            <View style={styles.errorArea}>
+              <Ionicons name="alert-circle" size={18} color="#EF4444" style={styles.errorIcon} />
+              <Text style={styles.errorText}>{error}</Text>
             </View>
+          )}
 
-            {error && (
-                <View style={styles.errorArea}>
-                    <Ionicons name="alert-circle" size={18} color="#EF4444" style={styles.errorIcon} />
-                    <Text style={styles.errorText}>{error}</Text>
+          <View style={styles.inputArea}>
+            {step === 1 && (
+              <View>
+                <Text style={styles.inputLabel}>Email Address</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="mail-outline" size={18} color="#9CA3AF" />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter your email"
+                    placeholderTextColor="#9CA3AF"
+                    value={email}
+                    onChangeText={(text) => { setEmail(text); setError(null); }}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
                 </View>
+              </View>
             )}
 
-            <View style={styles.inputArea}>
-                {step === 1 && (
-                    <View>
-                        <Text style={styles.inputLabel}>Email Address</Text>
-                        <View style={styles.inputWrapper}>
-                            <Ionicons name="mail-outline" size={18} color="#9CA3AF" />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Enter your email"
-                                placeholderTextColor="#9CA3AF"
-                                value={email}
-                                onChangeText={(text) => { setEmail(text); setError(null); }}
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                            />
-                        </View>
-                    </View>
-                )}
+            {step === 2 && (
+              <View style={styles.otpWrapper}>
+                {otp.map((digit, index) => (
+                  <TextInput
+                    key={index}
+                    ref={(el) => { otpInputRefs.current[index] = el; }}
+                    style={styles.otpInput}
+                    maxLength={1}
+                    keyboardType="number-pad"
+                    value={digit}
+                    onChangeText={(val) => updateOtp(index, val)}
+                    onKeyPress={({ nativeEvent }) => handleOtpKeyPress(index, nativeEvent.key)}
+                  />
+                ))}
+              </View>
+            )}
 
-                {step === 2 && (
-                    <View style={styles.otpWrapper}>
-                        {otp.map((digit, index) => (
-                            <TextInput
-                                key={index}
-                                ref={(el) => { otpInputRefs.current[index] = el; }}
-                                style={styles.otpInput}
-                                maxLength={1}
-                                keyboardType="number-pad"
-                                value={digit}
-                                onChangeText={(val) => updateOtp(index, val)}
-                                onKeyPress={({ nativeEvent }) => handleOtpKeyPress(index, nativeEvent.key)}
-                            />
-                        ))}
-                    </View>
-                )}
+            {step === 3 && (
+              <View>
+                <View style={styles.inputSpacing}>
+                  <Text style={styles.inputLabel}>New Password</Text>
+                  <View style={styles.inputWrapper}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Min 6 characters"
+                      placeholderTextColor="#9CA3AF"
+                      value={password}
+                      onChangeText={(text) => { setPassword(text); setError(null); }}
+                      secureTextEntry={!showPassword}
+                    />
+                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                      <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
-                {step === 3 && (
-                    <View>
-                        <View style={styles.inputSpacing}>
-                            <Text style={styles.inputLabel}>New Password</Text>
-                            <View style={styles.inputWrapper}>
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Min 6 characters"
-                                    placeholderTextColor="#9CA3AF"
-                                    value={password}
-                                    onChangeText={(text) => { setPassword(text); setError(null); }}
-                                    secureTextEntry={!showPassword}
-                                />
-                                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#9CA3AF" />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
+                <View>
+                  <Text style={styles.inputLabel}>Confirm Password</Text>
+                  <View style={styles.inputWrapper}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Repeat your password"
+                      placeholderTextColor="#9CA3AF"
+                      value={confirmPassword}
+                      onChangeText={(text) => { setConfirmPassword(text); setError(null); }}
+                      secureTextEntry={!showConfirmPassword}
+                    />
+                    <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+                      <Ionicons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            )}
 
-                        <View>
-                            <Text style={styles.inputLabel}>Confirm Password</Text>
-                            <View style={styles.inputWrapper}>
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Repeat your password"
-                                    placeholderTextColor="#9CA3AF"
-                                    value={confirmPassword}
-                                    onChangeText={(text) => { setConfirmPassword(text); setError(null); }}
-                                    secureTextEntry={!showConfirmPassword}
-                                />
-                                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
-                                    <Ionicons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#9CA3AF" />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    </View>
-                )}
-
-                <TouchableOpacity 
-                    style={[styles.primaryButton, isButtonDisabled && styles.disabledButton]}
-                    disabled={isButtonDisabled}
-                    onPress={() => {
-                        if (step === 1) handleRequestOtp();
-                        else if (step === 2) handleVerifyOtp();
-                        else if (step === 3) handleResetPassword();
-                    }}
-                >
-                    {isLoading ? (
-                        <ActivityIndicator color="white" />
-                    ) : (
-                        <View style={styles.buttonContent}>
-                            <Text style={styles.primaryButtonText}>
-                                {step === 1 && "Send OTP"}
-                                {step === 2 && "Verify OTP"}
-                                {step === 3 && "Update Password"}
-                            </Text>
-                            <Ionicons name="arrow-forward" size={18} color="white" />
-                        </View>
-                    )}
-                </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity 
-                style={styles.footerLink}
-                onPress={() => {
-                    if (step === 1) router.replace('/login');
-                    else setStep(step - 1 as any);
-                }}
+            <TouchableOpacity
+              style={[styles.primaryButton, isButtonDisabled && styles.disabledButton]}
+              disabled={isButtonDisabled}
+              onPress={() => {
+                if (step === 1) handleRequestOtp();
+                else if (step === 2) handleVerifyOtp();
+                else if (step === 3) handleResetPassword();
+              }}
             >
-                <Text style={styles.footerText}>
-                    {step === 1 ? "Remember your password? " : "Go back to "}
-                    <Text style={styles.footerBold}>
-                        {step === 1 ? "Sign In" : "previous step"}
-                    </Text>
-                </Text>
+              {isLoading ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <View style={styles.buttonContent}>
+                  <Text style={styles.primaryButtonText}>
+                    {step === 1 && "Send OTP"}
+                    {step === 2 && "Verify OTP"}
+                    {step === 3 && "Update Password"}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={18} color="white" />
+                </View>
+              )}
             </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.footerLink}
+            onPress={() => {
+              if (step === 1) router.replace('/login');
+              else setStep(step - 1 as any);
+            }}
+          >
+            <Text style={styles.footerText}>
+              {step === 1 ? "Remember your password? " : "Go back to "}
+              <Text style={styles.footerBold}>
+                {step === 1 ? "Sign In" : "previous step"}
+              </Text>
+            </Text>
+          </TouchableOpacity>
         </View>
 
       </ScrollView>

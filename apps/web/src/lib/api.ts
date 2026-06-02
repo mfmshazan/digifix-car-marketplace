@@ -112,6 +112,9 @@ export const productsApi = {
   // Create a new product
   createProduct: async (data: any) => {
     const response = await api.post('/products', data);
+export const commonApi = {
+  getStats: async () => {
+    const response = await api.get('/stats');
     return response.data;
   },
 };

@@ -122,10 +122,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         throw new Error('You must be logged in to add items to cart.');
       }
 
-      // Call backend
+      // Call backend first so quantity checks and duplicate-item merging happen
+      // in one place.
       await addItemToCart(item.productId, 1, item.itemType);
 
-      // Refresh cart from backend to get canonical state (with the real cartItemId)
+      // Reload after the write because the backend assigns the real cart item
+      // ID and may merge with an existing row.
       await loadCart();
     },
     [loadCart]

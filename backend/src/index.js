@@ -21,39 +21,42 @@ import riderAdminRoutes from './routes/riderAdmin.routes.js';
 import deliveryRequestRoutes from './routes/deliveryRequest.routes.js';
 import customerTrackingRoutes from './routes/customerTracking.routes.js';
 import { initializeRiderRealtimeDispatch } from './services/riderRealtimeDispatch.js';
+import partnerRoutes from './routes/partner.routes.js';
+import statsRoutes from './routes/stats.routes.js';
+import walletRoutes from './routes/wallet.routes.js';
+import stripeRoutes from './routes/stripe.routes.js';
 
-// Load environment variables early
+// Load environment variables
 dotenv.config({ override: true });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Get current directory
+// Determine current directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ─── HTTP server (required for Socket.io) ─────────────────────────────────────
+// Create HTTP server for Socket.io
 const httpServer = createServer(app);
 
-// ─── Socket.io setup ──────────────────────────────────────────────────────────
+// Socket.io setup
 const io = new Server(httpServer, {
   cors: {
-    origin: '*', // Allow all origins in development; restrict in production
+    origin: '*',
     methods: ['GET', 'POST'],
   },
 });
 
-// Make io accessible in all route controllers via req.app.get('io')
 app.set('io', io);
 
 io.on('connection', (socket) => {
-  console.log(`🔌 Socket connected: ${socket.id}`);
+  console.log(`Socket connected: ${socket.id}`);
 
   // Each client joins their own room for targeted notifications (e.g. order updates)
   socket.on('join', (userId) => {
     if (userId) {
       socket.join(`user:${userId}`);
-      console.log(`👤 Socket ${socket.id} joined room user:${userId}`);
+      console.log(`Socket ${socket.id} joined room user:${userId}`);
     }
   });
 
@@ -66,23 +69,19 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log(`🔌 Socket disconnected: ${socket.id}`);
+    console.log(`Socket disconnected: ${socket.id}`);
   });
 });
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
-// app.use(cors({
-//   origin: process.env.FRONTEND_URL || '*',
-//   credentials: true,
-// }));
+// Middleware
 app.use(cors());
 app.use(express.json({ limit: process.env.REQUEST_BODY_LIMIT || '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: process.env.REQUEST_BODY_LIMIT || '50mb' }));
 
-// Serve static files (uploads)
+// Static uploads
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/auth', clerkRoutes);
 app.use('/api/users', userRoutes);
@@ -98,13 +97,17 @@ app.use('/api/admin', riderAdminRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/tracking', customerTrackingRoutes);
+app.use('/api/partner', partnerRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/stripe', stripeRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ─── Error handling ───────────────────────────────────────────────────────────
+// Error handling
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(err.status || 500).json({
@@ -119,9 +122,7 @@ initializeRiderRealtimeDispatch(httpServer).catch((error) => {
 });
 
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🔌 Socket.io ready on port ${PORT}`);
-  console.log(`📱 Mobile access: http://0.0.0.0:${PORT}/api`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 export default app;

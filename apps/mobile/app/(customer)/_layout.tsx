@@ -102,6 +102,12 @@ export default function CustomerTabLayout() {
           title: "Wishlist",
         }}
       />
+      <Tabs.Screen
+        name="checkout-success"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }

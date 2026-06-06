@@ -447,8 +447,6 @@ model CarPart {
   seller        User           @relation("SellerCarParts", fields: [sellerId], references: [id], onDelete: Cascade)
   cartItems     CartItem[]
   orderItems    OrderItem[]
-  WishlistItem  WishlistItem[]
-
   wishlistItems WishlistItem[]
 
   @@index([carId])

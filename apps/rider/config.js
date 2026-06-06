@@ -1,7 +1,9 @@
 // API Configuration
 // The rider app uses the same DigiFix backend as the marketplace apps.
-const DEFAULT_BACKEND_HOST = '192.168.8.171';
-const DEFAULT_BACKEND_PORT = '3000';
+// Set EXPO_PUBLIC_API_HOST and EXPO_PUBLIC_API_PORT in your .env file.
+// Run `ipconfig` (Windows) or `ifconfig` (Mac/Linux) to find your local IP.
+const DEFAULT_BACKEND_HOST = process.env.EXPO_PUBLIC_API_HOST || 'localhost';
+const DEFAULT_BACKEND_PORT = process.env.EXPO_PUBLIC_API_PORT || '3000';
 
 const normalizeApiUrl = (raw) => {
     if (!raw) return null;

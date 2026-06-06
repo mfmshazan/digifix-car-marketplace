@@ -62,25 +62,13 @@ const formatDate = (dateString: string) => {
 };
 
 type Coordinate = { latitude: number; longitude: number };
-// The stepper shows how far the customer's order has progressed through fulfillment.
-const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
-  const steps = [
-    { key: "PENDING", title: "Placed" },
-    { key: "CONFIRMED", title: "Confirmed" },
-    { key: "PROCESSING", title: "Processing" },
-    { key: "SHIPPED", title: "Shipped" },
-    { key: "DELIVERED", title: "Delivered" },
-  ];
 
 const DELIVERY_STEPS = [
-  { key: "pending", title: "Finding" },
-  { key: "assigned", title: "Assigned" },
-  { key: "accepted", title: "Accepted" },
-  { key: "arrived_at_pickup", title: "At Shop" },
-  { key: "picked_up", title: "Picked" },
-  { key: "in_transit", title: "On Way" },
-  { key: "arrived_at_dropoff", title: "Nearby" },
-  { key: "delivered", title: "Done" },
+  { key: "pending", title: "Placed" },
+  { key: "confirmed", title: "Confirmed" },
+  { key: "processing", title: "Processing" },
+  { key: "shipped", title: "Shipped" },
+  { key: "delivered", title: "Delivered" },
 ];
 
 const DELIVERY_STATUS_LABELS: Record<string, string> = {

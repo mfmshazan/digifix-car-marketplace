@@ -274,6 +274,50 @@ export const ordersApi = {
   },
 };
 
+export const deliveryRequestsApi = {
+  // Create a delivery request for an order (salesman dispatches a rider)
+  create: async (data: {
+    orderId: string;
+    pickupLatitude: number;
+    pickupLongitude: number;
+    pickupAddress?: string;
+    pickupContactName?: string;
+    pickupContactPhone?: string;
+    deliveryLatitude: number;
+    deliveryLongitude: number;
+    deliveryAddress: string;
+    packageNotes?: string;
+    paymentType: 'PREPAID' | 'COD';
+    estimatedEarnings?: number;
+    customerName?: string;
+    customerPhone?: string;
+    partnerId?: number;
+  }) => {
+    const response = await api.post('/delivery-requests', data);
+    return response.data;
+  },
+
+  // Get online riders who can receive a delivery request from this pickup point
+  getAvailableRiders: async (pickupLatitude: number, pickupLongitude: number) => {
+    const response = await api.get('/delivery-requests/available-riders', {
+      params: { pickupLatitude, pickupLongitude },
+    });
+    return response.data;
+  },
+
+  // Get full delivery job status for an order (salesman / customer)
+  getDeliveryStatus: async (orderId: string) => {
+    const response = await api.get(`/tracking/order/${orderId}/delivery-status`);
+    return response.data;
+  },
+
+  // Get rider's latest GPS location for an order (customer live tracking)
+  getRiderLocation: async (orderId: string) => {
+    const response = await api.get(`/tracking/order/${orderId}/rider-location`);
+    return response.data;
+  },
+};
+
 export const adminApi = {
   // Get system stats for overview
   getStats: async () => {

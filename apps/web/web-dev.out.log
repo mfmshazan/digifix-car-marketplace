@@ -1,0 +1,22 @@
+
+> digifix-web@0.1.0 dev
+> next dev -p 3001
+
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3001
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 2.7s
+ ✓ Compiled /src/middleware in 231ms (182 modules)
+ ○ Compiling / ...
+ ✓ Compiled / in 2.4s (773 modules)
+ GET / 307 in 2673ms
+ ○ Compiling /login ...
+ ✓ Compiled /login in 923ms (1007 modules)
+ GET /login 200 in 1185ms
+ ○ Compiling /dashboard/salesman ...
+ ✓ Compiled /dashboard/salesman in 835ms (1152 modules)
+ GET /dashboard/salesman 200 in 1198ms
+ ✓ Compiled /login in 158ms (655 modules)
+[?25h

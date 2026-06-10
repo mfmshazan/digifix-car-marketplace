@@ -5,6 +5,10 @@ import {
   getProfile,
   updateProfile,
 } from '../controllers/auth.controller.js';
+import {
+  logoutRider,
+  refreshRiderToken,
+} from '../controllers/riderAuth.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import {
   requestOtp,
@@ -40,6 +44,8 @@ const router = Router();
 // Public routes
 router.post('/register', register);
 router.post('/login', login);
+router.post('/refresh', refreshRiderToken);
+router.post('/logout', logoutRider);
 
 // Forgot Password Flow
 router.post('/forgot-password', requestOtpLimiter, requestOtp);

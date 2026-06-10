@@ -1,0 +1,99 @@
+🛠️  Development mode: Auth rate limiters are bypassed.
+[dotenv@17.2.3] injecting env (7) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+🚀 Server running on port 3002
+🔌 Socket.io ready on port 3002
+📱 Mobile access: http://0.0.0.0:3002/api
+🔌 Socket connected: zmNLUoRMVkLpl9JOAAAB
+👤 Socket zmNLUoRMVkLpl9JOAAAB joined room user:cmoewk563000au086l7jup2n0
+🔌 Socket connected: PZaNzri2mfNj-7nWAAAD
+👤 Socket PZaNzri2mfNj-7nWAAAD joined room user:cmoewk563000au086l7jup2n0
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 ORDER BY "public"."Order"."createdAt" DESC LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) OFFSET $13
+prisma:query SELECT "public"."CarPart"."id", "public"."CarPart"."name", "public"."CarPart"."images" FROM "public"."CarPart" WHERE "public"."CarPart"."id" IN ($1,$2,$3,$4,$5,$6,$7) OFFSET $8
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1,$2,$3,$4,$5) OFFSET $6
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE "public"."Order"."salesmanId" = $1 OFFSET $2) AS "sub"
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query COMMIT
+prisma:query SELECT 1
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."phone", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."phone" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
+prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
+prisma:query COMMIT
+prisma:query SELECT 1
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND "public"."Order"."salesmanId" = $2) LIMIT $3 OFFSET $4
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query UPDATE "public"."Order" SET "status" = CAST($1::text AS "public"."OrderStatus"), "updatedAt" = $2 WHERE ("public"."Order"."id" = $3 AND 1=1) RETURNING "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId"
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE "public"."Order"."id" = $1 LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
+prisma:query COMMIT
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query INSERT INTO "public"."OrderTracking" ("id","status","description","createdAt","orderId") VALUES ($1,CAST($2::text AS "public"."OrderStatus"),$3,$4,$5) RETURNING "public"."OrderTracking"."id", "public"."OrderTracking"."status"::text, "public"."OrderTracking"."description", "public"."OrderTracking"."location", "public"."OrderTracking"."createdAt", "public"."OrderTracking"."orderId"
+prisma:query COMMIT
+📡 Emitted orderStatusUpdated for order cmojva4w70003vl5s3o1s5c1r → customer cmoewk563000au086l7jup2n0
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."customerId", "public"."Order"."salesmanId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query COMMIT
+prisma:query SELECT 1
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT "public"."Order"."id", "public"."Order"."orderNumber", "public"."Order"."status"::text, "public"."Order"."paymentStatus"::text, "public"."Order"."paymentMethod", "public"."Order"."subtotal", "public"."Order"."serviceCharge", "public"."Order"."deliveryFee", "public"."Order"."discount", "public"."Order"."total", "public"."Order"."notes", "public"."Order"."cancellationReason", "public"."Order"."createdAt", "public"."Order"."updatedAt", "public"."Order"."customerId", "public"."Order"."salesmanId", "public"."Order"."addressId" FROM "public"."Order" WHERE ("public"."Order"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."phone", "public"."User"."email" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."User"."id", "public"."User"."name", "public"."User"."phone" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."Store"."id", "public"."Store"."name", "public"."Store"."address", "public"."Store"."phone", "public"."Store"."ownerId" FROM "public"."Store" WHERE "public"."Store"."ownerId" IN ($1) OFFSET $2
+prisma:query SELECT "public"."OrderItem"."id", "public"."OrderItem"."quantity", "public"."OrderItem"."price", "public"."OrderItem"."total", "public"."OrderItem"."itemName", "public"."OrderItem"."itemType", "public"."OrderItem"."createdAt", "public"."OrderItem"."orderId", "public"."OrderItem"."productId", "public"."OrderItem"."carPartId" FROM "public"."OrderItem" WHERE "public"."OrderItem"."orderId" IN ($1) OFFSET $2
+prisma:query COMMIT

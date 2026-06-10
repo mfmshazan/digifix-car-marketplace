@@ -53,7 +53,10 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('digifix_token');
-        window.location.href = '/login';
+        // Do not force redirect if already on login or register pages
+        if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);
@@ -112,6 +115,10 @@ export const productsApi = {
   // Create a new product
   createProduct: async (data: any) => {
     const response = await api.post('/products', data);
+    return response.data;
+  },
+};
+
 export const commonApi = {
   getStats: async () => {
     const response = await api.get('/stats');

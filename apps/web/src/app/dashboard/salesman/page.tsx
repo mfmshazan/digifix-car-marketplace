@@ -794,9 +794,20 @@ export default function SalesmanDashboard() {
   const { subscribed: pushEnabled, loading: pushLoading, isReady: pushReady, permission: pushPermission, toggle: togglePush } = useOneSignalPush(user?.id);
 
 
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
+      setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    
     if (!isAuthenticated) {
-      router.push('/login');
+        // Check localStorage directly as a fallback before kicking out
+        const hasToken = typeof window !== 'undefined' && localStorage.getItem('digifix_token');
+        if (!hasToken) {
+            router.push('/login');
+        }
     } else if (user?.role !== 'SALESMAN') {
       router.push('/dashboard/admin');
     }

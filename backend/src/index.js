@@ -19,6 +19,7 @@ import partnerRoutes from './routes/partner.routes.js';
 import statsRoutes from './routes/stats.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import stripeRoutes from './routes/stripe.routes.js';
+import reviewRoutes from './routes/review.routes.js';
 
 // Load environment variables
 dotenv.config({ override: true });
@@ -90,6 +91,7 @@ app.use('/api/partner', partnerRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/stripe', stripeRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

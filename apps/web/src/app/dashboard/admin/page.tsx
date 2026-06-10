@@ -51,15 +51,26 @@ export default function AdminDashboard() {
     const [showNotifDropdown, setShowNotifDropdown] = useState(false);
     const [processingOrderId, setProcessingOrderId] = useState<string | null>(null);
 
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     // Authorization Check
     useEffect(() => {
+        if (!mounted) return;
+        
         if (!isAuthenticated) {
-            router.push('/login');
+            // Check localStorage directly as a fallback before kicking out
+            const hasToken = typeof window !== 'undefined' && localStorage.getItem('digifix_token');
+            if (!hasToken) {
+                router.push('/login');
+            }
         } else if (user?.role !== 'ADMIN') {
             // Redirect non-admins based on their role
             router.push(`/dashboard/${user?.role?.toLowerCase() || ''}`);
         }
-    }, [isAuthenticated, user, router]);
+    }, [isAuthenticated, user, router, mounted]);
 
     useEffect(() => {
         if (!user?.id || user.role !== 'ADMIN') return;

@@ -47,6 +47,14 @@ const register = async (req, res) => {
       });
     }
 
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.',
+      });
+    }
+
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where: { email },
@@ -157,9 +165,12 @@ const login = async (req, res) => {
       });
     }
 
+    // Normalize email (trim whitespace and lowercase) to match registration normalization
+    const normalizedEmail = email.trim().toLowerCase();
+
     // Find user
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
       include: {
         store: true,
       },
@@ -172,15 +183,24 @@ const login = async (req, res) => {
       });
     }
 
+    const isWeb = req.headers.origin || req.headers.referer || (req.headers['user-agent'] && req.headers['user-agent'].includes('Mozilla'));
+    
     // Admin web-only restriction
     if (user.role === 'ADMIN') {
-      const isWeb = req.headers.origin || req.headers.referer || (req.headers['user-agent'] && req.headers['user-agent'].includes('Mozilla'));
       if (!isWeb) {
         return res.status(403).json({
           success: false,
           message: 'Admin login is only allowed from the web application',
         });
       }
+    }
+
+    // Customer mobile-only restriction
+    if (user.role === 'CUSTOMER' && isWeb) {
+      return res.status(403).json({
+        success: false,
+        message: 'Customers must use the Digifix Mobile App.',
+      });
     }
 
     // Check if user signed up with Google

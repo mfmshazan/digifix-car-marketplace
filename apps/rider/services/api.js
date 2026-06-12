@@ -130,6 +130,7 @@ api.interceptors.response.use(
 export const authAPI = {
     login: (data) => api.post('/auth/login', data),
     logout: (refreshToken) => api.post('/auth/logout', { refreshToken }),
+    register: (data) => api.post('/auth/register', data),
 };
 
 export const partnerAPI = {

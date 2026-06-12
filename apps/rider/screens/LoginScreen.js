@@ -7,7 +7,9 @@ import {
     KeyboardAvoidingView,
     Platform,
     ScrollView,
+    TouchableOpacity,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Button, Input, SurfaceCard, StatusBadge } from '../components/Common';
 import { authAPI } from '../services/api';
 import { saveTokens, saveUserData } from '../services/storage';
@@ -16,6 +18,7 @@ import { colors, spacing, typography, radii } from '../styles/theme';
 export default function LoginScreen({ navigation }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
 
     const handleLogin = async () => {
@@ -77,7 +80,12 @@ export default function LoginScreen({ navigation }) {
                         placeholder="Enter your password"
                         value={password}
                         onChangeText={setPassword}
-                        secureTextEntry
+                        secureTextEntry={!showPassword}
+                        rightAccessory={
+                            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} activeOpacity={0.7} style={{ padding: 4 }}>
+                                <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={22} color={colors.textMuted || '#6b7280'} />
+                            </TouchableOpacity>
+                        }
                     />
 
                     <Button
@@ -86,6 +94,13 @@ export default function LoginScreen({ navigation }) {
                         loading={loading}
                         style={styles.primaryAction}
                     />
+
+                    <View style={styles.footerContainer}>
+                        <Text style={styles.footerText}>Don't have an account? </Text>
+                        <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                            <Text style={styles.footerLink}>Sign Up</Text>
+                        </TouchableOpacity>
+                    </View>
 
                 </SurfaceCard>
             </ScrollView>
@@ -133,6 +148,19 @@ const styles = StyleSheet.create({
     primaryAction: {
         marginBottom: spacing.sm,
     },
+    footerContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        marginTop: spacing.md,
+        paddingVertical: spacing.sm,
+    },
+    footerText: {
+        ...typography.body,
+        color: colors.textMuted || '#6b7280',
+    },
+    footerLink: {
+        ...typography.body,
+        color: colors.primary || '#1a1a1a',
+        fontWeight: 'bold',
+    },
 });
-
-

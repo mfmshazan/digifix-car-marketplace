@@ -25,9 +25,9 @@ const register = async (req, res) => {
   }
 
   try {
-    const { password, name, phone, role = 'CUSTOMER' } = req.body;
+    const { password, name, phone, role = 'CUSTOMER', vehicleType, vehicleNumber } = req.body;
     const email = String(req.body.email || '').trim().toLowerCase();
-    const { email, password, name, phone, role = 'CUSTOMER', vehicleType, vehicleNumber } = req.body;
+
     console.log(`[Registration] Starting for ${email} with role ${role}`);
 
     // Admin restrictions
@@ -204,7 +204,7 @@ const login = async (req, res) => {
     }
 
     const isWeb = req.headers.origin || req.headers.referer || (req.headers['user-agent'] && req.headers['user-agent'].includes('Mozilla'));
-    
+
     // Admin web-only restriction
     if (user.role === 'ADMIN') {
       if (!isWeb) {

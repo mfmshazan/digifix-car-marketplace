@@ -27,7 +27,6 @@ const register = async (req, res) => {
   try {
     const { password, name, phone, role = 'CUSTOMER', vehicleType, vehicleNumber } = req.body;
     const email = String(req.body.email || '').trim().toLowerCase();
-
     console.log(`[Registration] Starting for ${email} with role ${role}`);
 
     // Admin restrictions

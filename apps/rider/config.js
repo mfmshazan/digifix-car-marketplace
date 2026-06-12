@@ -1,6 +1,6 @@
 // API Configuration
 // The rider app uses the same DigiFix backend as the marketplace apps.
-const DEFAULT_BACKEND_HOST = '192.168.8.171';
+const DEFAULT_BACKEND_HOST = '172.20.10.2';
 const DEFAULT_BACKEND_PORT = '3000';
 
 const normalizeApiUrl = (raw) => {

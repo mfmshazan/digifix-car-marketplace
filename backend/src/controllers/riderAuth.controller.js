@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { riderQuery } from '../lib/riderDb.js';
+import prisma from '../lib/prisma.js';
 import {
   generateRiderAccessToken,
   generateRiderRefreshToken,
@@ -56,6 +57,38 @@ export const registerRider = async (req, res, next) => {
     );
 
     const partner = result.rows[0];
+
+    // Sync rider into the central User table so admin dashboards, reviews,
+    // and any other Prisma-based feature can reference the rider by user ID.
+    // We use upsert so this never crashes if the email already exists there.
+    try {
+      await prisma.user.upsert({
+        where: { email },
+        create: {
+          email,
+          password: passwordHash,
+          name: String(fullName).trim(),
+          phone: String(phone).trim(),
+          role: 'DELIVERY_PARTNER',
+          authProvider: 'EMAIL',
+          vehicleType: vehicleType || null,
+          vehicleNumber: vehicleNumber || null,
+        },
+        update: {
+          // Only fill in missing fields; never overwrite existing data.
+          name: String(fullName).trim(),
+          phone: String(phone).trim(),
+          role: 'DELIVERY_PARTNER',
+          vehicleType: vehicleType || null,
+          vehicleNumber: vehicleNumber || null,
+        },
+      });
+    } catch (syncError) {
+      // Non-fatal: the rider is already registered in rider_delivery_partners.
+      // Log the error but allow registration to complete successfully.
+      console.warn('[Rider Registration] Failed to sync User table:', syncError.message);
+    }
+
     const { accessToken, refreshToken } = await createTokens(partner);
 
     return res.status(201).json({

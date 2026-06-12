@@ -11,7 +11,7 @@ import { useEffect } from 'react';
 
 export default function LoginPage() {
   const router = useRouter();
-  const login = useAuthStore((state) => state.login);
+  const { login, logout } = useAuthStore((state) => ({ login: state.login, logout: state.logout }));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -57,11 +57,12 @@ export default function LoginPage() {
 
         // Redirect based on user role
         if (user.role === 'ADMIN') {
-          router.push('/dashboard/admin');
+          window.location.href = '/dashboard/admin';
         } else if (user.role === 'SALESMAN') {
-          router.push('/dashboard/salesman');
+          window.location.href = '/dashboard/salesman';
         } else {
-          router.push('/');
+          setError('Customers must use the Digifix Mobile App.');
+          logout();
         }
       } else {
         setError(response.message || 'Login failed');

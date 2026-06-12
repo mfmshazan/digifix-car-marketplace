@@ -156,8 +156,9 @@ export const resetPassword = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Reset token and new password are required' });
         }
 
-        if (newPassword.length < 6) {
-             return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+        if (!passwordRegex.test(newPassword)) {
+             return res.status(400).json({ success: false, message: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.' });
         }
 
         // 1. Verify token
@@ -172,16 +173,34 @@ export const resetPassword = async (req, res) => {
              return res.status(401).json({ success: false, message: 'Invalid token purpose' });
         }
 
-        const email = decoded.email;
+        // Normalize email from JWT (same normalization used when OTP was stored)
+        const email = decoded.email.trim().toLowerCase();
 
         // 2. Hash new password
         const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-        // 3. Update user password
+        // 3. Find user first to confirm they exist (using case-insensitive lookup)
+        const user = await prisma.user.findFirst({
+            where: {
+                email: {
+                    equals: email,
+                    mode: 'insensitive',
+                },
+            },
+        });
+
+        if (!user) {
+            console.error(`[ResetPassword] User not found for email: ${email}`);
+            return res.status(404).json({ success: false, message: 'User account not found' });
+        }
+
+        // 4. Update password using user ID (avoids any email casing mismatch)
         await prisma.user.update({
-            where: { email },
+            where: { id: user.id },
             data: { password: hashedPassword },
         });
+
+        console.log(`[ResetPassword] Password updated successfully for user ${user.id} (${user.email})`);
 
         res.status(200).json({
             success: true,

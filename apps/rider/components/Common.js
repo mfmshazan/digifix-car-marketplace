@@ -64,17 +64,20 @@ export const Input = ({
     error,
     multiline = false,
     numberOfLines,
+    rightAccessory,
     ...props
 }) => {
     return (
         <View style={[styles.fieldGroup, style]}>
             {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
-            <TextInput
-                style={[
-                    styles.input,
-                    multiline && styles.inputMultiline,
-                    error && styles.inputError,
-                ]}
+            <View style={styles.inputWrapper}>
+                <TextInput
+                    style={[
+                        styles.input,
+                        multiline && styles.inputMultiline,
+                        error && styles.inputError,
+                        rightAccessory && { paddingRight: 48 }
+                    ]}
                 placeholder={placeholder}
                 value={value}
                 onChangeText={onChangeText}
@@ -84,6 +87,12 @@ export const Input = ({
                 numberOfLines={numberOfLines}
                 {...props}
             />
+                {rightAccessory && (
+                    <View style={styles.rightAccessoryContainer}>
+                        {rightAccessory}
+                    </View>
+                )}
+            </View>
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
     );
@@ -211,6 +220,18 @@ const styles = StyleSheet.create({
     },
     inputError: {
         borderColor: colors.danger,
+    },
+    inputWrapper: {
+        position: 'relative',
+        justifyContent: 'center',
+    },
+    rightAccessoryContainer: {
+        position: 'absolute',
+        right: spacing.md,
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1,
     },
     errorText: {
         ...typography.caption,

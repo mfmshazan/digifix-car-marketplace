@@ -9,39 +9,42 @@ datasource db {
 }
 
 model User {
-  id              String         @id @default(cuid())
-  email           String         @unique
+  id              String       @id @default(cuid())
+  email           String       @unique
   password        String?
   name            String?
   phone           String?
   avatar          String?
-  role            UserRole       @default(CUSTOMER)
-  authProvider    AuthProvider   @default(EMAIL)
-  googleId        String?        @unique
-  isVerified      Boolean        @default(false)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  status          UserStatus     @default(ACTIVE)
-  stripeAccountId String?        @unique
-  
+  role            UserRole     @default(CUSTOMER)
+  authProvider    AuthProvider @default(EMAIL)
+  googleId        String?      @unique
+  isVerified      Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  status          UserStatus   @default(ACTIVE)
+  stripeAccountId String?      @unique
+
   // Delivery Partner specific fields
   vehicleType      String?
   vehicleNumber    String?
-  deliveryStatus   String?        @default("offline")
-  total_deliveries Int            @default(0)
-  rating           Float          @default(5.0)
+  deliveryStatus   String? @default("offline")
+  total_deliveries Int     @default(0)
+  rating           Float   @default(5.0)
+  total_reviews    Int     @default(0)
 
-  wallet       Wallet?
-  addresses       Address[]
-  carParts        CarPart[]      @relation("SellerCarParts")
-  cart            CartItem[]
-  orders          Order[]        @relation("CustomerOrders")
-  salesOrders     Order[]        @relation("SalesmanOrders")
-  products        Product[]      @relation("SalesmanProducts")
-  reviews         Review[]
-  store           Store?
-  wishlist        WishlistItem[]
+  wallet        Wallet?
+  addresses     Address[]
+  carParts      CarPart[]      @relation("SellerCarParts")
+  cart          CartItem[]
+  orders        Order[]        @relation("CustomerOrders")
+  salesOrders   Order[]        @relation("SalesmanOrders")
+  products      Product[]      @relation("SalesmanProducts")
+  reviews       Review[]
+  reviewReplies ReviewReply[]
+  store         Store?
+  wishlist      WishlistItem[]
 }
+
 // ================================
 // Enums
 // ================================
@@ -72,23 +75,23 @@ enum AuthProvider {
 
 // Wallet & Transaction Enums
 enum TransactionType {
-  DEPOSIT           // External money enters app (Sender is null, Receiver is Admin)
-  PURCHASE          // Customer uses wallet balance (Sender = Customer, Receiver = Admin)
-  SALE_EARNING      // Admin releases sale funds to Salesman (Sender = Admin, Receiver = Salesman)
-  PLATFORM_FEE      // App deducts profit (Sender = Salesman, Receiver = Admin)
-  DELIVERY_FEE      // Admin pays delivery person (Sender = Admin, Receiver = DeliveryPerson)
-  EARNING           // Delivery person earns for a delivery (Sender = Admin, Receiver = DeliveryPerson)
-  PAYOUT            // Salesman withdraws to bank via Stripe (Sender = Salesman, Receiver = null)
-  REFUND            // Customer gets money back (Sender = Admin, Receiver = Customer)
-  COD_PAYMENT       // Delivery person records cash collected from customer (Sender = null, Receiver = DeliveryPerson)
-  COD_REMITTANCE    // Delivery person hands cash to admin (Sender = DeliveryPerson, Receiver = Admin)
+  DEPOSIT // External money enters app (Sender is null, Receiver is Admin)
+  PURCHASE // Customer uses wallet balance (Sender = Customer, Receiver = Admin)
+  SALE_EARNING // Admin releases sale funds to Salesman (Sender = Admin, Receiver = Salesman)
+  PLATFORM_FEE // App deducts profit (Sender = Salesman, Receiver = Admin)
+  DELIVERY_FEE // Admin pays delivery person (Sender = Admin, Receiver = DeliveryPerson)
+  EARNING // Delivery person earns for a delivery (Sender = Admin, Receiver = DeliveryPerson)
+  PAYOUT // Salesman withdraws to bank via Stripe (Sender = Salesman, Receiver = null)
+  REFUND // Customer gets money back (Sender = Admin, Receiver = Customer)
+  COD_PAYMENT // Delivery person records cash collected from customer (Sender = null, Receiver = DeliveryPerson)
+  COD_REMITTANCE // Delivery person hands cash to admin (Sender = DeliveryPerson, Receiver = Admin)
   REFUND_SETTLEMENT // Salesman compensates admin for a refund (Sender = Salesman, Receiver = Admin)
 }
 
 enum CodSettlementStatus {
-  PENDING           // Driver has the cash, hasn't paid the platform yet
-  PAID              // Driver paid the platform
-  NOT_APPLICABLE    // Used for non-COD digital transactions
+  PENDING // Driver has the cash, hasn't paid the platform yet
+  PAID // Driver paid the platform
+  NOT_APPLICABLE // Used for non-COD digital transactions
 }
 
 // Order status enum
@@ -119,52 +122,64 @@ enum PaymentStatus {
   REFUNDED
 }
 
+// Review Target Type Enum
+enum ReviewTargetType {
+  PRODUCT
+  SELLER
+  DELIVERY_PARTNER
+}
+
+// Review Status Enum
+enum ReviewStatus {
+  PUBLISHED
+  FLAGGED
+  HIDDEN
+}
+
 // ================================
 // Core Models
 // ================================
-
-
 
 // ================================
 // Financial & Wallet Models
 // ================================
 
 model Wallet {
-  id              String   @id @default(cuid())
-  balance         Float    @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id        String   @id @default(cuid())
+  balance   Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // A wallet can both send and receive money
   sentTransactions     WalletTransaction[] @relation("SentTransactions")
   receivedTransactions WalletTransaction[] @relation("ReceivedTransactions")
 }
 
 model WalletTransaction {
-  id                  String              @id @default(cuid())
-  amount              Float               // Always positive. Flow is defined by Sender -> Receiver
-  type                TransactionType
-  
-  // Double-Entry P2P Logic
-  senderWalletId      String?             // Nullable if money comes from outside (e.g., Stripe card deposit)
-  senderWallet        Wallet?             @relation("SentTransactions", fields: [senderWalletId], references: [id])
+  id     String          @id @default(cuid())
+  amount Float // Always positive. Flow is defined by Sender -> Receiver
+  type   TransactionType
 
-  receiverWalletId    String?             // Nullable if money goes outside (e.g., Payout to Bank)
-  receiverWallet      Wallet?             @relation("ReceivedTransactions", fields: [receiverWalletId], references: [id])
-  
+  // Double-Entry P2P Logic
+  senderWalletId String? // Nullable if money comes from outside (e.g., Stripe card deposit)
+  senderWallet   Wallet? @relation("SentTransactions", fields: [senderWalletId], references: [id])
+
+  receiverWalletId String? // Nullable if money goes outside (e.g., Payout to Bank)
+  receiverWallet   Wallet? @relation("ReceivedTransactions", fields: [receiverWalletId], references: [id])
+
   // COD Tracking
   codSettlementStatus CodSettlementStatus @default(NOT_APPLICABLE)
-  
-  description         String?             
-  createdAt           DateTime            @default(now())
+
+  description String?
+  createdAt   DateTime @default(now())
 
   // Relations
-  orderId             String?
-  order               Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([senderWalletId])
   @@index([receiverWalletId])
@@ -178,20 +193,21 @@ model WalletTransaction {
 
 // Store model for salesmen
 model Store {
-  id          String    @id @default(cuid())
-  name        String
-  description String?
-  logo        String?
-  banner      String?
-  address     String?
-  phone       String?
-  rating      Float     @default(0)
-  isVerified  Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  ownerId     String    @unique
-  products    Product[]
-  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  id           String    @id @default(cuid())
+  name         String
+  description  String?
+  logo         String?
+  banner       String?
+  address      String?
+  phone        String?
+  rating       Float     @default(0)
+  totalReviews Int       @default(0)
+  isVerified   Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  ownerId      String    @unique
+  products     Product[]
+  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
 }
@@ -206,6 +222,8 @@ model Product {
   stock         Int      @default(0)
   images        String[]
   isActive      Boolean  @default(true)
+  averageRating Float    @default(0)
+  totalReviews  Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -213,15 +231,14 @@ model Product {
   category   Category? @relation(fields: [categoryId], references: [id])
 
   salesmanId String
-  salesman   User @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
+  salesman   User   @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
 
   storeId String?
-  store   Store? @relation(fields: [storeId], references: [id])
+  store   Store?  @relation(fields: [storeId], references: [id])
 
   cartItems     CartItem[]
   wishlistItems WishlistItem[]
   orderItems    OrderItem[]
-  reviews       Review[]
 
   compatibleVehicles VehicleCompatibility[]
 
@@ -302,9 +319,9 @@ model WishlistItem {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
   userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  itemType  String   @default("PRODUCT") // PRODUCT or CAR_PART
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  itemType String @default("PRODUCT") // PRODUCT or CAR_PART
 
   productId String?
   product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -329,7 +346,7 @@ model Order {
   discount           Float         @default(0)
   total              Float
   notes              String?
-  cancellationReason String?       // Customer must provide a reason so admin can make an informed decision
+  cancellationReason String? // Customer must provide a reason so admin can make an informed decision
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
@@ -347,12 +364,14 @@ model Order {
   tracking OrderTracking[]
   walletTransactions  WalletTransaction[]
   riderDeliveryJobs RiderDeliveryJob[]
+  reviews           Review[]
 
   @@index([customerId])
   @@index([salesmanId])
   @@index([status])
   @@index([orderNumber])
 }
+
 
 model OrderItem {
   id        String   @id @default(cuid())
@@ -387,37 +406,60 @@ model OrderTracking {
 }
 
 model Review {
-  id         String   @id @default(cuid())
-  rating     Int
-  title      String?
-  comment    String?
-  images     String[]
-  isVerified Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  userId     String
-  productId  String
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id      String   @id @default(cuid())
+  rating  Int
+  title   String?
+  comment String?
+  images  String[]
 
-  @@unique([userId, productId])
-  @@index([productId])
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  targetId   String // Can be Product ID, Store ID, or Delivery Partner ID
+  targetType ReviewTargetType
+  status     ReviewStatus     @default(PUBLISHED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  replies ReviewReply[]
+
+  // A user can only review a specific target once per order
+  @@unique([orderId, targetId, targetType])
+  @@index([targetId])
   @@index([rating])
 }
 
+model ReviewReply {
+  id        String   @id @default(cuid())
+  reviewId  String
+  sellerId  String
+  replyText String
+  createdAt DateTime @default(now())
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  seller User   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([reviewId])
+  @@index([sellerId])
+}
+
 model Car {
-  id          String   @id @default(cuid())
-  numberPlate String   @unique 
-  make        String 
-  model       String 
-  year        Int 
-  engineType  String? 
+  id          String    @id @default(cuid())
+  numberPlate String    @unique
+  make        String
+  model       String
+  year        Int
+  engineType  String?
   color       String?
-  vinNumber   String?  @unique 
+  vinNumber   String?   @unique
   description String?
-  images      String[] 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  images      String[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   parts       CarPart[]
 
   @@index([numberPlate])
@@ -427,14 +469,14 @@ model Car {
 
 // Car Part model
 model CarPart {
-  id            String   @id @default(cuid())
-  name          String 
+  id            String         @id @default(cuid())
+  name          String
   description   String?
-  partNumber    String? 
+  partNumber    String?
   price         Float
   discountPrice Float?
-  stock         Int      @default(0)
-  condition     String   @default("NEW") 
+  stock         Int            @default(0)
+  condition     String         @default("NEW")
   images        String[]
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
@@ -447,8 +489,6 @@ model CarPart {
   seller        User           @relation("SellerCarParts", fields: [sellerId], references: [id], onDelete: Cascade)
   cartItems     CartItem[]
   orderItems    OrderItem[]
-  WishlistItem  WishlistItem[]
-
   wishlistItems WishlistItem[]
 
   @@index([carId])
@@ -493,6 +533,7 @@ model RiderDeliveryPartner {
   currentLatitude       Decimal?  @map("current_latitude") @db.Decimal(10, 8)
   currentLongitude      Decimal?  @map("current_longitude") @db.Decimal(11, 8)
   rating                Decimal   @default(0.00) @db.Decimal(3, 2)
+  totalReviews          Int       @default(0) @map("total_reviews")
   totalDeliveries       Int       @default(0) @map("total_deliveries")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @default(now()) @map("updated_at")

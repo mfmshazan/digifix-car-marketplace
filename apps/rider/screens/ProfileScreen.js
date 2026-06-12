@@ -32,7 +32,7 @@ const createProfileForm = (profile) => ({
     emergency_contact_phone: profile?.emergency_contact_phone || '',
 });
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }) {
     const [partner, setPartner] = useState(null);
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -129,7 +129,17 @@ export default function ProfileScreen() {
                         try {
                             await partnerAPI.deleteProfile();
                             await clearTokens();
-                            Alert.alert('Profile Deleted', 'Your profile was removed successfully.');
+                            Alert.alert('Profile Deleted', 'Your profile was removed successfully.', [
+                                {
+                                    text: 'OK',
+                                    onPress: () => {
+                                        navigation.reset({
+                                            index: 0,
+                                            routes: [{ name: 'Login' }],
+                                        });
+                                    }
+                                }
+                            ]);
                         } catch (error) {
                             Alert.alert(
                                 'Error',
@@ -158,6 +168,10 @@ export default function ProfileScreen() {
                         console.error('Logout error:', error);
                     } finally {
                         await clearTokens();
+                        navigation.reset({
+                            index: 0,
+                            routes: [{ name: 'Login' }],
+                        });
                     }
                 },
             },

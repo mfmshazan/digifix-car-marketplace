@@ -1,0 +1,9 @@
+{
+    "expo":  {
+                 "name":  "delivery-partner-mobile",
+                 "slug":  "delivery-partner-mobile",
+                 "android":  {
+                                 "usesCleartextTraffic":  true
+                             }
+             }
+}

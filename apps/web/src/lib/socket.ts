@@ -22,31 +22,27 @@ const attachSocketListeners = (): void => {
   if (!socket || listenersAttached) return;
   listenersAttached = true;
 
-  // Rejoin rooms after reconnect so no events are missed during a brief disconnect
+  // 'connect' fires on every successful connection AND every reconnection in socket.io-client v4
   socket.on('connect', () => {
-    joinUserRoom(joinedUserId);
-    joinRoleRoom(joinedRole);
-  });
-
-  socket.on('reconnect', () => {
+    // Rejoin rooms after reconnect so no events are missed during a brief disconnect
     joinUserRoom(joinedUserId);
     joinRoleRoom(joinedRole);
   });
 
   socket.on('connect_error', (error) => {
-    console.warn('🔌 Socket connection error:', error.message);
-  });
-
-  socket.on('disconnect', (reason) => {
-    console.log('🔌 Socket disconnected:', reason);
+    console.warn('Socket connection error:', error.message);
   });
 };
 
 export function getSocket(): Socket {
   if (!socket) {
     socket = io(BACKEND_URL, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       autoConnect: false,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
     attachSocketListeners();
   }
@@ -61,16 +57,21 @@ export function connectSocket(userId: string, role?: string): Socket {
 
   if (!s.connected) {
     s.connect();
+  } else {
+    // Already connected — join rooms immediately
+    joinUserRoom(userId);
+    if (role) joinRoleRoom(role);
   }
 
-  joinUserRoom(userId);
-  if (role) joinRoleRoom(role);
   return s;
 }
 
 export function disconnectSocket(): void {
-  if (socket?.connected) {
+  if (socket) {
     socket.disconnect();
+    socket.removeAllListeners();
+    socket = null;
+    listenersAttached = false;
   }
   joinedUserId = null;
   joinedRole = null;

@@ -39,57 +39,41 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi } from '@/lib/api';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
-// OneSignal helpers kept for backend-side push (logoutOneSignalUser used on logout)
-import { logoutOneSignalUser } from '@/lib/onesignal';
+import { initOneSignal, loginOneSignalUser, logoutOneSignalUser, requestNotificationPermission } from '@/lib/onesignal';
 
 // ─── Push Notification Hook ───────────────────────────────────────────────────
 
-function useOneSignalPush(_userId: string | undefined) {
-  const getPermission = (): NotificationPermission => {
-    if (typeof window === 'undefined' || !('Notification' in window)) return 'denied';
-    return window.Notification.permission;
-  };
-
+function useOneSignalPush() {
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [subscribed, setSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
   const isReady = typeof window !== 'undefined' && 'Notification' in window;
 
-  // Sync state from browser on mount
   useEffect(() => {
-    const perm = getPermission();
+    if (!isReady) return;
+    const perm = window.Notification.permission;
     setPermission(perm);
     setSubscribed(perm === 'granted');
-  }, []);
+  }, [isReady]);
 
   const toggle = async () => {
     if (!isReady) {
       alert('Your browser does not support push notifications.');
       return;
     }
-
     setLoading(true);
     try {
       if (subscribed) {
-        // Can't programmatically revoke permission — guide user
         alert(
           'To disable notifications:\n' +
           'Click the 🔒 lock icon in the browser URL bar → Notifications → Block.'
         );
         setSubscribed(false);
       } else {
-        // Register service worker first so background delivery works
-        if ('serviceWorker' in navigator) {
-          try {
-            await navigator.serviceWorker.register('/OneSignalSDKWorker.js', { scope: '/' });
-          } catch { /* ignore */ }
-        }
-
-        const perm = await window.Notification.requestPermission();
+        const perm = await requestNotificationPermission();
         setPermission(perm);
         if (perm === 'granted') {
           setSubscribed(true);
-          // Show a test notification
           new window.Notification('✅ Notifications enabled!', {
             body: 'You will now receive alerts when customers place orders.',
             icon: '/favicon.ico',
@@ -997,6 +981,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     // A customer placed a new order → refresh list and flash an alert banner
     // (OneSignal push notification is sent server-side by the backend)
     const handleNewOrder = (payload: { orderNumber: string; total?: number }) => {
+      console.log('🆕 [CurrentOrdersTab] newOrder event received:', payload);
       setNewOrderAlert(`🆕 New order received: ${payload.orderNumber}`);
       loadOrders();
       setTimeout(() => setNewOrderAlert(null), 10000);
@@ -1385,7 +1370,7 @@ export default function SalesmanDashboard() {
   const [toastNotif, setToastNotif] = useState<AppNotification | null>(null);
 
   // ── OneSignal push notifications ─────────────────────────────────────────────
-  const { subscribed: pushEnabled, loading: pushLoading, isReady: pushReady, permission: pushPermission, toggle: togglePush } = useOneSignalPush(user?.id);
+  const { subscribed: pushEnabled, loading: pushLoading, isReady: pushReady, permission: pushPermission, toggle: togglePush } = useOneSignalPush();
 
 
   const [mounted, setMounted] = useState(false);
@@ -1414,58 +1399,75 @@ export default function SalesmanDashboard() {
     }
   }, [isAuthenticated, refreshProfile]);
 
+  // ── OneSignal: init SDK once, then login with userId so backend can target by external_id ──
+  useEffect(() => {
+    if (!user?.id) return;
+    initOneSignal().then((ok) => {
+      if (ok) loginOneSignalUser(user.id);
+    });
+  }, [user?.id]);
+
   // ── Connect socket when user is available, disconnect on logout ──────────────
   useEffect(() => {
-    if (user?.id) {
-      const socket = connectSocket(user.id);
-      
-      const handleNewOrder = (orderData: any) => {
-        const notif: AppNotification = {
-          id: `new-order-${orderData.orderId}`,
-          orderNumber: orderData.orderNumber,
-          total: orderData.total,
-          type: 'NEW_ORDER',
-          time: new Date(),
-          read: false
-        };
-        
-        setAppNotifs(prev => mergeNotification(prev, notif));
-        setToastNotif(notif);
-        
-        // Auto hide toast after 10 seconds without deleting from messages
-        setTimeout(() => {
-          setToastNotif(current => current?.id === notif.id ? null : current);
-        }, 10000);
-      };
+    if (!mounted) return;
 
-      const handleRefundApproved = (payload: { orderId: string; orderNumber: string; message?: string }) => {
-        const notif: AppNotification = {
-          id: `refund-approved-${payload.orderId}`,
-          orderNumber: payload.orderNumber,
-          type: 'REFUND_APPROVED',
-          message: payload.message || `Refund approved for Order ${payload.orderNumber}. Please refund the customer.` ,
-          time: new Date(),
-          read: false,
-        };
-
-        setAppNotifs(prev => mergeNotification(prev, notif));
-        setToastNotif(notif);
-
-        setTimeout(() => {
-          setToastNotif(current => current?.id === notif.id ? null : current);
-        }, 10000);
-      };
-      
-      socket.on('newOrder', handleNewOrder);
-      socket.on('cancellationApproved', handleRefundApproved);
-      
-      return () => {
-        socket.off('newOrder', handleNewOrder);
-        socket.off('cancellationApproved', handleRefundApproved);
-        disconnectSocket();
-      };
+    // Prefer Zustand store userId; fall back to decoding the JWT directly to handle
+    // the Next.js SSR → client hydration window where the store hasn't rehydrated yet.
+    let userId = user?.id;
+    if (!userId) {
+      try {
+        const token = localStorage.getItem('digifix_token');
+        if (token) {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          userId = payload.userId || payload.id || payload.sub;
+        }
+      } catch { /* ignore malformed token */ }
     }
-  }, [user?.id]);
+
+    if (!userId) return;
+
+    const socket = connectSocket(userId);
+
+    const handleNewOrder = (orderData: any) => {
+      const notif: AppNotification = {
+        id: `new-order-${orderData.orderId}`,
+        orderNumber: orderData.orderNumber,
+        total: orderData.total,
+        type: 'NEW_ORDER',
+        time: new Date(),
+        read: false
+      };
+      setAppNotifs(prev => mergeNotification(prev, notif));
+      setToastNotif(notif);
+      setTimeout(() => {
+        setToastNotif(current => current?.id === notif.id ? null : current);
+      }, 10000);
+    };
+
+    const handleRefundApproved = (payload: { orderId: string; orderNumber: string; message?: string }) => {
+      const notif: AppNotification = {
+        id: `refund-approved-${payload.orderId}`,
+        orderNumber: payload.orderNumber,
+        type: 'REFUND_APPROVED',
+        message: payload.message || `Refund approved for Order ${payload.orderNumber}. Please refund the customer.`,
+        time: new Date(),
+        read: false,
+      };
+      setAppNotifs(prev => mergeNotification(prev, notif));
+      setToastNotif(notif);
+      setTimeout(() => {
+        setToastNotif(current => current?.id === notif.id ? null : current);
+      }, 10000);
+    };
+
+    socket.on('newOrder', handleNewOrder);
+    socket.on('cancellationApproved', handleRefundApproved);
+
+    return () => {
+      socket.off('newOrder', handleNewOrder);
+      socket.off('cancellationApproved', handleRefundApproved);
+    };
+  }, [user?.id, mounted]);
 
   // On login/reload, rebuild refund-related messages from existing refunded orders
   // so salesmen still see instructions even if they missed the live socket event.

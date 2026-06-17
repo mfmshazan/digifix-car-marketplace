@@ -4,6 +4,7 @@ import { getSalesmanPendingCount } from '../api/orders';
 interface PendingOrdersContextType {
   pendingCount: number;
   refreshPendingCount: () => Promise<void>;
+  incrementPendingCount: () => void;
   isLoading: boolean;
 }
 
@@ -25,11 +26,16 @@ export function PendingOrdersProvider({ children }: { children: React.ReactNode 
     }
   }, []);
 
+  const incrementPendingCount = useCallback(() => {
+    setPendingCount((prev) => prev + 1);
+  }, []);
+
   return (
     <PendingOrdersContext.Provider
       value={{
         pendingCount,
         refreshPendingCount,
+        incrementPendingCount,
         isLoading,
       }}
     >

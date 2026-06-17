@@ -16,58 +16,50 @@ const attachSocketListeners = (): void => {
   if (!socket || listenersAttached) return;
   listenersAttached = true;
 
+  // 'connect' fires on every successful connection AND every reconnection in socket.io-client v4
   socket.on('connect', () => {
-    console.log('🔌 Mobile socket connected:', socket?.id);
-    joinUserRoom(joinedUserId);
-  });
-
-  socket.on('reconnect', () => {
+    // Re-join user room after every connect/reconnect
     joinUserRoom(joinedUserId);
   });
 
   socket.on('connect_error', (err) => {
-    console.warn('🔌 Mobile socket connection error:', err.message);
-  });
-
-  socket.on('disconnect', (reason) => {
-    console.log('🔌 Mobile socket disconnected:', reason);
+    console.warn('Mobile socket connection error:', err.message);
   });
 };
 
-/**
- * Returns a singleton Socket.io client connected to the backend.
- */
 export function getSocket(): Socket {
   if (!socket) {
     socket = io(getBackendUrl(), {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       autoConnect: false,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
     });
     attachSocketListeners();
   }
   return socket;
 }
 
-/**
- * Connects to the backend socket and joins the user's private room.
- * Call this after the customer logs in.
- */
 export function connectSocket(userId: string): Socket {
   const s = getSocket();
   joinedUserId = userId;
   if (!s.connected) {
     s.connect();
+  } else {
+    joinUserRoom(userId);
   }
-  joinUserRoom(userId);
   return s;
 }
 
-/**
- * Disconnects the socket. Call on logout.
- */
 export function disconnectSocket(): void {
-  if (socket?.connected) {
+  if (socket) {
     socket.disconnect();
+    socket.removeAllListeners();
+    socket = null;
+    listenersAttached = false;
   }
   joinedUserId = null;
 }

@@ -41,7 +41,7 @@ export const createRiderJobFromMarketplaceOrder = async (orderId) => {
   if (!order) return null;
 
   const existingJob = await riderQuery(
-    'SELECT id FROM rider_delivery_jobs WHERE marketplace_order_id = $1 LIMIT 1',
+    'SELECT id FROM "DeliveryJob" WHERE marketplace_order_id = $1 LIMIT 1',
     [order.id]
   );
 
@@ -64,7 +64,7 @@ export const createRiderJobFromMarketplaceOrder = async (orderId) => {
     .join(', ');
 
   const result = await riderQuery(
-    `INSERT INTO rider_delivery_jobs (
+    `INSERT INTO "DeliveryJob" (
         marketplace_order_id,
         order_number,
         customer_name,

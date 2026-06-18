@@ -10,7 +10,7 @@ export const getRiderProfile = async (req, res, next) => {
               push_token, push_platform, push_token_updated_at,
               status, current_latitude, current_longitude, rating, total_deliveries,
               created_at, updated_at
-         FROM rider_delivery_partners
+         FROM "Rider"
         WHERE id = $1`,
       [req.user.id]
     );
@@ -55,7 +55,7 @@ export const updateRiderProfile = async (req, res, next) => {
 
     values.push(req.user.id);
     const result = await riderQuery(
-      `UPDATE rider_delivery_partners
+      `UPDATE "Rider"
           SET ${updates.join(', ')}
         WHERE id = $${values.length}
         RETURNING id, email, full_name, phone, vehicle_type, vehicle_number,
@@ -83,7 +83,7 @@ export const updateRiderPushToken = async (req, res, next) => {
     }
 
     const result = await riderQuery(
-      `UPDATE rider_delivery_partners
+      `UPDATE "Rider"
           SET push_token = $1,
               push_platform = $2,
               push_token_updated_at = CURRENT_TIMESTAMP
@@ -104,7 +104,7 @@ export const updateRiderPushToken = async (req, res, next) => {
 
 export const deleteRiderProfile = async (req, res, next) => {
   try {
-    const result = await riderQuery('DELETE FROM rider_delivery_partners WHERE id = $1 RETURNING id', [req.user.id]);
+    const result = await riderQuery('DELETE FROM "Rider" WHERE id = $1 RETURNING id', [req.user.id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Partner not found' });
@@ -128,7 +128,7 @@ export const updateRiderStatus = async (req, res, next) => {
     }
 
     const result = await riderQuery(
-      'UPDATE rider_delivery_partners SET status = $1 WHERE id = $2 RETURNING status',
+      'UPDATE "Rider" SET status = $1 WHERE id = $2 RETURNING status',
       [status, req.user.id]
     );
 
@@ -157,13 +157,13 @@ export const updateRiderLocation = async (req, res, next) => {
     }
 
     await riderQuery(
-      'UPDATE rider_delivery_partners SET current_latitude = $1, current_longitude = $2 WHERE id = $3',
+      'UPDATE "Rider" SET current_latitude = $1, current_longitude = $2 WHERE id = $3',
       [latitude, longitude, req.user.id]
     );
 
     const activeJob = await riderQuery(
       `SELECT id
-         FROM rider_delivery_jobs
+         FROM "DeliveryJob"
         WHERE partner_id = $1
           AND status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
         ORDER BY assigned_at DESC NULLS LAST, created_at DESC
@@ -173,7 +173,7 @@ export const updateRiderLocation = async (req, res, next) => {
 
     if (activeJob.rows.length) {
       await riderQuery(
-        `INSERT INTO rider_job_tracking (job_id, partner_id, latitude, longitude)
+        `INSERT INTO "DeliveryTracking" (job_id, partner_id, latitude, longitude)
          VALUES ($1, $2, $3, $4)`,
         [activeJob.rows[0].id, req.user.id, latitude, longitude]
       );

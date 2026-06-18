@@ -363,7 +363,7 @@ model Order {
   items    OrderItem[]
   tracking OrderTracking[]
   walletTransactions  WalletTransaction[]
-  riderDeliveryJobs RiderDeliveryJob[]
+  riderDeliveryJobs DeliveryJob[]
   reviews           Review[]
 
   @@index([customerId])
@@ -513,7 +513,7 @@ model PasswordResetOtp {
 // Rider Delivery Models
 // ================================
 
-model RiderDeliveryPartner {
+model Rider {
   id                    Int       @id @default(autoincrement())
   email                 String    @unique @db.VarChar(255)
   passwordHash          String    @map("password_hash") @db.VarChar(255)
@@ -538,33 +538,29 @@ model RiderDeliveryPartner {
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @default(now()) @map("updated_at")
 
-  refreshTokens RiderRefreshToken[]
-  jobs          RiderDeliveryJob[]
-  statusLogs    RiderJobStatusLog[]
-  tracking      RiderJobTracking[]
-  proofs        RiderProofOfDelivery[]
-  offers        RiderDeliveryRequestOffer[]
+  refreshTokens RiderToken[]
+  jobs          DeliveryJob[]
+  tracking      DeliveryTracking[]
+  offers        DeliveryOffer[]
 
   @@index([email], map: "idx_rider_partners_email")
   @@index([status], map: "idx_rider_partners_status")
-  @@map("rider_delivery_partners")
 }
 
-model RiderRefreshToken {
+model RiderToken {
   id        Int      @id @default(autoincrement())
   partnerId Int      @map("partner_id")
   token     String   @unique @db.VarChar(500)
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
 
-  partner RiderDeliveryPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner Rider @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@index([token], map: "idx_rider_refresh_tokens_token")
   @@index([partnerId], map: "idx_rider_refresh_tokens_partner")
-  @@map("rider_refresh_tokens")
 }
 
-model RiderDeliveryJob {
+model DeliveryJob {
   id                    Int       @id @default(autoincrement())
   partnerId             Int?      @map("partner_id")
   marketplaceOrderId    String?   @map("marketplace_order_id")
@@ -598,37 +594,27 @@ model RiderDeliveryJob {
   failedAt              DateTime? @map("failed_at")
   updatedAt             DateTime  @default(now()) @map("updated_at")
 
-  partner         RiderDeliveryPartner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  // Merged Proof of Delivery fields
+  proofPhotoUrl          String?  @map("proof_photo_url")
+  proofSignatureData     String?  @map("proof_signature_data")
+  proofRecipientName     String?  @map("proof_recipient_name") @db.VarChar(255)
+  proofNotes             String?  @map("proof_notes")
+  proofDeliveryLatitude  Decimal? @map("proof_delivery_latitude") @db.Decimal(10, 8)
+  proofDeliveryLongitude Decimal? @map("proof_delivery_longitude") @db.Decimal(11, 8)
+  proofCreatedAt         DateTime? @map("proof_created_at")
+
+  partner         Rider?                @relation(fields: [partnerId], references: [id], onDelete: SetNull)
   marketplaceOrder Order?               @relation(fields: [marketplaceOrderId], references: [id], onDelete: SetNull)
-  statusLogs      RiderJobStatusLog[]
-  tracking        RiderJobTracking[]
-  proof           RiderProofOfDelivery?
-  offers          RiderDeliveryRequestOffer[]
+  tracking        DeliveryTracking[]
+  offers          DeliveryOffer[]
 
   @@index([status], map: "idx_rider_jobs_status")
   @@index([partnerId], map: "idx_rider_jobs_partner")
   @@index([orderNumber], map: "idx_rider_jobs_order_number")
   @@index([marketplaceOrderId], map: "idx_rider_jobs_marketplace_order")
-  @@map("rider_delivery_jobs")
 }
 
-model RiderJobStatusLog {
-  id        Int      @id @default(autoincrement())
-  jobId     Int      @map("job_id")
-  partnerId Int?     @map("partner_id")
-  status    String   @db.VarChar(30)
-  reason    String?
-  latitude  Decimal? @db.Decimal(10, 8)
-  longitude Decimal? @db.Decimal(11, 8)
-  createdAt DateTime @default(now()) @map("created_at")
-
-  job     RiderDeliveryJob      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  partner RiderDeliveryPartner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
-
-  @@map("rider_job_status_logs")
-}
-
-model RiderJobTracking {
+model DeliveryTracking {
   id         Int      @id @default(autoincrement())
   jobId      Int      @map("job_id")
   partnerId  Int      @map("partner_id")
@@ -639,33 +625,14 @@ model RiderJobTracking {
   heading    Decimal? @db.Decimal(5, 2)
   recordedAt DateTime @default(now()) @map("recorded_at")
 
-  job     RiderDeliveryJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  partner RiderDeliveryPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  job     DeliveryJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  partner Rider       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@index([jobId], map: "idx_rider_tracking_job")
   @@index([recordedAt], map: "idx_rider_tracking_recorded_at")
-  @@map("rider_job_tracking")
 }
 
-model RiderProofOfDelivery {
-  id                Int      @id @default(autoincrement())
-  jobId             Int      @unique @map("job_id")
-  partnerId         Int      @map("partner_id")
-  photoUrl          String?  @map("photo_url")
-  signatureData     String?  @map("signature_data")
-  recipientName     String?  @map("recipient_name") @db.VarChar(255)
-  notes             String?
-  deliveryLatitude  Decimal? @map("delivery_latitude") @db.Decimal(10, 8)
-  deliveryLongitude Decimal? @map("delivery_longitude") @db.Decimal(11, 8)
-  createdAt         DateTime @default(now()) @map("created_at")
-
-  job     RiderDeliveryJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  partner RiderDeliveryPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-
-  @@map("rider_proof_of_delivery")
-}
-
-model RiderDeliveryRequestOffer {
+model DeliveryOffer {
   id                 Int       @id @default(autoincrement())
   jobId              Int       @map("job_id")
   partnerId          Int       @map("partner_id")
@@ -676,11 +643,10 @@ model RiderDeliveryRequestOffer {
   respondedAt        DateTime? @map("responded_at")
   responseReason     String?   @map("response_reason")
 
-  job     RiderDeliveryJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  partner RiderDeliveryPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  job     DeliveryJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  partner Rider       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@index([jobId], map: "idx_rider_dispatch_offers_job_id")
   @@index([partnerId], map: "idx_rider_dispatch_offers_partner_id")
   @@index([offerStatus, expiresAt], map: "idx_rider_dispatch_offers_status")
-  @@map("rider_delivery_request_offers")
 }

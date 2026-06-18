@@ -63,27 +63,57 @@ const formatDate = (dateString: string) => {
 
 type Coordinate = { latitude: number; longitude: number };
 const DELIVERY_STEPS = [
-  { key: "pending", title: "Finding" },
-  { key: "assigned", title: "Assigned" },
-  { key: "accepted", title: "Accepted" },
-  { key: "arrived_at_pickup", title: "At Shop" },
-  { key: "picked_up", title: "Picked" },
-  { key: "in_transit", title: "On Way" },
-  { key: "arrived_at_dropoff", title: "Nearby" },
-  { key: "delivered", title: "Done" },
+  { key: "pending", title: "Placed" },
+  { key: "confirmed", title: "Confirmed" },
+  { key: "processing", title: "Processing" },
+  { key: "shipped", title: "Shipped" },
+  { key: "delivered", title: "Delivered" },
 ];
 
+// Labels shown in the tracking card's status heading (detailed rider step labels)
 const DELIVERY_STATUS_LABELS: Record<string, string> = {
-  pending: "Finding rider",
-  available: "Finding rider",
-  assigned: "Rider assigned",
-  accepted: "Rider accepted",
-  arrived_at_pickup: "Rider at shop",
-  picked_up: "Order picked up",
-  in_transit: "On the way",
-  arrived_at_dropoff: "Rider nearby",
-  delivered: "Delivered",
-  failed: "Delivery issue",
+  // Order-level statuses (from DB)
+  pending: "Order Placed",
+  confirmed: "Order Confirmed",
+  processing: "Preparing Your Order",
+  shipped: "On Its Way to You",
+  delivered: "Delivered!",
+  cancelled: "Order Cancelled",
+  failed: "Delivery Failed",
+  refund_requested: "Refund Under Review",
+  // Detailed rider steps (from riderStep field in socket payload)
+  accepted: "Rider Accepted",
+  arrived_at_pickup: "Rider at Shop",
+  picked_up: "Package Collected",
+  in_transit: "On the Way",
+  arrived_at_dropoff: "Rider at Your Door",
+  available: "Finding Rider",
+  assigned: "Rider Assigned",
+};
+
+// Maps rider sub-steps to the correct stepper step key
+// so the 5-step progress bar always shows the right position.
+// Mirrors the backend userFacingStatusMap exactly.
+const riderStepToStepperKey = (status: string): string => {
+  const s = status.toLowerCase();
+  switch (s) {
+    case 'accepted':
+    case 'arrived_at_pickup':
+    case 'processing':
+      return 'processing';          // Rider collecting from shop → Processing
+    case 'picked_up':
+    case 'in_transit':
+    case 'arrived_at_dropoff':
+    case 'shipped':
+      return 'shipped';             // Package physically on its way → Shipped
+    case 'delivered':
+      return 'delivered';
+    case 'confirmed':
+      return 'confirmed';
+    case 'pending':
+    default:
+      return 'pending';
+  }
 };
 
 const normalizeDeliveryStatus = (status: string | null | undefined) =>
@@ -111,11 +141,14 @@ const formatEta = (minutes: number | null) => {
   return `${hours}h ${mins}m`;
 };
 
-const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
+const OrderStepper = ({ currentStatus, riderStep }: { currentStatus: string; riderStep?: string }) => {
   const steps = DELIVERY_STEPS;
-  const normalizedStatus = normalizeDeliveryStatus(currentStatus);
-  let currentIndex = steps.findIndex((s) => s.key === normalizedStatus);
-  if (currentIndex === -1) currentIndex = normalizedStatus === "delivered" ? steps.length - 1 : 0;
+  // Use riderStep to override the step if it maps to a known stepper key
+  const stepperKey = riderStep
+    ? riderStepToStepperKey(riderStep)
+    : riderStepToStepperKey(currentStatus);
+  let currentIndex = steps.findIndex((s) => s.key === stepperKey);
+  if (currentIndex === -1) currentIndex = 0;
 
   const pulseAnim = React.useRef(new Animated.Value(0)).current;
 
@@ -229,23 +262,27 @@ export default function OrdersScreen() {
     dropoff: { latitude: number; longitude: number; address?: string };
   } | null>(null);
   const [liveDeliveryStatus, setLiveDeliveryStatus] = useState<string | null>(null);
+  const [liveRiderStep, setLiveRiderStep] = useState<string | null>(null); // Detailed rider step for the label
   const [lastTrackingUpdate, setLastTrackingUpdate] = useState<Date | null>(null);
 
   const activeDeliveryStatus = normalizeDeliveryStatus(liveDeliveryStatus || trackingOrder?.status);
   const etaMinutes =
     riderLocation && deliveryRoute
       ? (() => {
-          const averageCitySpeedKmh = 24;
-          const remainingKm =
-            ["pending", "available", "assigned", "accepted", "arrived_at_pickup"].includes(activeDeliveryStatus)
-              ? distanceKm(riderLocation, deliveryRoute.pickup) + distanceKm(deliveryRoute.pickup, deliveryRoute.dropoff)
-              : distanceKm(riderLocation, deliveryRoute.dropoff);
-          return Math.max(1, Math.round((remainingKm / averageCitySpeedKmh) * 60));
-        })()
+        const averageCitySpeedKmh = 24;
+        const remainingKm =
+          ["pending", "available", "assigned", "accepted", "arrived_at_pickup"].includes(activeDeliveryStatus)
+            ? distanceKm(riderLocation, deliveryRoute.pickup) + distanceKm(deliveryRoute.pickup, deliveryRoute.dropoff)
+            : distanceKm(riderLocation, deliveryRoute.dropoff);
+        return Math.max(1, Math.round((remainingKm / averageCitySpeedKmh) * 60));
+      })()
       : null;
   const etaLabel = formatEta(etaMinutes);
+  // Show detailed rider step label if available, otherwise fall back to order status label
   const activeDeliveryLabel =
-    DELIVERY_STATUS_LABELS[activeDeliveryStatus] || formatStatus(activeDeliveryStatus);
+    (liveRiderStep && DELIVERY_STATUS_LABELS[liveRiderStep]) ||
+    DELIVERY_STATUS_LABELS[activeDeliveryStatus] ||
+    formatStatus(activeDeliveryStatus);
   const lastUpdatedLabel = lastTrackingUpdate
     ? lastTrackingUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
     : "Waiting";
@@ -256,6 +293,7 @@ export default function OrdersScreen() {
       setRiderLocation(null);
       setDeliveryRoute(null);
       setLiveDeliveryStatus(null);
+      setLiveRiderStep(null);
       setLastTrackingUpdate(null);
       hasFitTrackingMap.current = false;
       return;
@@ -361,14 +399,25 @@ export default function OrdersScreen() {
 
         const handleStatusUpdate = (payload: {
           orderId: string;
-          orderNumber: string;
+          orderNumber?: string;
           status: string;
+          riderStep?: string;    // Detailed rider step from the backend
+          description?: string;
         }) => {
+          // Update the order's main status (user-facing: SHIPPED, DELIVERED, etc.)
           setOrders((prev) =>
             prev.map((o) =>
               o.id === payload.orderId ? { ...o, status: payload.status } : o
             )
           );
+          // If the tracking modal is open for this order, update the detailed label
+          if (payload.riderStep) {
+            setLiveRiderStep(payload.riderStep);
+          }
+          // Also update the live status shown in the tracking panel
+          if (payload.status) {
+            setLiveDeliveryStatus(payload.status);
+          }
         };
 
         socket.on('orderStatusUpdated', handleStatusUpdate);
@@ -633,7 +682,7 @@ export default function OrdersScreen() {
             <Text style={styles.trackingModalTitle}>Tracking Order</Text>
             <View style={{ width: 28 }} />
           </View>
-          
+
           <MapView
             ref={trackingMapRef}
             style={styles.map}
@@ -711,7 +760,7 @@ export default function OrdersScreen() {
               <Text style={styles.liveMetaText}>Live updates every 3s</Text>
               <Text style={styles.liveMetaText}>Updated {lastUpdatedLabel}</Text>
             </View>
-            <OrderStepper currentStatus={activeDeliveryStatus} />
+            <OrderStepper currentStatus={activeDeliveryStatus} riderStep={liveRiderStep ?? undefined} />
           </View>
         </View>
       </Modal>
@@ -733,17 +782,17 @@ export default function OrdersScreen() {
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
-            
+
             <Text style={styles.cancelModalSubtitle}>
               Order: {cancellingOrder?.orderNumber}
             </Text>
-            
+
             <Text style={styles.cancelModalLabel}>
               {cancellingOrder?.status?.toUpperCase() === 'DELIVERED'
                 ? 'Please describe your concern clearly (this goes to admin):'
                 : 'Please provide a reason for your request:'}
             </Text>
-            
+
             <TextInput
               style={styles.cancelReasonInput}
               multiline
@@ -754,7 +803,7 @@ export default function OrdersScreen() {
               onChangeText={setCancelReason}
               textAlignVertical="top"
             />
-            
+
             <TouchableOpacity
               style={[
                 styles.cancelSubmitButton,

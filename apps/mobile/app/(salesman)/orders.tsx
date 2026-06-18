@@ -18,6 +18,7 @@ import * as Location from "expo-location";
 import MapView, { Marker } from "react-native-maps";
 import { getSalesmanOrders, updateOrderStatus, createDeliveryRequest, getOrderDeliveryStatus, getAvailableRiders } from "../../src/api/orders";
 import { usePendingOrders } from "../../src/store/pendingOrdersStore";
+import { getSocket } from "../../src/lib/socket";
 
 // ─── Delivery status label map ────────────────────────────────────────────────
 const DELIVERY_LABEL: Record<string, string> = {
@@ -476,6 +477,16 @@ export default function SalesmanOrdersScreen() {
 
   useEffect(() => {
     fetchOrders();
+  }, [fetchOrders]);
+
+  // Listen for real-time new orders and refresh the list automatically
+  useEffect(() => {
+    const socket = getSocket();
+    const handleNewOrder = () => {
+      fetchOrders();
+    };
+    socket.on('newOrder', handleNewOrder);
+    return () => { socket.off('newOrder', handleNewOrder); };
   }, [fetchOrders]);
 
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {

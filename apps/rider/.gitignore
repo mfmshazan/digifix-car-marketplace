@@ -10,3 +10,6 @@ node_modules/
 *.mobileprovision
 *.orig.*
 web-build/
+
+# Local environment variables (contains machine-specific IP)
+.env

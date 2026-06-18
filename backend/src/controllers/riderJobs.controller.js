@@ -347,18 +347,39 @@ export const rejectRiderAssignedJob = async (req, res, next) => {
   }
 };
 
+// ─── Sync Marketplace Order Status ──────────────────────────────────────────
+// Maps rider's internal delivery steps to the simplified 5-step user-facing flow:
+// PENDING → CONFIRMED → PROCESSING → SHIPPED → DELIVERED
+//
+// All rider delivery steps (arrived_at_pickup, picked_up, in_transit, etc.)
+// appear as SHIPPED to the customer and salesman so the UI is clean and simple.
+// The exact rider step is still stored in OrderTracking for full audit history.
 const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
-  const statusMap = {
-    accepted: 'ACCEPTED',
-    arrived_at_pickup: 'ARRIVED_AT_PICKUP',
-    picked_up: 'PICKED_UP',
-    in_transit: 'IN_TRANSIT',
-    arrived_at_dropoff: 'ARRIVED_AT_DROPOFF',
-    delivered: 'DELIVERED',
-    failed: 'FAILED',
+  // Rider status → user-facing order status mapping
+  // PROCESSING = rider is at the shop collecting the item
+  // SHIPPED    = item is physically on its way to the customer
+  const userFacingStatusMap = {
+    accepted:           'PROCESSING', // Rider accepted & heading to shop → still being prepared
+    arrived_at_pickup:  'PROCESSING', // Rider at shop collecting → PROCESSING
+    picked_up:          'SHIPPED',    // Package collected, leaving shop → SHIPPED
+    in_transit:         'SHIPPED',    // En route → SHIPPED
+    arrived_at_dropoff: 'SHIPPED',    // Rider near customer → still SHIPPED
+    delivered:          'DELIVERED',  // Final step
+    failed:             'FAILED',
   };
 
-  const marketplaceStatus = statusMap[riderStatus];
+  // Friendly description for the order timeline
+  const riderStatusDescriptions = {
+    accepted:           'Rider has accepted your delivery',
+    arrived_at_pickup:  'Rider arrived at the shop',
+    picked_up:          'Package collected by rider',
+    in_transit:         'Package is on its way to you',
+    arrived_at_dropoff: 'Rider has arrived at your location',
+    delivered:          'Package delivered successfully',
+    failed:             'Delivery attempt failed',
+  };
+
+  const marketplaceStatus = userFacingStatusMap[riderStatus];
   if (!marketplaceStatus) return;
 
   const jobResult = await client.query(
@@ -369,11 +390,38 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   const marketplaceOrderId = jobResult.rows[0]?.marketplace_order_id;
   if (!marketplaceOrderId) return;
 
-  await client.query('UPDATE "Order" SET status = $1, "updatedAt" = NOW() WHERE id = $2', [marketplaceStatus, marketplaceOrderId]);
+  // Fetch customer + salesman IDs so we can target socket rooms
+  const orderResult = await client.query(
+    'SELECT "customerId", "salesmanId" FROM "Order" WHERE id = $1',
+    [marketplaceOrderId]
+  );
+  const orderRow = orderResult.rows[0];
+
+  // Update the order's user-facing status
+  await client.query(
+    'UPDATE "Order" SET status = $1, "updatedAt" = NOW() WHERE id = $2',
+    [marketplaceStatus, marketplaceOrderId]
+  );
+
+  // Log detailed rider step in the tracking timeline
+  const description = riderStatusDescriptions[riderStatus] || `Delivery update: ${riderStatus}`;
   await client.query(
     'INSERT INTO "OrderTracking" (id, status, description, "orderId", "createdAt") VALUES (gen_random_uuid()::text, $1, $2, $3, NOW())',
-    [marketplaceStatus, `Delivery status updated to ${riderStatus}`, marketplaceOrderId]
+    [marketplaceStatus, description, marketplaceOrderId]
   );
+
+  // 🔌 Emit real-time socket update so customer & salesman UIs update instantly
+  if (global.io && orderRow) {
+    const payload = {
+      orderId: marketplaceOrderId,
+      status: marketplaceStatus,
+      riderStep: riderStatus,     // Detailed rider step (for tracking panel label)
+      description,
+      updatedAt: new Date().toISOString(),
+    };
+    global.io.to(`user:${orderRow.customerId}`).emit('orderStatusUpdated', payload);
+    global.io.to(`user:${orderRow.salesmanId}`).emit('orderStatusUpdated', payload);
+  }
 };
 
 export const updateRiderJobStatus = async (req, res, next) => {

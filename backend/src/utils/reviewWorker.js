@@ -51,14 +51,14 @@ export const updateReviewAggregates = async (targetId, targetType) => {
           },
         });
         
-        // Next try rider_delivery_partners model if ID is an integer
+        // Next try Rider model if ID is an integer
         const parsedId = parseInt(targetId, 10);
         if (!isNaN(parsedId)) {
-          await prisma.rider_delivery_partners.updateMany({
+          await prisma.rider.updateMany({
             where: { id: parsedId },
             data: {
               rating: averageRating,
-              total_reviews: totalReviews,
+              totalReviews: totalReviews,
             },
           });
         }

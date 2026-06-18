@@ -31,8 +31,8 @@ export const getRiderLiveLocation = async (req, res) => {
               rdj.pickup_address, rdj.pickup_latitude, rdj.pickup_longitude,
               rdj.dropoff_address, rdj.dropoff_latitude, rdj.dropoff_longitude,
               rdp.current_latitude, rdp.current_longitude, rdp.full_name AS rider_name
-       FROM rider_delivery_jobs rdj
-       LEFT JOIN rider_delivery_partners rdp ON rdj.partner_id = rdp.id
+       FROM "DeliveryJob" rdj
+       LEFT JOIN "Rider" rdp ON rdj.partner_id = rdp.id
        WHERE rdj.marketplace_order_id = $1
        ORDER BY rdj.created_at DESC
        LIMIT 1`,
@@ -71,7 +71,7 @@ export const getRiderLiveLocation = async (req, res) => {
     // Prefer the most recent tracking point; fall back to partner's stored location
     const trackingResult = await riderQuery(
       `SELECT latitude, longitude, accuracy, speed, heading, recorded_at
-       FROM rider_job_tracking
+       FROM "DeliveryTracking"
        WHERE job_id = $1
        ORDER BY recorded_at DESC
        LIMIT 1`,
@@ -158,8 +158,8 @@ export const getOrderDeliveryStatus = async (req, res) => {
               rdp.full_name AS rider_name, rdp.phone AS rider_phone,
               rdp.vehicle_type, rdp.vehicle_number, rdp.rating AS rider_rating,
               rdp.current_latitude, rdp.current_longitude
-       FROM rider_delivery_jobs rdj
-       LEFT JOIN rider_delivery_partners rdp ON rdj.partner_id = rdp.id
+       FROM "DeliveryJob" rdj
+       LEFT JOIN "Rider" rdp ON rdj.partner_id = rdp.id
        WHERE rdj.marketplace_order_id = $1
        ORDER BY rdj.created_at DESC
        LIMIT 1`,

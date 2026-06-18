@@ -25,7 +25,7 @@ const JOB_DETAIL_SELECT = `SELECT id, order_number, customer_name, customer_phon
   distance_km, payment_amount, package_weight, package_type, package_notes,
   payment_type, items_description, special_instructions,
   status, assigned_at, accepted_at, created_at
-  FROM rider_delivery_jobs
+  FROM "DeliveryJob"
   WHERE id = $1`;
 
 const sendSocketMessage = (socket, message) => {
@@ -135,9 +135,9 @@ const fetchOfferPayload = async (offerId) => {
             dj.distance_km, dj.payment_amount, dj.package_weight, dj.package_type,
             dj.package_notes, dj.payment_type,
             dp.vehicle_type
-       FROM rider_delivery_request_offers dro
-       JOIN rider_delivery_jobs dj ON dj.id = dro.job_id
-       JOIN rider_delivery_partners dp ON dp.id = dro.partner_id
+       FROM "DeliveryOffer" dro
+       JOIN "DeliveryJob" dj ON dj.id = dro.job_id
+       JOIN "Rider" dp ON dp.id = dro.partner_id
       WHERE dro.id = $1`,
     [offerId]
   );
@@ -171,23 +171,23 @@ const fetchJobDetails = async (jobId, client = null) => {
 const pickNearestEligiblePartner = async (client, jobId, pickupLatitude, pickupLongitude) => {
   const result = await client.query(
     `SELECT dp.id, dp.vehicle_type, dp.current_latitude, dp.current_longitude
-       FROM rider_delivery_partners dp
+       FROM "Rider" dp
       WHERE dp.status = 'online'
         AND dp.current_latitude IS NOT NULL
         AND dp.current_longitude IS NOT NULL
         AND NOT EXISTS (
-          SELECT 1 FROM rider_delivery_jobs active_job
+          SELECT 1 FROM "DeliveryJob" active_job
            WHERE active_job.partner_id = dp.id
              AND active_job.status = ANY($2::text[])
         )
         AND NOT EXISTS (
-          SELECT 1 FROM rider_delivery_request_offers pending_offer
+          SELECT 1 FROM "DeliveryOffer" pending_offer
            WHERE pending_offer.partner_id = dp.id
              AND pending_offer.offer_status = 'pending'
              AND pending_offer.expires_at > NOW()
         )
         AND NOT EXISTS (
-          SELECT 1 FROM rider_delivery_request_offers prior_offer
+          SELECT 1 FROM "DeliveryOffer" prior_offer
            WHERE prior_offer.job_id = $1
              AND prior_offer.partner_id = dp.id
         )`,
@@ -220,7 +220,7 @@ export const dispatchJobToNextEligibleDriver = async (jobId) => {
 
     const jobResult = await client.query(
       `SELECT id, order_number, pickup_latitude, pickup_longitude, status, partner_id
-         FROM rider_delivery_jobs
+         FROM "DeliveryJob"
         WHERE id = $1
         FOR UPDATE`,
       [jobId]
@@ -239,7 +239,7 @@ export const dispatchJobToNextEligibleDriver = async (jobId) => {
 
     const activeOfferResult = await client.query(
       `SELECT id
-         FROM rider_delivery_request_offers
+         FROM "DeliveryOffer"
         WHERE job_id = $1
           AND offer_status = 'pending'
           AND expires_at > NOW()
@@ -265,14 +265,14 @@ export const dispatchJobToNextEligibleDriver = async (jobId) => {
     }
 
     await client.query(
-      `UPDATE rider_delivery_jobs
+      `UPDATE "DeliveryJob"
           SET status = 'available'
         WHERE id = $1 AND status = 'pending'`,
       [jobId]
     );
 
     const offerResult = await client.query(
-      `INSERT INTO rider_delivery_request_offers (
+      `INSERT INTO "DeliveryOffer" (
           job_id, partner_id, offer_status, distance_to_pickup_km, expires_at
        ) VALUES ($1, $2, 'pending', $3, NOW() + ($4 || ' seconds')::interval)
        RETURNING id, expires_at`,
@@ -296,11 +296,11 @@ export const dispatchJobToNextEligibleDriver = async (jobId) => {
 export const dispatchAvailableJobs = async () => {
   const result = await riderQuery(
     `SELECT dj.id
-       FROM rider_delivery_jobs dj
+       FROM "DeliveryJob" dj
       WHERE dj.status IN ('pending', 'available')
         AND dj.partner_id IS NULL
         AND NOT EXISTS (
-          SELECT 1 FROM rider_delivery_request_offers dro
+          SELECT 1 FROM "DeliveryOffer" dro
            WHERE dro.job_id = dj.id
              AND dro.offer_status = 'pending'
              AND dro.expires_at > NOW()
@@ -327,8 +327,8 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
     const offerResult = await client.query(
       `SELECT dro.id, dro.job_id, dro.partner_id, dro.offer_status, dro.expires_at,
               dj.status AS job_status, dj.partner_id AS assigned_partner_id
-         FROM rider_delivery_request_offers dro
-         JOIN rider_delivery_jobs dj ON dj.id = dro.job_id
+         FROM "DeliveryOffer" dro
+         JOIN "DeliveryJob" dj ON dj.id = dro.job_id
         WHERE dro.id = $1
         FOR UPDATE`,
       [offerId]
@@ -356,7 +356,7 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
     if (action === 'accepted') {
       if (isExpired) {
         await client.query(
-          `UPDATE rider_delivery_request_offers
+          `UPDATE "DeliveryOffer"
               SET offer_status = 'expired',
                   responded_at = NOW(),
                   response_reason = COALESCE(response_reason, 'response_window_elapsed')
@@ -376,7 +376,7 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
 
       if (!['pending', 'available'].includes(offer.job_status) || offer.assigned_partner_id) {
         await client.query(
-          `UPDATE rider_delivery_request_offers
+          `UPDATE "DeliveryOffer"
               SET offer_status = 'cancelled',
                   responded_at = NOW(),
                   response_reason = 'job_no_longer_available'
@@ -395,7 +395,7 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
 
       const activeJobCheck = await client.query(
         `SELECT id
-           FROM rider_delivery_jobs
+           FROM "DeliveryJob"
           WHERE partner_id = $1
             AND status = ANY($2::text[])
             AND id <> $3
@@ -409,7 +409,7 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
       }
 
       await client.query(
-        `UPDATE rider_delivery_request_offers
+        `UPDATE "DeliveryOffer"
             SET offer_status = 'accepted',
                 responded_at = NOW(),
                 response_reason = $2
@@ -418,7 +418,7 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
       );
 
       await client.query(
-        `UPDATE rider_delivery_jobs
+        `UPDATE "DeliveryJob"
             SET partner_id = $1,
                 status = 'assigned',
                 assigned_at = COALESCE(assigned_at, NOW())
@@ -426,7 +426,7 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
         [offer.partner_id, offer.job_id]
       );
 
-      await client.query("UPDATE rider_delivery_partners SET status = 'busy' WHERE id = $1", [offer.partner_id]);
+      await client.query(`UPDATE "Rider" SET status = 'busy' WHERE id = $1`, [offer.partner_id]);
       const job = await fetchJobDetails(offer.job_id, client);
       await client.query('COMMIT');
 
@@ -442,7 +442,7 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
 
     const normalizedAction = action === 'declined' ? 'declined' : action === 'cancelled' ? 'cancelled' : 'expired';
     await client.query(
-      `UPDATE rider_delivery_request_offers
+      `UPDATE "DeliveryOffer"
           SET offer_status = $2,
               responded_at = NOW(),
               response_reason = $3
@@ -477,7 +477,7 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
 
 export const cancelPendingOffersForPartner = async (partnerId, reason = 'partner_unavailable') => {
   const result = await riderQuery(
-    `UPDATE rider_delivery_request_offers
+    `UPDATE "DeliveryOffer"
         SET offer_status = 'cancelled',
             responded_at = NOW(),
             response_reason = $2
@@ -509,9 +509,9 @@ const sendPendingOffersForPartner = async (partnerId) => {
             dj.distance_km, dj.payment_amount, dj.package_weight, dj.package_type,
             dj.package_notes, dj.payment_type,
             dp.vehicle_type
-       FROM rider_delivery_request_offers dro
-       JOIN rider_delivery_jobs dj ON dj.id = dro.job_id
-       JOIN rider_delivery_partners dp ON dp.id = dro.partner_id
+       FROM "DeliveryOffer" dro
+       JOIN "DeliveryJob" dj ON dj.id = dro.job_id
+       JOIN "Rider" dp ON dp.id = dro.partner_id
       WHERE dro.partner_id = $1
         AND dro.offer_status = 'pending'
         AND dro.expires_at > NOW()
@@ -528,7 +528,7 @@ const restorePendingOfferTimers = async () => {
   try {
     const result = await riderQuery(
       `SELECT id, expires_at
-         FROM rider_delivery_request_offers
+         FROM "DeliveryOffer"
         WHERE offer_status = 'pending'`
     );
 
@@ -585,15 +585,15 @@ export const listEligibleDeliveryPartners = async ({ pickupLatitude, pickupLongi
   const result = await riderQuery(
     `SELECT dp.id, dp.full_name, dp.phone, dp.vehicle_type, dp.vehicle_number,
             dp.rating, dp.total_deliveries, dp.current_latitude, dp.current_longitude
-       FROM rider_delivery_partners dp
+       FROM "Rider" dp
       WHERE dp.status = 'online'
         AND NOT EXISTS (
-          SELECT 1 FROM rider_delivery_jobs active_job
+          SELECT 1 FROM "DeliveryJob" active_job
            WHERE active_job.partner_id = dp.id
              AND active_job.status = ANY($1::text[])
         )
         AND NOT EXISTS (
-          SELECT 1 FROM rider_delivery_request_offers pending_offer
+          SELECT 1 FROM "DeliveryOffer" pending_offer
            WHERE pending_offer.partner_id = dp.id
              AND pending_offer.offer_status = 'pending'
              AND pending_offer.expires_at > NOW()
@@ -636,7 +636,7 @@ export const dispatchJobToSelectedDriver = async (jobId, partnerId) => {
 
     const jobResult = await client.query(
       `SELECT id, order_number, pickup_latitude, pickup_longitude, status, partner_id
-         FROM rider_delivery_jobs
+         FROM "DeliveryJob"
         WHERE id = $1
         FOR UPDATE`,
       [jobId]
@@ -655,7 +655,7 @@ export const dispatchJobToSelectedDriver = async (jobId, partnerId) => {
 
     const partnerResult = await client.query(
       `SELECT id, current_latitude, current_longitude, status
-         FROM rider_delivery_partners
+         FROM "Rider"
         WHERE id = $1`,
       [partnerId]
     );
@@ -672,7 +672,7 @@ export const dispatchJobToSelectedDriver = async (jobId, partnerId) => {
     }
 
     const activeJobCheck = await client.query(
-      `SELECT id FROM rider_delivery_jobs
+      `SELECT id FROM "DeliveryJob"
         WHERE partner_id = $1 AND status = ANY($2::text[])
         LIMIT 1`,
       [partnerId, ACTIVE_JOB_STATUSES]
@@ -684,7 +684,7 @@ export const dispatchJobToSelectedDriver = async (jobId, partnerId) => {
     }
 
     const pendingOfferCheck = await client.query(
-      `SELECT id FROM rider_delivery_request_offers
+      `SELECT id FROM "DeliveryOffer"
         WHERE partner_id = $1 AND offer_status = 'pending' AND expires_at > NOW()
         LIMIT 1`,
       [partnerId]
@@ -706,12 +706,12 @@ export const dispatchJobToSelectedDriver = async (jobId, partnerId) => {
         : null;
 
     await client.query(
-      `UPDATE rider_delivery_jobs SET status = 'available' WHERE id = $1 AND status = 'pending'`,
+      `UPDATE "DeliveryJob" SET status = 'available' WHERE id = $1 AND status = 'pending'`,
       [jobId]
     );
 
     const offerResult = await client.query(
-      `INSERT INTO rider_delivery_request_offers (
+      `INSERT INTO "DeliveryOffer" (
           job_id, partner_id, offer_status, distance_to_pickup_km, expires_at
        ) VALUES ($1, $2, 'pending', $3, NOW() + ($4 || ' seconds')::interval)
        RETURNING id, expires_at`,

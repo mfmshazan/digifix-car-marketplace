@@ -38,7 +38,7 @@ export const createRiderAdminJob = async (req, res, next) => {
     }
 
     const result = await riderQuery(
-      `INSERT INTO rider_delivery_jobs (
+      `INSERT INTO "DeliveryJob" (
           order_number, customer_name, customer_phone,
           pickup_address, pickup_latitude, pickup_longitude,
           pickup_contact_name, pickup_contact_phone,
@@ -83,8 +83,8 @@ export const getRiderAdminJobs = async (req, res, next) => {
     const params = [];
     let queryText = `
       SELECT j.*, p.full_name as partner_name, p.phone as partner_phone
-        FROM rider_delivery_jobs j
-        LEFT JOIN rider_delivery_partners p ON j.partner_id = p.id
+        FROM "DeliveryJob" j
+        LEFT JOIN "Rider" p ON j.partner_id = p.id
     `;
 
     if (status) {
@@ -107,7 +107,7 @@ export const getRiderAdminPartners = async (req, res, next) => {
       `SELECT id, email, full_name, phone, vehicle_type, vehicle_number,
               status, current_latitude, current_longitude, rating, total_deliveries,
               created_at
-         FROM rider_delivery_partners
+         FROM "Rider"
         ORDER BY created_at DESC`
     );
 
@@ -122,7 +122,7 @@ export const getRiderAdminJobTracking = async (req, res, next) => {
     const jobId = Number.parseInt(req.params.id, 10);
     const result = await riderQuery(
       `SELECT latitude, longitude, accuracy, speed, heading, recorded_at
-         FROM rider_job_tracking
+         FROM "DeliveryTracking"
         WHERE job_id = $1
         ORDER BY recorded_at ASC`,
       [jobId]

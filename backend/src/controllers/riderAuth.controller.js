@@ -19,7 +19,7 @@ const createTokens = async (partner) => {
   const expiresAt = getRiderTokenExpiryDate(riderAuthConfig.refreshTokenExpiry);
 
   await riderQuery(
-    'INSERT INTO rider_refresh_tokens (partner_id, token, expires_at) VALUES ($1, $2, $3)',
+    'INSERT INTO "RiderToken" (partner_id, token, expires_at) VALUES ($1, $2, $3)',
     [partner.id, refreshToken, expiresAt]
   );
 
@@ -38,7 +38,7 @@ export const registerRider = async (req, res, next) => {
       return validationError(res, 'Validation failed');
     }
 
-    const existingUser = await riderQuery('SELECT id FROM rider_delivery_partners WHERE email = $1', [email]);
+    const existingUser = await riderQuery('SELECT id FROM "Rider" WHERE email = $1', [email]);
 
     if (existingUser.rows.length > 0) {
       return res.status(409).json({
@@ -49,7 +49,7 @@ export const registerRider = async (req, res, next) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await riderQuery(
-      `INSERT INTO rider_delivery_partners
+      `INSERT INTO "Rider"
         (email, password_hash, full_name, phone, vehicle_type, vehicle_number)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, email, full_name, phone, vehicle_type, vehicle_number, status, created_at`,
@@ -84,7 +84,7 @@ export const registerRider = async (req, res, next) => {
         },
       });
     } catch (syncError) {
-      // Non-fatal: the rider is already registered in rider_delivery_partners.
+      // Non-fatal: the rider is already registered in "Rider".
       // Log the error but allow registration to complete successfully.
       console.warn('[Rider Registration] Failed to sync User table:', syncError.message);
     }
@@ -110,7 +110,7 @@ export const loginRiderByEmail = async ({ email, password }) => {
   const result = await riderQuery(
     `SELECT id, email, password_hash, full_name, phone, vehicle_type,
             vehicle_number, status, rating, total_deliveries
-       FROM rider_delivery_partners
+       FROM "Rider"
       WHERE email = $1`,
     [normalizedEmail]
   );
@@ -192,7 +192,7 @@ export const refreshRiderToken = async (req, res, next) => {
     }
 
     const tokenResult = await riderQuery(
-      'SELECT id FROM rider_refresh_tokens WHERE token = $1 AND expires_at > NOW()',
+      'SELECT id FROM "RiderToken" WHERE token = $1 AND expires_at > NOW()',
       [refreshToken]
     );
 
@@ -222,7 +222,7 @@ export const logoutRider = async (req, res, next) => {
     const { refreshToken } = req.body;
 
     if (refreshToken) {
-      await riderQuery('DELETE FROM rider_refresh_tokens WHERE token = $1', [refreshToken]);
+      await riderQuery('DELETE FROM "RiderToken" WHERE token = $1', [refreshToken]);
     }
 
     return res.json({

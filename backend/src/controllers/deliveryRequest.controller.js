@@ -94,7 +94,7 @@ export const createDeliveryRequest = async (req, res) => {
     }
 
     const existing = await riderQuery(
-      'SELECT id, status, partner_id FROM rider_delivery_jobs WHERE marketplace_order_id = $1 LIMIT 1',
+      'SELECT id, status, partner_id FROM "DeliveryJob" WHERE marketplace_order_id = $1 LIMIT 1',
       [orderId]
     );
 
@@ -111,7 +111,7 @@ export const createDeliveryRequest = async (req, res) => {
       .join(', ');
 
     const result = await riderQuery(
-      `INSERT INTO rider_delivery_jobs (
+      `INSERT INTO "DeliveryJob" (
           marketplace_order_id,
           order_number,
           customer_name,
@@ -166,7 +166,7 @@ export const createDeliveryRequest = async (req, res) => {
     if (selectedPartnerId) {
       const selectedDispatch = await dispatchJobToSelectedDriver(job.id, Number(selectedPartnerId));
       if (!selectedDispatch.success) {
-        await riderQuery('DELETE FROM rider_delivery_jobs WHERE id = $1 AND status = $2 AND partner_id IS NULL', [job.id, 'pending']);
+        await riderQuery('DELETE FROM "DeliveryJob" WHERE id = $1 AND status = $2 AND partner_id IS NULL', [job.id, 'pending']);
         return res.status(selectedDispatch.statusCode || 400).json({
           success: false,
           message: selectedDispatch.message,
@@ -240,7 +240,7 @@ export const getDeliveryRequest = async (req, res) => {
               dropoff_address, dropoff_latitude, dropoff_longitude,
               package_weight, package_type, package_notes, payment_type,
               payment_amount, status, created_at, assigned_at, picked_up_at, delivered_at
-         FROM rider_delivery_jobs
+         FROM "DeliveryJob"
         WHERE marketplace_order_id = $1 OR id::text = $1
         LIMIT 1`,
       [req.params.id]

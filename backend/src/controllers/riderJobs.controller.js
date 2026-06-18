@@ -39,12 +39,12 @@ export const getAvailableRiderJobs = async (req, res, next) => {
               dropoff_address, dropoff_latitude, dropoff_longitude,
               distance_km, payment_amount, items_description, special_instructions,
               status, created_at
-         FROM rider_delivery_jobs
+         FROM "DeliveryJob"
         WHERE status = 'available'
           AND NOT EXISTS (
             SELECT 1
-              FROM rider_delivery_request_offers dro
-             WHERE dro.job_id = rider_delivery_jobs.id
+              FROM "DeliveryOffer" dro
+             WHERE dro.job_id = "DeliveryJob".id
                AND dro.offer_status = 'pending'
                AND dro.expires_at > NOW()
           )
@@ -67,11 +67,11 @@ export const getActiveRiderJob = async (req, res, next) => {
               distance_km, payment_amount, items_description, special_instructions,
               status, assigned_at, accepted_at, picked_up_at, created_at,
               current_latitude, current_longitude
-         FROM rider_delivery_jobs
-         LEFT JOIN rider_delivery_partners ON rider_delivery_partners.id = rider_delivery_jobs.partner_id
+         FROM "DeliveryJob"
+         LEFT JOIN "Rider" ON "Rider".id = "DeliveryJob".partner_id
         WHERE partner_id = $1
-          AND rider_delivery_jobs.status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
-        ORDER BY rider_delivery_jobs.assigned_at DESC
+          AND "DeliveryJob".status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
+        ORDER BY "DeliveryJob".assigned_at DESC
         LIMIT 1`,
       [req.user.id]
     );
@@ -83,7 +83,7 @@ export const getActiveRiderJob = async (req, res, next) => {
 
     const trackingResult = await riderQuery(
       `SELECT latitude, longitude, accuracy, speed, heading, recorded_at
-         FROM rider_job_tracking
+         FROM "DeliveryTracking"
         WHERE job_id = $1 AND partner_id = $2
         ORDER BY recorded_at DESC
         LIMIT 1`,
@@ -126,7 +126,7 @@ export const getAssignedRiderJobs = async (req, res, next) => {
               dropoff_address, dropoff_latitude, dropoff_longitude,
               distance_km, payment_amount, items_description, special_instructions,
               status, assigned_at, accepted_at, created_at
-         FROM rider_delivery_jobs
+         FROM "DeliveryJob"
         WHERE partner_id = $1 AND status IN ('assigned', 'accepted')
         ORDER BY assigned_at DESC NULLS LAST, created_at DESC`,
       [req.user.id]
@@ -148,12 +148,12 @@ export const getRiderJobHistory = async (req, res, next) => {
               dj.pickup_address, dj.dropoff_address,
               dj.distance_km, dj.payment_amount,
               dj.status, dj.assigned_at, dj.picked_up_at, dj.delivered_at,
-              pod.photo_url, pod.signature_data, pod.recipient_name,
-              pod.notes, pod.created_at AS proof_submitted_at
-         FROM rider_delivery_jobs dj
-         LEFT JOIN rider_proof_of_delivery pod ON pod.job_id = dj.id
+              dj.proof_photo_url AS photo_url, dj.proof_signature_data AS signature_data, 
+              dj.proof_recipient_name AS recipient_name,
+              dj.proof_notes AS notes, dj.proof_created_at AS proof_submitted_at
+         FROM "DeliveryJob" dj
         WHERE dj.partner_id = $1 AND dj.status IN ('delivered', 'cancelled')
-        ORDER BY dj.delivered_at DESC NULLS LAST, pod.created_at DESC NULLS LAST
+        ORDER BY dj.delivered_at DESC NULLS LAST, dj.proof_created_at DESC NULLS LAST
         LIMIT $2 OFFSET $3`,
       [req.user.id, limit, offset]
     );
@@ -233,7 +233,7 @@ export const acceptRiderJob = async (req, res, next) => {
     const jobId = Number.parseInt(req.params.id, 10);
 
     const pendingOfferCheck = await client.query(
-      `SELECT id FROM rider_delivery_request_offers
+      `SELECT id FROM "DeliveryOffer"
         WHERE job_id = $1 AND offer_status = 'pending' AND expires_at > NOW()
         LIMIT 1`,
       [jobId]
@@ -244,7 +244,7 @@ export const acceptRiderJob = async (req, res, next) => {
       return res.status(409).json({ success: false, message: 'This job is already being offered to another driver' });
     }
 
-    const partnerStatusCheck = await client.query('SELECT status FROM rider_delivery_partners WHERE id = $1', [req.user.id]);
+    const partnerStatusCheck = await client.query('SELECT status FROM "Rider" WHERE id = $1', [req.user.id]);
 
     if (partnerStatusCheck.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -257,7 +257,7 @@ export const acceptRiderJob = async (req, res, next) => {
     }
 
     const activeJobCheck = await client.query(
-      `SELECT id FROM rider_delivery_jobs
+      `SELECT id FROM "DeliveryJob"
         WHERE partner_id = $1 AND status = ANY($2::text[])`,
       [req.user.id, ACTIVE_JOB_STATUSES]
     );
@@ -268,7 +268,7 @@ export const acceptRiderJob = async (req, res, next) => {
     }
 
     const result = await client.query(
-      `UPDATE rider_delivery_jobs
+      `UPDATE "DeliveryJob"
           SET partner_id = $1, status = 'assigned', assigned_at = NOW()
         WHERE id = $2 AND status = 'available'
         RETURNING id, order_number, customer_name, customer_phone,
@@ -285,7 +285,7 @@ export const acceptRiderJob = async (req, res, next) => {
       return res.status(409).json({ success: false, message: 'Job is no longer available' });
     }
 
-    await client.query("UPDATE rider_delivery_partners SET status = 'busy' WHERE id = $1", [req.user.id]);
+    await client.query(`UPDATE "Rider" SET status = 'busy' WHERE id = $1`, [req.user.id]);
     await client.query('COMMIT');
 
     return res.json({
@@ -307,7 +307,7 @@ export const rejectRiderAssignedJob = async (req, res, next) => {
   try {
     await client.query('BEGIN');
     const jobId = Number.parseInt(req.params.id, 10);
-    const rejectionCheck = await client.query('SELECT id, status, partner_id FROM rider_delivery_jobs WHERE id = $1', [jobId]);
+    const rejectionCheck = await client.query('SELECT id, status, partner_id FROM "DeliveryJob" WHERE id = $1', [jobId]);
 
     if (rejectionCheck.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -327,14 +327,14 @@ export const rejectRiderAssignedJob = async (req, res, next) => {
     }
 
     const result = await client.query(
-      `UPDATE rider_delivery_jobs
+      `UPDATE "DeliveryJob"
           SET partner_id = NULL, status = 'available', assigned_at = NULL, accepted_at = NULL
         WHERE id = $1
         RETURNING id, order_number, status`,
       [jobId]
     );
 
-    await client.query("UPDATE rider_delivery_partners SET status = 'online' WHERE id = $1 AND status = 'busy'", [req.user.id]);
+    await client.query(`UPDATE "Rider" SET status = 'online' WHERE id = $1 AND status = 'busy'`, [req.user.id]);
     await client.query('COMMIT');
     await dispatchAvailableJobs();
 
@@ -383,7 +383,7 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   if (!marketplaceStatus) return;
 
   const jobResult = await client.query(
-    'SELECT marketplace_order_id FROM rider_delivery_jobs WHERE id = $1 AND marketplace_order_id IS NOT NULL',
+    'SELECT marketplace_order_id FROM "DeliveryJob" WHERE id = $1 AND marketplace_order_id IS NOT NULL',
     [jobId]
   );
 
@@ -438,7 +438,7 @@ export const updateRiderJobStatus = async (req, res, next) => {
     const jobId = Number.parseInt(req.params.id, 10);
     await client.query('BEGIN');
 
-    const currentJobRes = await client.query('SELECT status, partner_id FROM rider_delivery_jobs WHERE id = $1', [jobId]);
+    const currentJobRes = await client.query('SELECT status, partner_id FROM "DeliveryJob" WHERE id = $1', [jobId]);
 
     if (currentJobRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -479,22 +479,16 @@ export const updateRiderJobStatus = async (req, res, next) => {
     const timestampSQL = timestampField ? `, ${timestampField} = NOW()` : '';
 
     const updateResult = await client.query(
-      `UPDATE rider_delivery_jobs
+      `UPDATE "DeliveryJob"
           SET status = $1 ${timestampSQL}
         WHERE id = $2
         RETURNING id, order_number, status`,
       [status, jobId]
     );
 
-    await client.query(
-      `INSERT INTO rider_job_status_logs (job_id, partner_id, status, reason, latitude, longitude)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [jobId, req.user.id, status, reason || null, latitude || null, longitude || null]
-    );
-
     if (isFloatInRange(latitude, -90, 90) && isFloatInRange(longitude, -180, 180)) {
       await client.query(
-        `UPDATE rider_delivery_partners
+        `UPDATE "Rider"
             SET current_latitude = $1,
                 current_longitude = $2
           WHERE id = $3`,
@@ -502,7 +496,7 @@ export const updateRiderJobStatus = async (req, res, next) => {
       );
 
       await client.query(
-        `INSERT INTO rider_job_tracking (job_id, partner_id, latitude, longitude)
+        `INSERT INTO "DeliveryTracking" (job_id, partner_id, latitude, longitude)
          VALUES ($1, $2, $3, $4)`,
         [jobId, req.user.id, latitude, longitude]
       );
@@ -510,7 +504,7 @@ export const updateRiderJobStatus = async (req, res, next) => {
 
     if (status === 'delivered' || status === 'failed') {
       await client.query(
-        "UPDATE rider_delivery_partners SET status = 'online', total_deliveries = total_deliveries + (CASE WHEN $2 = 'delivered' THEN 1 ELSE 0 END) WHERE id = $1",
+        `UPDATE "Rider" SET status = 'online', total_deliveries = total_deliveries + (CASE WHEN $2 = 'delivered' THEN 1 ELSE 0 END) WHERE id = $1`,
         [req.user.id, status]
       );
     }
@@ -538,20 +532,20 @@ export const addRiderJobLocation = async (req, res, next) => {
       return validationError(res, 'Invalid location data');
     }
 
-    const jobCheck = await riderQuery('SELECT id FROM rider_delivery_jobs WHERE id = $1 AND partner_id = $2', [jobId, req.user.id]);
+    const jobCheck = await riderQuery('SELECT id FROM "DeliveryJob" WHERE id = $1 AND partner_id = $2', [jobId, req.user.id]);
 
     if (jobCheck.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Job not found or not assigned to you' });
     }
 
     await riderQuery(
-      `INSERT INTO rider_job_tracking (job_id, partner_id, latitude, longitude, accuracy, speed, heading)
+      `INSERT INTO "DeliveryTracking" (job_id, partner_id, latitude, longitude, accuracy, speed, heading)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [jobId, req.user.id, latitude, longitude, accuracy || null, speed || null, heading || null]
     );
 
     await riderQuery(
-      `UPDATE rider_delivery_partners
+      `UPDATE "Rider"
           SET current_latitude = $1,
               current_longitude = $2
         WHERE id = $3`,
@@ -621,7 +615,7 @@ export const submitRiderProof = async (req, res, next) => {
     await client.query('BEGIN');
 
     const jobCheck = await client.query(
-      'SELECT id, order_number, status, delivered_at FROM rider_delivery_jobs WHERE id = $1 AND partner_id = $2',
+      'SELECT id, order_number, status, delivered_at FROM "DeliveryJob" WHERE id = $1 AND partner_id = $2',
       [jobId, req.user.id]
     );
 
@@ -637,38 +631,31 @@ export const submitRiderProof = async (req, res, next) => {
     }
 
     const proofResult = await client.query(
-      `INSERT INTO rider_proof_of_delivery
-        (job_id, partner_id, photo_url, signature_data, recipient_name, notes, delivery_latitude, delivery_longitude)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (job_id)
-       DO UPDATE SET
-        photo_url = COALESCE(EXCLUDED.photo_url, rider_proof_of_delivery.photo_url),
-        signature_data = COALESCE(EXCLUDED.signature_data, rider_proof_of_delivery.signature_data),
-        recipient_name = COALESCE(EXCLUDED.recipient_name, rider_proof_of_delivery.recipient_name),
-        notes = COALESCE(EXCLUDED.notes, rider_proof_of_delivery.notes),
-        delivery_latitude = COALESCE(EXCLUDED.delivery_latitude, rider_proof_of_delivery.delivery_latitude),
-        delivery_longitude = COALESCE(EXCLUDED.delivery_longitude, rider_proof_of_delivery.delivery_longitude)
-       RETURNING id, photo_url, signature_data, recipient_name, notes, created_at`,
-      [jobId, req.user.id, photoUrl, signatureData, recipientName, proofNotes, latitude || null, longitude || null]
+      `UPDATE "DeliveryJob"
+          SET proof_photo_url = COALESCE($1, proof_photo_url),
+              proof_signature_data = COALESCE($2, proof_signature_data),
+              proof_recipient_name = COALESCE($3, proof_recipient_name),
+              proof_notes = COALESCE($4, proof_notes),
+              proof_delivery_latitude = COALESCE($5, proof_delivery_latitude),
+              proof_delivery_longitude = COALESCE($6, proof_delivery_longitude),
+              proof_created_at = NOW()
+        WHERE id = $7 AND partner_id = $8
+        RETURNING id, proof_photo_url AS photo_url, proof_signature_data AS signature_data, 
+                  proof_recipient_name AS recipient_name, proof_notes AS notes, proof_created_at AS created_at`,
+      [photoUrl, signatureData, recipientName, proofNotes, latitude || null, longitude || null, jobId, req.user.id]
     );
 
     let deliveredAt = job.delivered_at;
 
     if (job.status !== 'delivered') {
       const deliveryResult = await client.query(
-        "UPDATE rider_delivery_jobs SET status = 'delivered', delivered_at = NOW() WHERE id = $1 RETURNING delivered_at",
+        `UPDATE "DeliveryJob" SET status = 'delivered', delivered_at = NOW() WHERE id = $1 RETURNING delivered_at`,
         [jobId]
       );
       deliveredAt = deliveryResult.rows[0]?.delivered_at ?? null;
 
       await client.query(
-        `INSERT INTO rider_job_status_logs (job_id, partner_id, status, reason, latitude, longitude)
-         VALUES ($1, $2, 'delivered', $3, $4, $5)`,
-        [jobId, req.user.id, 'Proof of delivery submitted and archived', latitude || null, longitude || null]
-      );
-
-      await client.query(
-        "UPDATE rider_delivery_partners SET status = 'online', total_deliveries = total_deliveries + 1 WHERE id = $1",
+        `UPDATE "Rider" SET status = 'online', total_deliveries = total_deliveries + 1 WHERE id = $1`,
         [req.user.id]
       );
 

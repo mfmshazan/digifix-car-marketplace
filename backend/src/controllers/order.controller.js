@@ -590,7 +590,15 @@ export const getCustomerOrders = async (req, res) => {
             }
           }
         },
-        address: true
+        address: true,
+        reviews: {
+          select: {
+            id: true,
+            targetId: true,
+            targetType: true,
+            rating: true
+          }
+        }
       },
       orderBy: {
         createdAt: 'desc'

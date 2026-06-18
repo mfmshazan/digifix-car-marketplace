@@ -12,11 +12,13 @@ import {
   Animated,
   TextInput,
   Alert,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import MapView, { Marker, Polyline } from "react-native-maps";
 import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../../src/api/orders";
+import { submitReviews } from "../../src/api/reviews";
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
 
@@ -256,6 +258,15 @@ export default function OrdersScreen() {
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
   const [actionMenuOrderId, setActionMenuOrderId] = useState<string | null>(null);
+  
+  // Rating modal state
+  const [ratingOrder, setRatingOrder] = useState<Order | null>(null);
+  const [productRating, setProductRating] = useState<number>(0);
+  const [productComment, setProductComment] = useState("");
+  const [driverRating, setDriverRating] = useState<number>(0);
+  const [driverComment, setDriverComment] = useState("");
+  const [selectedDriverTags, setSelectedDriverTags] = useState<string[]>([]);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [riderLocation, setRiderLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [deliveryRoute, setDeliveryRoute] = useState<{
     pickup: { latitude: number; longitude: number; address?: string };
@@ -473,6 +484,7 @@ export default function OrdersScreen() {
     const isRefundRequested = normalizedStatus === 'REFUND_REQUESTED';
     const canRequestAction = ['PENDING', 'CONFIRMED', 'DELIVERED'].includes(normalizedStatus);
     const isMenuOpen = actionMenuOrderId === item.id;
+    const hasReviews = item.reviews && item.reviews.length > 0;
 
     return (
       <TouchableOpacity style={[styles.orderCard, isMenuOpen && styles.orderCardMenuOpen]}>
@@ -540,15 +552,30 @@ export default function OrdersScreen() {
 
         <View style={styles.actionRow}>
           <TouchableOpacity
-            style={[styles.trackButton, styles.trackButtonFull]}
+            style={[styles.trackButton, { flex: 1 }]}
             onPress={() => {
               setActionMenuOrderId(null);
               setTrackingOrder(item);
             }}
           >
             <Ionicons name="location" size={16} color="#FF6B35" />
-            <Text style={styles.trackButtonText}>Track Order</Text>
+            <Text style={styles.trackButtonText}>
+              {isDelivered && !hasReviews ? "Track" : "Track Order"}
+            </Text>
           </TouchableOpacity>
+
+          {isDelivered && !hasReviews && (
+            <TouchableOpacity
+              style={styles.rateButton}
+              onPress={() => {
+                setActionMenuOrderId(null);
+                setRatingOrder(item);
+              }}
+            >
+              <Ionicons name="star" size={16} color="#FFFFFF" />
+              <Text style={styles.rateButtonText}>Rate Order</Text>
+            </TouchableOpacity>
+          )}
           {/* Overflow actions keep Track Order as the primary horizontal action. */}
           {canRequestAction && (
             <View style={styles.moreActionsWrap}>
@@ -842,6 +869,257 @@ export default function OrdersScreen() {
               )}
             </TouchableOpacity>
           </View>
+        </View>
+      </Modal>
+
+      {/* Rating & Review Modal */}
+      <Modal
+        visible={!!ratingOrder}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setRatingOrder(null)}
+      >
+        <View style={styles.ratingModalOverlay}>
+          <ScrollView contentContainerStyle={styles.ratingModalScroll}>
+            <View style={styles.ratingModalContent}>
+              <View style={styles.ratingModalHeader}>
+                <Text style={styles.ratingModalTitle}>Rate Your Order</Text>
+                <TouchableOpacity onPress={() => setRatingOrder(null)}>
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.ratingModalSubtitle}>
+                Order: {ratingOrder?.orderNumber}
+              </Text>
+
+              {/* 1. PRODUCT / PART CARD */}
+              <View style={styles.ratingSectionCard}>
+                <Text style={styles.ratingSectionTitle}>Rate the Items & Shop</Text>
+                <Text style={styles.ratingSectionDesc}>How satisfied are you with the purchased item(s)?</Text>
+                
+                {/* Render order items preview */}
+                <View style={styles.itemsPreviewRow}>
+                  {ratingOrder?.items?.slice(0, 3).map((orderItem: any, idx: number) => {
+                    const itemImage = orderItem.productImage || orderItem.product?.images?.[0];
+                    return (
+                      <View key={idx} style={styles.ratingItemPreview}>
+                        {itemImage ? (
+                          <Image source={{ uri: itemImage }} style={styles.ratingItemImage} />
+                        ) : (
+                          <View style={styles.ratingItemImagePlaceholder}>
+                            <Ionicons name="car-sport-outline" size={16} color="#999" />
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                  {ratingOrder?.items && ratingOrder.items.length > 3 && (
+                    <Text style={styles.moreItemsText}>+{ratingOrder.items.length - 3} more</Text>
+                  )}
+                </View>
+
+                {/* Stars */}
+                <View style={styles.starsRow}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <TouchableOpacity
+                      key={star}
+                      onPress={() => setProductRating(star)}
+                      style={styles.starButton}
+                    >
+                      <Ionicons
+                        name={productRating >= star ? "star" : "star-outline"}
+                        size={32}
+                        color={productRating >= star ? "#FFD700" : "#CCC"}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <TextInput
+                  style={styles.ratingInput}
+                  multiline
+                  numberOfLines={3}
+                  placeholder="Tell us about the quality of the item(s)..."
+                  placeholderTextColor="#999"
+                  value={productComment}
+                  onChangeText={setProductComment}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              {/* 2. DRIVER CARD (if driver is assigned) */}
+              {(() => {
+                const driverJob = ratingOrder?.riderDeliveryJobs?.[0];
+                const driver = driverJob?.partner;
+                if (!driver) return null;
+
+                const tags = ["Fast", "Careful", "Polite", "On Time", "Friendly"];
+
+                return (
+                  <View style={styles.ratingSectionCard}>
+                    <Text style={styles.ratingSectionTitle}>Rate your Driver</Text>
+                    <Text style={styles.ratingSectionDesc}>How was your delivery by {driver.fullName}?</Text>
+
+                    <View style={styles.driverProfileRow}>
+                      {driver.profilePhotoUrl ? (
+                        <Image source={{ uri: driver.profilePhotoUrl }} style={styles.driverAvatar} />
+                      ) : (
+                        <View style={styles.driverAvatarPlaceholder}>
+                          <Ionicons name="person" size={24} color="#00002E" />
+                        </View>
+                      )}
+                      <Text style={styles.driverName}>{driver.fullName}</Text>
+                    </View>
+
+                    {/* Driver Stars */}
+                    <View style={styles.starsRow}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <TouchableOpacity
+                          key={star}
+                          onPress={() => setDriverRating(star)}
+                          style={styles.starButton}
+                        >
+                          <Ionicons
+                            name={driverRating >= star ? "star" : "star-outline"}
+                            size={32}
+                            color={driverRating >= star ? "#FFD700" : "#CCC"}
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {/* Tags selection */}
+                    <View style={styles.tagsContainer}>
+                      {tags.map((tag) => {
+                        const isSelected = selectedDriverTags.includes(tag);
+                        return (
+                          <TouchableOpacity
+                            key={tag}
+                            style={[
+                              styles.tagButton,
+                              isSelected && styles.tagButtonSelected
+                            ]}
+                            onPress={() => {
+                              if (isSelected) {
+                                setSelectedDriverTags(prev => prev.filter(t => t !== tag));
+                              } else {
+                                setSelectedDriverTags(prev => [...prev, tag]);
+                              }
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.tagText,
+                                isSelected && styles.tagTextSelected
+                              ]}
+                            >
+                              {tag}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <TextInput
+                      style={styles.ratingInput}
+                      multiline
+                      numberOfLines={2}
+                      placeholder="Optional comment about delivery..."
+                      placeholderTextColor="#999"
+                      value={driverComment}
+                      onChangeText={setDriverComment}
+                      textAlignVertical="top"
+                    />
+                  </View>
+                );
+              })()}
+
+              {/* Submit button */}
+              <TouchableOpacity
+                style={[
+                  styles.ratingSubmitButton,
+                  (!productRating || isSubmittingReview) && styles.ratingSubmitDisabled
+                ]}
+                disabled={!productRating || isSubmittingReview}
+                onPress={async () => {
+                  if (!ratingOrder) return;
+                  setIsSubmittingReview(true);
+                  try {
+                    const reviewsToSubmit: import('../../src/api/reviews').ReviewPayload[] = [];
+                    
+                    // 1. Submit product review (always required if modal opens)
+                    const storeOwnerId = ratingOrder.salesmanId;
+                    if (storeOwnerId) {
+                      reviewsToSubmit.push({
+                        targetId: storeOwnerId,
+                        targetType: 'SELLER' as const,
+                        rating: productRating,
+                        comment: productComment.trim() || undefined
+                      });
+                    }
+
+                    // 2. Submit product items reviews (each product inside the order)
+                    if (ratingOrder.items && ratingOrder.items.length > 0) {
+                      for (const orderItem of ratingOrder.items) {
+                        const productId = orderItem.productId || orderItem.carPartId;
+                        if (productId) {
+                          reviewsToSubmit.push({
+                            targetId: productId,
+                            targetType: 'PRODUCT' as const,
+                            rating: productRating, // share the star rating for now
+                            comment: productComment.trim() || undefined
+                          });
+                        }
+                      }
+                    }
+
+                    // 3. Submit driver review (if driver exists and is rated)
+                    const driver = ratingOrder.riderDeliveryJobs?.[0]?.partner;
+                    if (driver && driverRating > 0) {
+                      // Combine comment and tags
+                      const combinedComment = [
+                        selectedDriverTags.length > 0 ? `[Tags: ${selectedDriverTags.join(', ')}]` : '',
+                        driverComment.trim()
+                      ].filter(Boolean).join(' - ');
+
+                      reviewsToSubmit.push({
+                        targetId: driver.id.toString(),
+                        targetType: 'DELIVERY_PARTNER' as const,
+                        rating: driverRating,
+                        comment: combinedComment || undefined
+                      });
+                    }
+
+                    await submitReviews(ratingOrder.id, reviewsToSubmit);
+
+                    Alert.alert('Thank You', 'Your feedback was submitted successfully!');
+                    setRatingOrder(null);
+                    
+                    // Reset rating states
+                    setProductRating(0);
+                    setProductComment("");
+                    setDriverRating(0);
+                    setDriverComment("");
+                    setSelectedDriverTags([]);
+
+                    // Refresh orders list
+                    await fetchOrders();
+                  } catch (err: any) {
+                    Alert.alert('Error', err.message || 'Failed to submit reviews');
+                  } finally {
+                    setIsSubmittingReview(false);
+                  }
+                }}
+              >
+                {isSubmittingReview ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.ratingSubmitText}>Submit Reviews</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -1402,5 +1680,184 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
     fontWeight: "500",
+  },
+  rateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FF6B35",
+    borderRadius: 12,
+    height: 44,
+    flex: 1,
+    gap: 6,
+  },
+  rateButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  ratingModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  ratingModalScroll: {
+    flexGrow: 1,
+    justifyContent: "flex-end",
+  },
+  ratingModalContent: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: "85%",
+  },
+  ratingModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  ratingModalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1A1A2E",
+  },
+  ratingModalSubtitle: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 16,
+  },
+  ratingSectionCard: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  ratingSectionTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#00002E",
+    marginBottom: 4,
+  },
+  ratingSectionDesc: {
+    fontSize: 12,
+    color: "#64748B",
+    marginBottom: 12,
+  },
+  itemsPreviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 6,
+  },
+  ratingItemPreview: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    overflow: "hidden",
+    backgroundColor: "#E2E8F0",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+  },
+  ratingItemImage: {
+    width: "100%",
+    height: "100%",
+  },
+  ratingItemImagePlaceholder: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  moreItemsText: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "500",
+  },
+  starsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+    marginVertical: 12,
+  },
+  starButton: {
+    padding: 4,
+  },
+  ratingInput: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 12,
+    fontSize: 14,
+    color: "#1A1A2E",
+    minHeight: 60,
+  },
+  driverProfileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  driverAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  driverAvatarPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#E2E8F0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  driverName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1A1A2E",
+  },
+  tagsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+    marginVertical: 12,
+  },
+  tagButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#E2E8F0",
+  },
+  tagButtonSelected: {
+    backgroundColor: "#FF6B35",
+  },
+  tagText: {
+    fontSize: 12,
+    color: "#475569",
+    fontWeight: "500",
+  },
+  tagTextSelected: {
+    color: "#FFFFFF",
+  },
+  ratingSubmitButton: {
+    backgroundColor: "#FF6B35",
+    borderRadius: 14,
+    height: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  ratingSubmitDisabled: {
+    backgroundColor: "#FFBD9D",
+  },
+  ratingSubmitText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });

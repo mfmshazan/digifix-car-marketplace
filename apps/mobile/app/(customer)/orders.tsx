@@ -62,16 +62,6 @@ const formatDate = (dateString: string) => {
 };
 
 type Coordinate = { latitude: number; longitude: number };
-// The stepper shows how far the customer's order has progressed through fulfillment.
-const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
-  const steps = [
-    { key: "PENDING", title: "Placed" },
-    { key: "CONFIRMED", title: "Confirmed" },
-    { key: "PROCESSING", title: "Processing" },
-    { key: "SHIPPED", title: "Shipped" },
-    { key: "DELIVERED", title: "Delivered" },
-  ];
-
 const DELIVERY_STEPS = [
   { key: "pending", title: "Finding" },
   { key: "assigned", title: "Assigned" },

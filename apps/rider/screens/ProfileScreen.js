@@ -9,7 +9,7 @@ import {
     Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Button, Input, SurfaceCard, SectionHeader, StatusBadge } from '../components/Common';
+import { Button, Input, Dropdown, SurfaceCard, SectionHeader, StatusBadge } from '../components/Common';
 import { partnerAPI, authAPI } from '../services/api';
 import { clearTokens, getRefreshToken } from '../services/storage';
 import { colors, spacing, typography, radii } from '../styles/theme';
@@ -265,11 +265,13 @@ export default function ProfileScreen({ navigation }) {
                     onChangeText={(text) => handleChange('phone', text)}
                     editable={editing}
                 />
-                <Input
+                <Dropdown
                     label="Vehicle Type"
+                    placeholder="Select vehicle type"
                     value={formData.vehicle_type}
-                    onChangeText={(text) => handleChange('vehicle_type', text)}
-                    editable={editing}
+                    onSelect={(text) => handleChange('vehicle_type', text)}
+                    options={['Car', 'Motorcycle', 'Bicycle']}
+                    disabled={!editing}
                 />
                 <Input
                     label="Vehicle Number"

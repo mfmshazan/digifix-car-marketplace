@@ -33,6 +33,19 @@ export interface InputProps extends TextInputProps {
 
 export declare function Input(props: InputProps): React.JSX.Element;
 
+export interface DropdownProps {
+    label?: string;
+    placeholder?: string;
+    value: string;
+    onSelect: (value: string) => void;
+    options: (string | { label: string; value: any })[];
+    error?: string;
+    style?: StyleProp<ViewStyle>;
+    disabled?: boolean;
+}
+
+export declare function Dropdown(props: DropdownProps): React.JSX.Element;
+
 export interface SurfaceCardProps {
     children: ReactNode;
     style?: StyleProp<ViewStyle>;

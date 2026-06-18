@@ -6,7 +6,11 @@ import {
     StyleSheet,
     ActivityIndicator,
     TextInput,
+    Modal,
+    FlatList,
+    TouchableWithoutFeedback,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, shadows, radii } from '../styles/theme';
 
 export const Button = ({
@@ -94,6 +98,142 @@ export const Input = ({
                 )}
             </View>
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        </View>
+    );
+};
+
+export const Dropdown = ({
+    label,
+    placeholder = 'Select an option',
+    value,
+    onSelect,
+    options = [],
+    error,
+    style,
+    disabled = false,
+}) => {
+    const [modalVisible, setModalVisible] = React.useState(false);
+
+    const handleSelect = (option) => {
+        const val = typeof option === 'object' ? option.value : option;
+        onSelect(val);
+        setModalVisible(false);
+    };
+
+    const getDisplayLabel = () => {
+        if (!value) return '';
+        const found = options.find(opt => {
+            if (typeof opt === 'object') {
+                return opt.value === value;
+            }
+            return opt === value;
+        });
+        if (found) {
+            return typeof found === 'object' ? found.label : found;
+        }
+        return value;
+    };
+
+    return (
+        <View style={[styles.fieldGroup, style]}>
+            {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
+            <TouchableOpacity
+                style={[
+                    styles.input,
+                    styles.dropdownTrigger,
+                    error && styles.inputError,
+                    disabled && styles.inputDisabled,
+                ]}
+                onPress={() => !disabled && setModalVisible(true)}
+                activeOpacity={disabled ? 1 : 0.7}
+            >
+                <Text
+                    style={[
+                        styles.dropdownTriggerText,
+                        !value && styles.placeholderText,
+                        disabled && styles.disabledText,
+                    ]}
+                    numberOfLines={1}
+                >
+                    {getDisplayLabel() || placeholder}
+                </Text>
+                <Ionicons
+                    name="chevron-down"
+                    size={20}
+                    color={disabled ? colors.textMuted : colors.textSecondary}
+                    style={styles.dropdownIcon}
+                />
+            </TouchableOpacity>
+
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+            <Modal
+                visible={modalVisible}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => setModalVisible(false)}
+            >
+                <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
+                    <View style={styles.modalOverlay}>
+                        <TouchableWithoutFeedback>
+                            <View style={styles.modalContent}>
+                                <View style={styles.modalHeader}>
+                                    <Text style={styles.modalTitle}>{label || 'Select Option'}</Text>
+                                    <TouchableOpacity
+                                        onPress={() => setModalVisible(false)}
+                                        style={styles.closeButton}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Ionicons name="close" size={24} color={colors.text} />
+                                    </TouchableOpacity>
+                                </View>
+
+                                <FlatList
+                                    data={options}
+                                    keyExtractor={(item, index) => {
+                                        const val = typeof item === 'object' ? item.value : item;
+                                        return val ? val.toString() : index.toString();
+                                    }}
+                                    renderItem={({ item }) => {
+                                        const itemLabel = typeof item === 'object' ? item.label : item;
+                                        const itemValue = typeof item === 'object' ? item.value : item;
+                                        const isSelected = itemValue === value;
+
+                                        return (
+                                            <TouchableOpacity
+                                                style={[
+                                                    styles.optionItem,
+                                                    isSelected && styles.optionItemSelected,
+                                                ]}
+                                                onPress={() => handleSelect(item)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text
+                                                    style={[
+                                                        styles.optionText,
+                                                        isSelected && styles.optionTextSelected,
+                                                    ]}
+                                                >
+                                                    {itemLabel}
+                                                </Text>
+                                                {isSelected && (
+                                                    <Ionicons
+                                                        name="checkmark"
+                                                        size={20}
+                                                        color={colors.secondary}
+                                                    />
+                                                )}
+                                            </TouchableOpacity>
+                                        );
+                                    }}
+                                    contentContainerStyle={styles.optionsList}
+                                    showsVerticalScrollIndicator={false}
+                                />
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </View>
+                </TouchableWithoutFeedback>
+            </Modal>
         </View>
     );
 };
@@ -313,5 +453,82 @@ const styles = StyleSheet.create({
     emptyStateBody: {
         ...typography.bodySmall,
         color: colors.textSecondary,
+    },
+    dropdownTrigger: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingRight: spacing.md,
+    },
+    dropdownTriggerText: {
+        ...typography.body,
+        color: colors.text,
+        flex: 1,
+    },
+    placeholderText: {
+        color: colors.textMuted,
+    },
+    disabledText: {
+        color: colors.textMuted,
+    },
+    inputDisabled: {
+        backgroundColor: colors.backgroundAccent || '#F1F5F9',
+        borderColor: colors.border,
+    },
+    dropdownIcon: {
+        marginLeft: spacing.xs,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: colors.overlay || 'rgba(15, 23, 42, 0.4)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: colors.surface,
+        borderTopLeftRadius: radii.lg,
+        borderTopRightRadius: radii.lg,
+        paddingTop: spacing.md,
+        paddingHorizontal: spacing.lg,
+        paddingBottom: spacing.xl,
+        maxHeight: '50%',
+        ...shadows.large,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingBottom: spacing.md,
+        borderBottomWidth: 1,
+        borderColor: colors.border,
+        marginBottom: spacing.sm,
+    },
+    modalTitle: {
+        ...typography.h3,
+    },
+    closeButton: {
+        padding: spacing.xs,
+    },
+    optionsList: {
+        paddingVertical: spacing.xs,
+    },
+    optionItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: spacing.md,
+        paddingHorizontal: spacing.sm,
+        borderRadius: radii.sm,
+        marginVertical: 2,
+    },
+    optionItemSelected: {
+        backgroundColor: colors.secondarySoft || '#DBEAFE',
+    },
+    optionText: {
+        ...typography.body,
+        color: colors.text,
+    },
+    optionTextSelected: {
+        fontWeight: '600',
+        color: colors.secondary,
     },
 });

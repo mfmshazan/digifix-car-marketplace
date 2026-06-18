@@ -305,12 +305,10 @@ const getSalesmanProducts = async (req, res) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    const [products, total] = await Promise.all([
+    // Fetch both regular products and car parts
+    const [products, carParts] = await Promise.all([
       prisma.product.findMany({
         where: { salesmanId: userId },
-        skip,
-        take: limitNum,
-        orderBy: { createdAt: 'desc' },
         include: {
           category: {
             select: { id: true, name: true },
@@ -325,29 +323,52 @@ const getSalesmanProducts = async (req, res) => {
           }
         },
       }),
-      prisma.product.count({ where: { salesmanId: userId } }),
+      prisma.carPart.findMany({
+        where: { sellerId: userId },
+        include: {
+          category: {
+            select: { id: true, name: true },
+          },
+          orderItems: {
+            select: {
+              id: true,
+              order: {
+                select: { status: true }
+              }
+            }
+          }
+        },
+      }),
     ]);
 
-    // Compute status for each product
-    const enrichedProducts = products.map(product => {
-      // Logic: find the "most active" status among its order items
-      // Priority: PROCESSING > PENDING > SHIPPED > DELIVERED
-      const statuses = product.orderItems.map(item => item.order.status);
-      
+    // Compute status function
+    const computeStatus = (item) => {
+      const statuses = item.orderItems.map(oi => oi.order.status);
       let status = 'IN_STORE';
       if (statuses.includes('PROCESSING')) status = 'PROCESSING';
       else if (statuses.includes('PENDING')) status = 'PENDING';
       else if (statuses.includes('SHIPPED')) status = 'SHIPPED';
       else if (statuses.includes('DELIVERED')) status = 'DELIVERED';
       else if (statuses.includes('CANCELLED')) status = 'CANCELLED';
+      return { ...item, computedStatus: status };
+    };
 
-      return { ...product, computedStatus: status };
-    });
+    const enrichedProducts = products.map(computeStatus);
+    const enrichedCarParts = carParts.map(computeStatus);
+
+    // Combine and sort by createdAt descending
+    const allItems = [...enrichedProducts, ...enrichedCarParts].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
+    // Paginate manually
+    const total = allItems.length;
+    const paginatedItems = allItems.slice(skip, skip + limitNum);
 
     res.json({
       success: true,
       data: {
-        products: enrichedProducts,
+        products: paginatedItems,
         pagination: {
           page: pageNum,
           limit: limitNum,

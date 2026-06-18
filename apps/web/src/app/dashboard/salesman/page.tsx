@@ -1308,7 +1308,7 @@ function ProductsTab() {
               <div key={product.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
                 <div className="h-48 bg-gray-100 relative">
                   {product.images?.[0] ? (
-                    <Image src={product.images[0]} alt={product.name} fill className="object-cover" />
+                    <Image src={resolveMediaUrl(product.images[0]) || product.images[0]} alt={product.name} fill className="object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Package className="w-10 h-10 text-gray-300" />
@@ -1326,7 +1326,30 @@ function ProductsTab() {
                     <h3 className="font-bold text-gray-900 text-sm line-clamp-1 flex-1">{product.name}</h3>
                     <span className="text-sm font-bold text-[#00002E] ml-2">{formatRs(product.price)}</span>
                   </div>
-                  <p className="text-xs text-gray-500 line-clamp-2 mb-4">{product.description}</p>
+                  <p className="text-xs text-gray-500 line-clamp-2 mb-2">{product.description}</p>
+
+                  {/* Show car part specific details if available */}
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {product.condition && (
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                        product.condition === 'NEW' ? 'bg-blue-50 text-blue-600' :
+                        product.condition === 'USED' ? 'bg-amber-50 text-amber-600' :
+                        'bg-purple-50 text-purple-600'
+                      }`}>
+                        {product.condition}
+                      </span>
+                    )}
+                    {product.partNumber && (
+                      <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                        #{product.partNumber}
+                      </span>
+                    )}
+                    {product.category?.name && (
+                      <span className="text-[10px] bg-indigo-50 text-indigo-600 font-semibold px-2 py-0.5 rounded-full">
+                        {product.category.name}
+                      </span>
+                    )}
+                  </div>
 
                   <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-50">
                     <div className="flex flex-col">

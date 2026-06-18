@@ -62,7 +62,6 @@ const formatDate = (dateString: string) => {
 };
 
 type Coordinate = { latitude: number; longitude: number };
-
 const DELIVERY_STEPS = [
   { key: "pending", title: "Placed" },
   { key: "confirmed", title: "Confirmed" },
@@ -74,22 +73,22 @@ const DELIVERY_STEPS = [
 // Labels shown in the tracking card's status heading (detailed rider step labels)
 const DELIVERY_STATUS_LABELS: Record<string, string> = {
   // Order-level statuses (from DB)
-  pending:          "Order Placed",
-  confirmed:        "Order Confirmed",
-  processing:       "Preparing Your Order",
-  shipped:          "On Its Way to You",
-  delivered:        "Delivered!",
-  cancelled:        "Order Cancelled",
-  failed:           "Delivery Failed",
+  pending: "Order Placed",
+  confirmed: "Order Confirmed",
+  processing: "Preparing Your Order",
+  shipped: "On Its Way to You",
+  delivered: "Delivered!",
+  cancelled: "Order Cancelled",
+  failed: "Delivery Failed",
   refund_requested: "Refund Under Review",
   // Detailed rider steps (from riderStep field in socket payload)
-  accepted:           "Rider Accepted",
-  arrived_at_pickup:  "Rider at Shop",
-  picked_up:          "Package Collected",
-  in_transit:         "On the Way",
+  accepted: "Rider Accepted",
+  arrived_at_pickup: "Rider at Shop",
+  picked_up: "Package Collected",
+  in_transit: "On the Way",
   arrived_at_dropoff: "Rider at Your Door",
-  available:          "Finding Rider",
-  assigned:           "Rider Assigned",
+  available: "Finding Rider",
+  assigned: "Rider Assigned",
 };
 
 // Maps rider sub-steps to the correct stepper step key
@@ -270,13 +269,13 @@ export default function OrdersScreen() {
   const etaMinutes =
     riderLocation && deliveryRoute
       ? (() => {
-          const averageCitySpeedKmh = 24;
-          const remainingKm =
-            ["pending", "available", "assigned", "accepted", "arrived_at_pickup"].includes(activeDeliveryStatus)
-              ? distanceKm(riderLocation, deliveryRoute.pickup) + distanceKm(deliveryRoute.pickup, deliveryRoute.dropoff)
-              : distanceKm(riderLocation, deliveryRoute.dropoff);
-          return Math.max(1, Math.round((remainingKm / averageCitySpeedKmh) * 60));
-        })()
+        const averageCitySpeedKmh = 24;
+        const remainingKm =
+          ["pending", "available", "assigned", "accepted", "arrived_at_pickup"].includes(activeDeliveryStatus)
+            ? distanceKm(riderLocation, deliveryRoute.pickup) + distanceKm(deliveryRoute.pickup, deliveryRoute.dropoff)
+            : distanceKm(riderLocation, deliveryRoute.dropoff);
+        return Math.max(1, Math.round((remainingKm / averageCitySpeedKmh) * 60));
+      })()
       : null;
   const etaLabel = formatEta(etaMinutes);
   // Show detailed rider step label if available, otherwise fall back to order status label
@@ -683,7 +682,7 @@ export default function OrdersScreen() {
             <Text style={styles.trackingModalTitle}>Tracking Order</Text>
             <View style={{ width: 28 }} />
           </View>
-          
+
           <MapView
             ref={trackingMapRef}
             style={styles.map}
@@ -783,17 +782,17 @@ export default function OrdersScreen() {
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
-            
+
             <Text style={styles.cancelModalSubtitle}>
               Order: {cancellingOrder?.orderNumber}
             </Text>
-            
+
             <Text style={styles.cancelModalLabel}>
               {cancellingOrder?.status?.toUpperCase() === 'DELIVERED'
                 ? 'Please describe your concern clearly (this goes to admin):'
                 : 'Please provide a reason for your request:'}
             </Text>
-            
+
             <TextInput
               style={styles.cancelReasonInput}
               multiline
@@ -804,7 +803,7 @@ export default function OrdersScreen() {
               onChangeText={setCancelReason}
               textAlignVertical="top"
             />
-            
+
             <TouchableOpacity
               style={[
                 styles.cancelSubmitButton,

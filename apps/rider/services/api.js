@@ -148,7 +148,6 @@ export const jobsAPI = {
     getAssigned: () => api.get('/jobs/assigned'),
     getHistory: (limit = 20, offset = 0) =>
         api.get(`/jobs/history?limit=${limit}&offset=${offset}`),
-    acceptJob: (jobId) => api.post(`/jobs/${jobId}/accept`),
     acceptAssigned: (jobId) => api.put(`/jobs/${jobId}/status`, { status: 'accepted' }),
     acceptIncomingRequest: (offerId) =>
         api.post(`/jobs/request-offers/${offerId}/accept`),

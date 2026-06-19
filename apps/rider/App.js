@@ -11,7 +11,6 @@ import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import HomeScreen from './screens/HomeScreen';
 import DeliveryDetailsScreen from './screens/DeliveryDetailsScreen';
-import AvailableJobsScreen from './screens/AvailableJobsScreen';
 import ActiveDeliveryScreen from './screens/ActiveDeliveryScreen';
 import AssignedDeliveriesScreen from './screens/AssignedDeliveriesScreen';
 import ProofOfDeliveryScreen from './screens/ProofOfDeliveryScreen';
@@ -159,11 +158,6 @@ function AppContent() {
                         name="DeliveryDetails"
                         component={DeliveryDetailsScreen}
                         options={{ title: 'Delivery Details' }}
-                    />
-                    <Stack.Screen
-                        name="AvailableJobs"
-                        component={AvailableJobsScreen}
-                        options={{ title: 'Available Jobs' }}
                     />
                     <Stack.Screen
                         name="ActiveDelivery"

@@ -189,6 +189,19 @@ const login = async (req, res) => {
       },
     });
 
+    if (user && ['DELIVERY_PARTNER', 'DELIVERY_PERSON', 'RIDER'].includes(user.role)) {
+      const riderLoginResult = await loginRiderByEmail({ email, password });
+
+      if (riderLoginResult && riderLoginResult !== false) {
+        return res.json(riderLoginResult);
+      }
+
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password',
+      });
+    }
+
     if (!user) {
       const riderLoginResult = await loginRiderByEmail({ email, password });
 

@@ -266,15 +266,9 @@ export default function HomeScreen({ navigation }) {
                     <SurfaceCard style={styles.idleCard}>
                         <Ionicons name="car-outline" size={36} color={colors.textMuted} style={{ marginBottom: spacing.sm }} />
                         <Text style={styles.idleTitle}>No active delivery</Text>
-                        <Text style={styles.idleBody}>When you accept a delivery, the live route will appear here.</Text>
-                        <TouchableOpacity
-                            style={styles.browseBtn}
-                            onPress={() => navigation.navigate('AvailableJobs')}
-                            activeOpacity={0.85}
-                        >
-                            <Ionicons name="search-outline" size={16} color={colors.surface} />
-                            <Text style={styles.browseBtnText}>Browse Available Jobs</Text>
-                        </TouchableOpacity>
+                        <Text style={styles.idleBody}>
+                            Stay online. When a nearby delivery request arrives, you can accept or decline it from the request popup.
+                        </Text>
                     </SurfaceCard>
                 )}
             </View>
@@ -299,17 +293,6 @@ export default function HomeScreen({ navigation }) {
                 </View>
             ) : null}
 
-            {/* -- QUICK ACTIONS ------------------------ */}
-            <View style={styles.quickActions}>
-                <TouchableOpacity
-                    style={styles.quickBtn}
-                    onPress={() => navigation.navigate('AvailableJobs')}
-                    activeOpacity={0.85}
-                >
-                    <Ionicons name="briefcase-outline" size={20} color={colors.secondary} />
-                    <Text style={styles.quickBtnText}>Available Jobs</Text>
-                </TouchableOpacity>
-            </View>
         </ScrollView>
     );
 }

@@ -393,6 +393,28 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
         return { success: false, statusCode: 409, message: 'Job is no longer available' };
       }
 
+      const partnerStatusResult = await client.query(
+        `SELECT status
+           FROM "Rider"
+          WHERE id = $1
+          FOR UPDATE`,
+        [offer.partner_id]
+      );
+
+      if (!partnerStatusResult.rows.length) {
+        await client.query('ROLLBACK');
+        return { success: false, statusCode: 404, message: 'Rider not found' };
+      }
+
+      if (partnerStatusResult.rows[0].status !== 'online') {
+        await client.query('ROLLBACK');
+        return {
+          success: false,
+          statusCode: 409,
+          message: 'This request is no longer available because your rider status changed',
+        };
+      }
+
       const activeJobCheck = await client.query(
         `SELECT id
            FROM "DeliveryJob"
@@ -420,8 +442,9 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
       await client.query(
         `UPDATE "DeliveryJob"
             SET partner_id = $1,
-                status = 'assigned',
-                assigned_at = COALESCE(assigned_at, NOW())
+                status = 'accepted',
+                assigned_at = COALESCE(assigned_at, NOW()),
+                accepted_at = COALESCE(accepted_at, NOW())
           WHERE id = $2`,
         [offer.partner_id, offer.job_id]
       );

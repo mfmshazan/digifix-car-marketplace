@@ -17,7 +17,6 @@ import {
 } from '../components/Common';
 import {
     fetchAssignedDeliveries,
-    rejectAssignedDelivery,
     clearAssignedDeliveriesError,
     selectAssignedDeliveries,
     selectAssignedDeliveriesLoading,
@@ -58,21 +57,6 @@ export default function AssignedDeliveriesScreen({ navigation }) {
         }
     }, [error, dispatch]);
 
-    const handleReject = (delivery) => {
-        Alert.alert(
-            'Reject Delivery',
-            `Reject ${delivery.orderNumber} and return it to dispatch?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Reject',
-                    style: 'destructive',
-                    onPress: () => dispatch(rejectAssignedDelivery(delivery.id)),
-                },
-            ]
-        );
-    };
-
     const renderItem = ({ item }) => (
         <SurfaceCard style={styles.card}>
             <View style={styles.cardHeader}>
@@ -100,13 +84,6 @@ export default function AssignedDeliveriesScreen({ navigation }) {
 
             <View style={styles.actionRow}>
                 <Button
-                    title="Reject"
-                    variant="outline"
-                    onPress={() => handleReject(item)}
-                    style={styles.secondaryAction}
-                    disabled={isUpdating}
-                />
-                <Button
                     title="View Details"
                     onPress={() => navigation.navigate('DeliveryDetails', { delivery: item })}
                     style={styles.primaryAction}
@@ -122,7 +99,7 @@ export default function AssignedDeliveriesScreen({ navigation }) {
                 <SectionHeader
                     eyebrow="Queue"
                     title="Assigned Deliveries"
-                    subtitle="Review incoming assignments, confirm them, or send them back."
+                    subtitle="Deliveries you accepted from an incoming request appear here."
                 />
             </View>
 

@@ -8,7 +8,6 @@ export type RootStackParamList = {
     ActiveDelivery:
         | { job: Delivery; jobId?: Delivery['id'] }
         | { jobId: Delivery['id']; job?: Delivery };
-    AvailableJobs: undefined;
     AssignedDeliveries: undefined;
     ProofOfDelivery: { jobId?: Delivery['id'] } | undefined;
     JobHistory: undefined;

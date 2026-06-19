@@ -73,21 +73,6 @@ const initialState = {
     lastEventAt: null,
 };
 
-const normalizeIncomingRequest = (request) => {
-    const receivedAt = Date.now();
-    const secondsToRespond = Number(request?.secondsToRespond);
-    const responseWindowSeconds = Number.isFinite(secondsToRespond) && secondsToRespond > 0
-        ? secondsToRespond
-        : 30;
-
-    return {
-        ...request,
-        receivedAt,
-        clientExpiresAt: new Date(receivedAt + responseWindowSeconds * 1000).toISOString(),
-        secondsToRespond: responseWindowSeconds,
-    };
-};
-
 const incomingRequestSlice = createSlice({
     name: 'incomingRequest',
     initialState,
@@ -96,7 +81,7 @@ const incomingRequestSlice = createSlice({
             state.connectionStatus = action.payload;
         },
         receiveIncomingRequest(state, action) {
-            state.currentRequest = normalizeIncomingRequest(action.payload);
+            state.currentRequest = action.payload;
             state.error = null;
             state.lastEventAt = Date.now();
         },

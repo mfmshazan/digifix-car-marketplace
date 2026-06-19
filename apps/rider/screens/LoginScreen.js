@@ -34,6 +34,7 @@ export default function LoginScreen({ navigation }) {
 
             await saveTokens(accessToken, refreshToken);
             await saveUserData(partner);
+            navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
         } catch (error) {
             const message = error.response?.data?.message || error.message || 'Please check your credentials';
             console.error('Login failed:', {

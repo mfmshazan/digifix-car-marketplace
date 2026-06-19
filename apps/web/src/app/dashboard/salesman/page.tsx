@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
@@ -32,61 +32,48 @@ import {
   Bell,
   BellOff,
   MessageSquare,
+  MapPin,
+  Navigation,
+  Send,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
-import { resolveMediaUrl, ordersApi } from '@/lib/api';
+import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi } from '@/lib/api';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
-// OneSignal helpers kept for backend-side push (logoutOneSignalUser used on logout)
-import { logoutOneSignalUser } from '@/lib/onesignal';
+import { initOneSignal, loginOneSignalUser, logoutOneSignalUser, requestNotificationPermission } from '@/lib/onesignal';
 
 // ─── Push Notification Hook ───────────────────────────────────────────────────
 
-function useOneSignalPush(_userId: string | undefined) {
-  const getPermission = (): NotificationPermission => {
-    if (typeof window === 'undefined' || !('Notification' in window)) return 'denied';
-    return window.Notification.permission;
-  };
-
+function useOneSignalPush() {
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [subscribed, setSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
   const isReady = typeof window !== 'undefined' && 'Notification' in window;
 
-  // Sync state from browser on mount
   useEffect(() => {
-    const perm = getPermission();
+    if (!isReady) return;
+    const perm = window.Notification.permission;
     setPermission(perm);
     setSubscribed(perm === 'granted');
-  }, []);
+  }, [isReady]);
 
   const toggle = async () => {
     if (!isReady) {
       alert('Your browser does not support push notifications.');
       return;
     }
-
     setLoading(true);
     try {
       if (subscribed) {
-        // Can't programmatically revoke permission — guide user
         alert(
           'To disable notifications:\n' +
           'Click the 🔒 lock icon in the browser URL bar → Notifications → Block.'
         );
         setSubscribed(false);
       } else {
-        // Register service worker first so background delivery works
-        if ('serviceWorker' in navigator) {
-          try {
-            await navigator.serviceWorker.register('/OneSignalSDKWorker.js', { scope: '/' });
-          } catch { /* ignore */ }
-        }
-
-        const perm = await window.Notification.requestPermission();
+        const perm = await requestNotificationPermission();
         setPermission(perm);
         if (perm === 'granted') {
           setSubscribed(true);
-          // Show a test notification
           new window.Notification('✅ Notifications enabled!', {
             body: 'You will now receive alerts when customers place orders.',
             icon: '/favicon.ico',
@@ -159,9 +146,16 @@ interface SalesSummary {
 interface AppNotification {
   id: string;
   orderNumber: string;
-  total: number;
+  total?: number;
+  type: 'NEW_ORDER' | 'REFUND_APPROVED';
+  message?: string;
   time: Date;
   read: boolean;
+}
+
+function mergeNotification(prev: AppNotification[], next: AppNotification): AppNotification[] {
+  if (prev.some((n) => n.id === next.id)) return prev;
+  return [next, ...prev];
 }
 
 
@@ -262,11 +256,558 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
   );
 }
 
+// ─── Delivery Status Badge ───────────────────────────────────────────────────
+
+const DELIVERY_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  pending: { label: 'Finding Rider', color: 'text-amber-700', bg: 'bg-amber-50' },
+  available: { label: 'Awaiting Rider', color: 'text-orange-700', bg: 'bg-orange-50' },
+  assigned: { label: 'Rider Assigned', color: 'text-blue-700', bg: 'bg-blue-50' },
+  accepted: { label: 'Rider Confirmed', color: 'text-blue-700', bg: 'bg-blue-50' },
+  arrived_at_pickup: { label: 'Rider at Shop', color: 'text-purple-700', bg: 'bg-purple-50' },
+  picked_up: { label: 'Package Collected', color: 'text-indigo-700', bg: 'bg-indigo-50' },
+  in_transit: { label: 'In Transit', color: 'text-cyan-700', bg: 'bg-cyan-50' },
+  arrived_at_dropoff: { label: 'At Customer', color: 'text-teal-700', bg: 'bg-teal-50' },
+  delivered: { label: 'Delivered', color: 'text-green-700', bg: 'bg-green-50' },
+  failed: { label: 'Failed', color: 'text-red-700', bg: 'bg-red-50' },
+};
+
+function DeliveryStatusBadge({ status }: { status: string }) {
+  const meta = DELIVERY_STATUS_META[status] ?? { label: status, color: 'text-gray-700', bg: 'bg-gray-50' };
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${meta.bg} ${meta.color}`}>
+      <Truck className="w-3 h-3" />
+      {meta.label}
+    </span>
+  );
+}
+
+// ─── Leaflet Map Picker (Delivery Location) ──────────────────────────────────
+
+function LeafletMapPicker({
+  onSelect,
+}: {
+  onSelect: (lat: number, lng: number, address: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const [status, setStatus] = useState<'idle' | 'selected' | 'geocoding'>('idle');
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    // Inject Leaflet CSS once
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+
+    const initMap = () => {
+      if (!containerRef.current || mapRef.current) return;
+      const L = (window as any).L;
+      if (!L) return;
+
+      const map = L.map(containerRef.current).setView([6.9271, 79.8612], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      const handlePick = async (lat: number, lng: number) => {
+        setCoords({ lat, lng });
+        setStatus('geocoding');
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          const data = await res.json();
+          onSelect(lat, lng, data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        } catch {
+          onSelect(lat, lng, `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        }
+        setStatus('selected');
+      };
+
+      map.on('click', (e: any) => {
+        const { lat, lng } = e.latlng;
+        if (markerRef.current) {
+          markerRef.current.setLatLng([lat, lng]);
+        } else {
+          markerRef.current = L.marker([lat, lng], { draggable: true }).addTo(map);
+          markerRef.current.on('dragend', (de: any) => {
+            const pos = de.target.getLatLng();
+            handlePick(pos.lat, pos.lng);
+          });
+        }
+        handlePick(lat, lng);
+      });
+
+      mapRef.current = map;
+    };
+
+    if ((window as any).L) {
+      initMap();
+    } else if (!document.getElementById('leaflet-js')) {
+      const script = document.createElement('script');
+      script.id = 'leaflet-js';
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.onload = initMap;
+      document.head.appendChild(script);
+    } else {
+      // Script tag exists but may still be loading — poll briefly
+      const poll = setInterval(() => {
+        if ((window as any).L) { clearInterval(poll); initMap(); }
+      }, 100);
+      return () => clearInterval(poll);
+    }
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        markerRef.current = null;
+      }
+    };
+  }, []);
+
+  return (
+    <div className="space-y-2">
+      <div
+        ref={containerRef}
+        className="w-full rounded-xl overflow-hidden border border-gray-200"
+        style={{ height: 260 }}
+      />
+      {status === 'idle' && (
+        <p className="text-xs text-gray-400 text-center">
+          Click anywhere on the map to pin the delivery location
+        </p>
+      )}
+      {status === 'geocoding' && (
+        <p className="text-xs text-amber-600 text-center animate-pulse">
+          Fetching address…
+        </p>
+      )}
+      {status === 'selected' && coords && (
+        <p className="text-xs text-green-700 font-medium text-center">
+          📍 {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)} — You can drag the pin to adjust
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Create Delivery Request Modal ───────────────────────────────────────────
+
+interface DeliveryFormState {
+  pickupLatitude: string;
+  pickupLongitude: string;
+  pickupAddress: string;
+  deliveryLatitude: string;
+  deliveryLongitude: string;
+  deliveryAddress: string;
+  paymentType: 'PREPAID' | 'COD';
+  packageNotes: string;
+  estimatedEarnings: string;
+}
+
+interface AvailableRider {
+  id: number;
+  fullName: string;
+  phone: string;
+  vehicleType?: string;
+  vehicleNumber?: string;
+  rating?: number | null;
+  totalDeliveries: number;
+  distanceToPickupKm: number | null;
+}
+
+function CreateDeliveryRequestModal({
+  order,
+  onClose,
+  onSuccess,
+}: {
+  order: Order;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [form, setForm] = useState<DeliveryFormState>({
+    pickupLatitude: '',
+    pickupLongitude: '',
+    pickupAddress: '',
+    deliveryLatitude: '',
+    deliveryLongitude: '',
+    deliveryAddress: '',
+    paymentType: 'COD',
+    packageNotes: '',
+    estimatedEarnings: '',
+  });
+  const [gettingLocation, setGettingLocation] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [loadingRiders, setLoadingRiders] = useState(false);
+  const [availableRiders, setAvailableRiders] = useState<AvailableRider[]>([]);
+  const [selectedRiderId, setSelectedRiderId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setGettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setForm((f) => ({
+          ...f,
+          pickupLatitude: pos.coords.latitude.toFixed(6),
+          pickupLongitude: pos.coords.longitude.toFixed(6),
+        }));
+        setGettingLocation(false);
+      },
+      () => {
+        setError('Could not get your location. Please enter coordinates manually.');
+        setGettingLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const loadAvailableRiders = async () => {
+    setError(null);
+    setSelectedRiderId(null);
+
+    if (!form.pickupLatitude || !form.pickupLongitude) {
+      setError('Pickup coordinates are required before loading available riders.');
+      return;
+    }
+
+    setLoadingRiders(true);
+    try {
+      const res = await deliveryRequestsApi.getAvailableRiders(
+        parseFloat(form.pickupLatitude),
+        parseFloat(form.pickupLongitude)
+      );
+      setAvailableRiders(res.data || []);
+      if (!res.data?.length) {
+        setError('No online riders are available near this pickup location right now.');
+      }
+    } catch (err: any) {
+      setAvailableRiders([]);
+      setError(err?.response?.data?.message || err?.message || 'Failed to load available riders.');
+    } finally {
+      setLoadingRiders(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+    const { pickupLatitude, pickupLongitude, deliveryLatitude, deliveryLongitude, deliveryAddress } = form;
+
+    if (!pickupLatitude || !pickupLongitude) {
+      setError('Pickup coordinates are required. Use "Get Current Location" or enter manually.');
+      return;
+    }
+    if (!deliveryLatitude || !deliveryLongitude || !deliveryAddress) {
+      setError('Please pin the customer delivery location on the map.');
+      return;
+    }
+    if (!selectedRiderId) {
+      setError('Select an available rider before sending the request.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await deliveryRequestsApi.create({
+        orderId: order.id,
+        pickupLatitude: parseFloat(pickupLatitude),
+        pickupLongitude: parseFloat(pickupLongitude),
+        pickupAddress: form.pickupAddress || undefined,
+        deliveryLatitude: parseFloat(deliveryLatitude),
+        deliveryLongitude: parseFloat(deliveryLongitude),
+        deliveryAddress,
+        packageNotes: form.packageNotes || undefined,
+        paymentType: form.paymentType,
+        estimatedEarnings: form.estimatedEarnings ? parseFloat(form.estimatedEarnings) : undefined,
+        customerName: order.customer?.name,
+        partnerId: selectedRiderId,
+      });
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Failed to create delivery request.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div>
+            <h3 className="text-base font-bold text-gray-900">Assign Delivery</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Order {order.orderNumber} · {order.customer?.name}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              {error}
+            </div>
+          )}
+
+          {/* Pickup Location */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-2">
+              <MapPin className="w-3.5 h-3.5 inline mr-1" />
+              Pickup Location (Your Shop)
+            </label>
+            <button
+              onClick={useCurrentLocation}
+              disabled={gettingLocation}
+              className="w-full mb-2 flex items-center justify-center gap-2 px-3 py-2 bg-[#00002E] text-white rounded-xl text-sm font-medium hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
+            >
+              {gettingLocation ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
+              {gettingLocation ? 'Getting Location…' : 'Use My Current Location'}
+            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                step="any"
+                placeholder="Latitude"
+                value={form.pickupLatitude}
+                onChange={(e) => setForm((f) => ({ ...f, pickupLatitude: e.target.value }))}
+                className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+              />
+              <input
+                type="number"
+                step="any"
+                placeholder="Longitude"
+                value={form.pickupLongitude}
+                onChange={(e) => setForm((f) => ({ ...f, pickupLongitude: e.target.value }))}
+                className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+              />
+            </div>
+            <input
+              type="text"
+              placeholder="Shop address (optional)"
+              value={form.pickupAddress}
+              onChange={(e) => setForm((f) => ({ ...f, pickupAddress: e.target.value }))}
+              className="mt-2 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+            />
+          </div>
+
+          {/* Delivery Location — map picker */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-2">
+              <MapPin className="w-3.5 h-3.5 inline mr-1" />
+              Customer Delivery Location
+            </label>
+
+            {/* Selected location summary */}
+            {form.deliveryLatitude && form.deliveryLongitude && (
+              <div className="flex items-start gap-2 p-3 mb-2 bg-indigo-50 border border-indigo-200 rounded-xl">
+                <MapPin className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-indigo-900 truncate">
+                    {form.deliveryAddress || 'Location pinned'}
+                  </p>
+                  <p className="text-xs text-indigo-500 mt-0.5">
+                    {parseFloat(form.deliveryLatitude).toFixed(5)}, {parseFloat(form.deliveryLongitude).toFixed(5)}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Leaflet map */}
+            <LeafletMapPicker
+              onSelect={(lat, lng, address) => {
+                setForm((f) => ({
+                  ...f,
+                  deliveryLatitude: lat.toFixed(6),
+                  deliveryLongitude: lng.toFixed(6),
+                  deliveryAddress: address,
+                }));
+              }}
+            />
+
+            {/* Editable address label after pin */}
+            {form.deliveryLatitude && form.deliveryLongitude && (
+              <input
+                type="text"
+                placeholder="Edit address label (optional)"
+                value={form.deliveryAddress}
+                onChange={(e) => setForm((f) => ({ ...f, deliveryAddress: e.target.value }))}
+                className="mt-2 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+              />
+            )}
+          </div>
+
+          {/* Payment Type */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-2">Payment Type</label>
+            <div className="flex gap-2">
+              {(['COD', 'PREPAID'] as const).map((pt) => (
+                <button
+                  key={pt}
+                  onClick={() => setForm((f) => ({ ...f, paymentType: pt }))}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                    form.paymentType === pt
+                      ? 'bg-[#00002E] text-white border-[#00002E]'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-[#00002E]/40'
+                  }`}
+                >
+                  {pt === 'COD' ? 'Cash on Delivery' : 'Prepaid'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Extras */}
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="number"
+              step="any"
+              placeholder="Rider earnings (Rs)"
+              value={form.estimatedEarnings}
+              onChange={(e) => setForm((f) => ({ ...f, estimatedEarnings: e.target.value }))}
+              className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+            />
+            <input
+              type="text"
+              placeholder="Package notes (optional)"
+              value={form.packageNotes}
+              onChange={(e) => setForm((f) => ({ ...f, packageNotes: e.target.value }))}
+              className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+            />
+          </div>
+
+          {/* Available Riders */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <label className="block text-xs font-semibold text-gray-700">
+                <Truck className="w-3.5 h-3.5 inline mr-1" />
+                Available Delivery Persons
+              </label>
+              <button
+                type="button"
+                onClick={loadAvailableRiders}
+                disabled={loadingRiders}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                {loadingRiders ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                {loadingRiders ? 'Loading' : 'Load Riders'}
+              </button>
+            </div>
+
+            {availableRiders.length > 0 && (
+              <div className="space-y-2">
+                {availableRiders.map((rider) => {
+                  const selected = selectedRiderId === rider.id;
+                  return (
+                    <button
+                      key={rider.id}
+                      type="button"
+                      onClick={() => setSelectedRiderId(rider.id)}
+                      className={`w-full text-left p-3 rounded-xl border transition-all ${
+                        selected
+                          ? 'border-[#00002E] bg-[#00002E]/5 ring-2 ring-[#00002E]/10'
+                          : 'border-gray-200 hover:border-[#00002E]/30 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900 truncate">{rider.fullName}</span>
+                            {selected && <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {rider.vehicleType || 'Vehicle'} {rider.vehicleNumber ? `- ${rider.vehicleNumber}` : ''}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">{rider.phone}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-semibold text-gray-900">
+                            {rider.distanceToPickupKm !== null ? `${rider.distanceToPickupKm.toFixed(1)} km` : 'Location pending'}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {rider.rating ? `${rider.rating.toFixed(1)} stars` : 'New'} - {rider.totalDeliveries} trips
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="p-5 border-t border-gray-100 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex-1 py-2.5 rounded-xl bg-[#00002E] text-white text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+          >
+            {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {submitting ? 'Sending Request...' : 'Send Request'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Order Card ──────────────────────────────────────────────────────────────
 
 function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void> }) {
   const [expanded, setExpanded] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [deliveryStatus, setDeliveryStatus] = useState<string | null>(null);
+  const [loadingDeliveryStatus, setLoadingDeliveryStatus] = useState(false);
+
+  // Load delivery status when the card mounts for PROCESSING / SHIPPED orders
+  useEffect(() => {
+    const eligible = ['PROCESSING', 'SHIPPED', 'CONFIRMED'];
+    if (!eligible.includes(order.status)) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingDeliveryStatus(true);
+      try {
+        const res = await deliveryRequestsApi.getDeliveryStatus(order.id);
+        if (!cancelled && res.success && res.data?.hasDelivery) {
+          setDeliveryStatus(res.data.deliveryStatus);
+        }
+      } catch { /* silently ignore */ } finally {
+        if (!cancelled) setLoadingDeliveryStatus(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [order.id, order.status]);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
@@ -346,6 +887,42 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
         )}
       </div>
 
+      {/* Delivery Dispatch Section */}
+      {['CONFIRMED', 'PROCESSING', 'SHIPPED'].includes(order.status) && (
+        <div className="px-4 pb-4 border-t border-gray-50 pt-3">
+          {deliveryStatus ? (
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 font-medium">Delivery Status</span>
+              <DeliveryStatusBadge status={deliveryStatus} />
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowDispatchModal(true)}
+              disabled={loadingDeliveryStatus}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-[#00002E] text-white rounded-xl text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
+            >
+              {loadingDeliveryStatus ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Truck className="w-4 h-4" />
+              )}
+              {loadingDeliveryStatus ? 'Checking...' : 'Assign Delivery'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Dispatch Modal */}
+      {showDispatchModal && (
+        <CreateDeliveryRequestModal
+          order={order}
+          onClose={() => setShowDispatchModal(false)}
+          onSuccess={() => {
+            setDeliveryStatus('pending');
+          }}
+        />
+      )}
+
       {/* Image Preview Modal */}
       {previewImage && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setPreviewImage(null)}>
@@ -404,6 +981,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     // A customer placed a new order → refresh list and flash an alert banner
     // (OneSignal push notification is sent server-side by the backend)
     const handleNewOrder = (payload: { orderNumber: string; total?: number }) => {
+      console.log('🆕 [CurrentOrdersTab] newOrder event received:', payload);
       setNewOrderAlert(`🆕 New order received: ${payload.orderNumber}`);
       loadOrders();
       setTimeout(() => setNewOrderAlert(null), 10000);
@@ -417,12 +995,22 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
       setLastRefresh(new Date());
     };
 
+    // Admin approved customer cancellation/refund request
+    const handleCancellationApproved = (payload: { orderId: string; status: OrderStatus }) => {
+      setOrders(prev =>
+        prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o)
+      );
+      setLastRefresh(new Date());
+    };
+
     socket.on('newOrder', handleNewOrder);
     socket.on('orderStatusUpdated', handleStatusUpdate);
+    socket.on('cancellationApproved', handleCancellationApproved);
 
     return () => {
       socket.off('newOrder', handleNewOrder);
       socket.off('orderStatusUpdated', handleStatusUpdate);
+      socket.off('cancellationApproved', handleCancellationApproved);
     };
   }, [userId, loadOrders]);
 
@@ -461,8 +1049,8 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
               key={opt.value}
               onClick={() => setFilterStatus(opt.value)}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${filterStatus === opt.value
-                  ? 'bg-[#00002E] text-white'
-                  : 'bg-white border border-gray-200 text-gray-600 hover:border-[#00002E]/40'
+                ? 'bg-[#00002E] text-white'
+                : 'bg-white border border-gray-200 text-gray-600 hover:border-[#00002E]/40'
                 }`}
             >
               {opt.label}
@@ -597,9 +1185,9 @@ function SalesHistoryTab() {
             {summary!.topSellingProducts.map((product, idx) => (
               <div key={product.uniqueId} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
                 <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? 'bg-amber-100 text-amber-700' :
-                    idx === 1 ? 'bg-gray-100 text-gray-600' :
-                      idx === 2 ? 'bg-orange-100 text-orange-700' :
-                        'bg-gray-50 text-gray-500'
+                  idx === 1 ? 'bg-gray-100 text-gray-600' :
+                    idx === 2 ? 'bg-orange-100 text-orange-700' :
+                      'bg-gray-50 text-gray-500'
                   }`}>{idx + 1}</span>
                 <div className="w-10 h-10 bg-gray-100 rounded-lg shrink-0 flex items-center justify-center overflow-hidden">
                   {product.images?.[0] ? (
@@ -665,9 +1253,132 @@ function SalesHistoryTab() {
   );
 }
 
+// ─── Products Tab ────────────────────────────────────────────────────────────
+
+function ProductsTab() {
+  const [products, setProducts] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await productsApi.getSalesmanProducts();
+        if (res.success) {
+          const nextProducts = Array.isArray(res.data)
+            ? res.data
+            : Array.isArray(res.data?.products)
+              ? res.data.products
+              : [];
+          setProducts(nextProducts);
+        }
+      } catch (err) {
+        console.error('Failed to load products', err);
+        setProducts([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <div className="w-10 h-10 border-2 border-[#00002E] border-t-transparent rounded-full animate-spin" />
+        <p className="text-gray-500 text-sm">Loading products…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {products.length === 0 ? (
+          <div className="col-span-full py-20 text-center text-gray-400">
+            No products found. Add your first product!
+          </div>
+        ) : (
+          products.map(product => {
+            const status = product.computedStatus || 'IN_STORE';
+            const statusLabel = status === 'IN_STORE' ? 'In Store' : (STATUS_META[status as OrderStatus]?.label || status);
+            const statusBg = status === 'IN_STORE' ? 'bg-emerald-100' : (STATUS_META[status as OrderStatus]?.bg || 'bg-gray-100');
+            const statusColor = status === 'IN_STORE' ? 'text-emerald-700' : (STATUS_META[status as OrderStatus]?.color || 'text-gray-700');
+
+            return (
+              <div key={product.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
+                <div className="h-48 bg-gray-100 relative">
+                  {product.images?.[0] ? (
+                    <Image src={resolveMediaUrl(product.images[0]) || product.images[0]} alt={product.name} fill className="object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Package className="w-10 h-10 text-gray-300" />
+                    </div>
+                  )}
+                  <div className="absolute top-3 right-3">
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase shadow-sm ${product.stock > 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                      }`}>
+                      {product.stock > 0 ? `Stock: ${product.stock}` : 'Out of Stock'}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-4 flex-1 flex flex-col">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-bold text-gray-900 text-sm line-clamp-1 flex-1">{product.name}</h3>
+                    <span className="text-sm font-bold text-[#00002E] ml-2">{formatRs(product.price)}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 line-clamp-2 mb-2">{product.description}</p>
+
+                  {/* Show car part specific details if available */}
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {product.condition && (
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                        product.condition === 'NEW' ? 'bg-blue-50 text-blue-600' :
+                        product.condition === 'USED' ? 'bg-amber-50 text-amber-600' :
+                        'bg-purple-50 text-purple-600'
+                      }`}>
+                        {product.condition}
+                      </span>
+                    )}
+                    {product.partNumber && (
+                      <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                        #{product.partNumber}
+                      </span>
+                    )}
+                    {product.category?.name && (
+                      <span className="text-[10px] bg-indigo-50 text-indigo-600 font-semibold px-2 py-0.5 rounded-full">
+                        {product.category.name}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-50">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Status</span>
+                      <span className={`text-xs font-semibold ${statusColor}`}>{statusLabel}</span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button title="Edit product" className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#00002E] transition-colors">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button title="Delete product" className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-red-500 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+}
+
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 
-type Tab = 'orders' | 'history';
+type Tab = 'orders' | 'products' | 'history';
 
 export default function SalesmanDashboard() {
   const router = useRouter();
@@ -682,12 +1393,23 @@ export default function SalesmanDashboard() {
   const [toastNotif, setToastNotif] = useState<AppNotification | null>(null);
 
   // ── OneSignal push notifications ─────────────────────────────────────────────
-  const { subscribed: pushEnabled, loading: pushLoading, isReady: pushReady, permission: pushPermission, toggle: togglePush } = useOneSignalPush(user?.id);
+  const { subscribed: pushEnabled, loading: pushLoading, isReady: pushReady, permission: pushPermission, toggle: togglePush } = useOneSignalPush();
 
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+      setMounted(true);
+  }, []);
 
   useEffect(() => {
+    if (!mounted) return;
+    
     if (!isAuthenticated) {
-      router.push('/login');
+        // Check localStorage directly as a fallback before kicking out
+        const hasToken = typeof window !== 'undefined' && localStorage.getItem('digifix_token');
+        if (!hasToken) {
+            router.push('/login');
+        }
     } else if (user?.role !== 'SALESMAN') {
       router.push('/dashboard/admin');
     }
@@ -700,36 +1422,112 @@ export default function SalesmanDashboard() {
     }
   }, [isAuthenticated, refreshProfile]);
 
+  // ── OneSignal: init SDK once, then login with userId so backend can target by external_id ──
+  useEffect(() => {
+    if (!user?.id) return;
+    initOneSignal().then((ok) => {
+      if (ok) loginOneSignalUser(user.id);
+    });
+  }, [user?.id]);
+
   // ── Connect socket when user is available, disconnect on logout ──────────────
   useEffect(() => {
-    if (user?.id) {
-      const socket = connectSocket(user.id);
-      
-      const handleNewOrder = (orderData: any) => {
-        const notif: AppNotification = {
-          id: orderData.orderId,
-          orderNumber: orderData.orderNumber,
-          total: orderData.total,
-          time: new Date(),
-          read: false
-        };
-        
-        setAppNotifs(prev => [notif, ...prev]);
-        setToastNotif(notif);
-        
-        // Auto hide toast after 10 seconds without deleting from messages
-        setTimeout(() => {
-          setToastNotif(current => current?.id === notif.id ? null : current);
-        }, 10000);
-      };
-      
-      socket.on('newOrder', handleNewOrder);
-      
-      return () => {
-        socket.off('newOrder', handleNewOrder);
-        disconnectSocket();
-      };
+    if (!mounted) return;
+
+    // Prefer Zustand store userId; fall back to decoding the JWT directly to handle
+    // the Next.js SSR → client hydration window where the store hasn't rehydrated yet.
+    let userId = user?.id;
+    if (!userId) {
+      try {
+        const token = localStorage.getItem('digifix_token');
+        if (token) {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          userId = payload.userId || payload.id || payload.sub;
+        }
+      } catch { /* ignore malformed token */ }
     }
+
+    if (!userId) return;
+
+    const socket = connectSocket(userId);
+
+    const handleNewOrder = (orderData: any) => {
+      const notif: AppNotification = {
+        id: `new-order-${orderData.orderId}`,
+        orderNumber: orderData.orderNumber,
+        total: orderData.total,
+        type: 'NEW_ORDER',
+        time: new Date(),
+        read: false
+      };
+      setAppNotifs(prev => mergeNotification(prev, notif));
+      setToastNotif(notif);
+      setTimeout(() => {
+        setToastNotif(current => current?.id === notif.id ? null : current);
+      }, 10000);
+    };
+
+    const handleRefundApproved = (payload: { orderId: string; orderNumber: string; message?: string }) => {
+      const notif: AppNotification = {
+        id: `refund-approved-${payload.orderId}`,
+        orderNumber: payload.orderNumber,
+        type: 'REFUND_APPROVED',
+        message: payload.message || `Refund approved for Order ${payload.orderNumber}. Please refund the customer.`,
+        time: new Date(),
+        read: false,
+      };
+      setAppNotifs(prev => mergeNotification(prev, notif));
+      setToastNotif(notif);
+      setTimeout(() => {
+        setToastNotif(current => current?.id === notif.id ? null : current);
+      }, 10000);
+    };
+
+    socket.on('newOrder', handleNewOrder);
+    socket.on('cancellationApproved', handleRefundApproved);
+
+    return () => {
+      socket.off('newOrder', handleNewOrder);
+      socket.off('cancellationApproved', handleRefundApproved);
+    };
+  }, [user?.id, mounted]);
+
+  // On login/reload, rebuild refund-related messages from existing refunded orders
+  // so salesmen still see instructions even if they missed the live socket event.
+  useEffect(() => {
+    const loadRefundInstructionMessages = async () => {
+      if (!user?.id) return;
+
+      try {
+        const response = await ordersApi.getSalesmanOrders({ status: 'CANCELLED', limit: 50 });
+        const cancelledOrders = response?.data?.orders || [];
+
+        const refundInstructionNotifs: AppNotification[] = cancelledOrders
+          .filter((order: any) => order?.paymentStatus === 'REFUNDED')
+          .map((order: any) => ({
+            id: `refund-approved-${order.id}`,
+            orderNumber: order.orderNumber,
+            type: 'REFUND_APPROVED' as const,
+            message: `Refund approved for Order ${order.orderNumber}. Please refund the customer.`,
+            time: new Date(order.updatedAt || order.createdAt || Date.now()),
+            read: false,
+          }));
+
+        if (refundInstructionNotifs.length > 0) {
+          setAppNotifs((prev) => {
+            let next = prev;
+            for (const notif of refundInstructionNotifs) {
+              next = mergeNotification(next, notif);
+            }
+            return next;
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to load refunded orders for notifications:', err);
+      }
+    };
+
+    loadRefundInstructionMessages();
   }, [user?.id]);
 
 
@@ -753,8 +1551,10 @@ export default function SalesmanDashboard() {
 
   const tabs = [
     { id: 'orders' as const, label: 'Current Orders', icon: ListOrdered },
+    { id: 'products' as const, label: 'My Products', icon: Package },
     { id: 'history' as const, label: 'Sales History', icon: BarChart3 },
   ];
+
 
   return (
     <div className="min-h-screen bg-[#f4f6fb]">
@@ -803,8 +1603,8 @@ export default function SalesmanDashboard() {
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as Tab)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === tab.id
-                        ? 'bg-white text-[#00002E] shadow'
-                        : 'text-white/70 hover:text-white hover:bg-white/10'
+                      ? 'bg-white text-[#00002E] shadow'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
                       }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -882,11 +1682,15 @@ export default function SalesmanDashboard() {
                               <div className="flex justify-between items-start mb-0.5">
                                 <span className="font-semibold text-sm text-gray-900 flex items-center gap-1.5">
                                   {!notif.read && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />}
-                                  Order {notif.orderNumber}
+                                  {notif.type === 'REFUND_APPROVED' ? 'Refund Approved' : `Order ${notif.orderNumber}`}
                                 </span>
                                 <span className="text-xs text-gray-400 shrink-0 ml-2">{timeAgo(notif.time.toISOString())}</span>
                               </div>
-                              <p className="text-xs text-gray-600">Total: Rs. {notif.total.toLocaleString()}</p>
+                              {notif.type === 'REFUND_APPROVED' ? (
+                                <p className="text-xs text-gray-600">{notif.message}</p>
+                              ) : (
+                                <p className="text-xs text-gray-600">Total: Rs. {(notif.total || 0).toLocaleString()}</p>
+                              )}
                             </div>
 
                             {/* Individual delete button */}
@@ -974,8 +1778,8 @@ export default function SalesmanDashboard() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold border-b-2 transition-all ${activeTab === tab.id
-                    ? 'border-[#00002E] text-[#00002E]'
-                    : 'border-transparent text-gray-500'
+                  ? 'border-[#00002E] text-[#00002E]'
+                  : 'border-transparent text-gray-500'
                   }`}
               >
                 <Icon className="w-4 h-4" />
@@ -1002,7 +1806,9 @@ export default function SalesmanDashboard() {
         </div>
 
         {activeTab === 'orders' && <CurrentOrdersTab userId={user.id} />}
+        {activeTab === 'products' && <ProductsTab />}
         {activeTab === 'history' && <SalesHistoryTab />}
+
       </main>
 
       {/* Add Product Modal */}
@@ -1013,15 +1819,24 @@ export default function SalesmanDashboard() {
         <div className="fixed bottom-4 right-4 z-50 bg-white rounded-xl shadow-xl border border-gray-100 p-4 max-w-sm w-full animate-in slide-in-from-bottom-5">
           <div className="flex items-start justify-between">
             <div className="flex gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <ShoppingCart className="w-5 h-5 text-blue-600" />
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${toastNotif.type === 'REFUND_APPROVED' ? 'bg-emerald-100' : 'bg-blue-100'}`}>
+                {toastNotif.type === 'REFUND_APPROVED' ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <ShoppingCart className="w-5 h-5 text-blue-600" />
+                )}
               </div>
               <div>
-                <h4 className="font-bold text-gray-900 text-sm">New Order!</h4>
-                <p className="text-xs text-gray-500 mt-0.5">Order {toastNotif.orderNumber} for Rs. {toastNotif.total.toLocaleString()}</p>
+                <h4 className="font-bold text-gray-900 text-sm">{toastNotif.type === 'REFUND_APPROVED' ? 'Refund Approved' : 'New Order!'}</h4>
+                {toastNotif.type === 'REFUND_APPROVED' ? (
+                  <p className="text-xs text-gray-500 mt-0.5">{toastNotif.message || `Order ${toastNotif.orderNumber} refund was approved.`}</p>
+                ) : (
+                  <p className="text-xs text-gray-500 mt-0.5">Order {toastNotif.orderNumber} for Rs. {(toastNotif.total || 0).toLocaleString()}</p>
+                )}
               </div>
             </div>
             <button 
+              title="Close toast"
               onClick={() => {
                 // Clicking X removes it from the messages list entirely
                 setAppNotifs(prev => prev.filter(n => n.id !== toastNotif.id));
@@ -1052,6 +1867,8 @@ export default function SalesmanDashboard() {
 // ─── Add Product Modal (unchanged) ──────────────────────────────────────────
 
 function AddProductModal({ onClose }: { onClose: () => void }) {
+  const [categories, setCategories] = useState<any[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: '',
@@ -1060,10 +1877,23 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     stock: '',
     condition: 'NEW',
     categoryId: '',
-    carNumberPlate: '',
   });
 
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await categoriesApi.getAll();
+        if (res.success) setCategories(res.data);
+      } catch (err) {
+        console.error('Failed to load categories', err);
+      }
+    };
+    fetchCategories();
+  }, []);
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+
     const files = e.target.files;
     if (files) {
       const newImages = Array.from(files).map(file => URL.createObjectURL(file));
@@ -1075,11 +1905,30 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     setImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Creating product:', { ...formData, images });
-    onClose();
+    // Category is now optional
+    setIsSubmitting(true);
+    try {
+      // In a real app, you'd upload images first and get URLs.
+      // For now, we'll send the dummy local URLs if any, or empty array.
+      await productsApi.createProduct({
+        ...formData,
+        price: parseFloat(formData.price),
+        stock: parseInt(formData.stock),
+        images: [], // Assuming backend handles image upload separately or we use placeholders
+      });
+      alert('Product added successfully!');
+      onClose();
+      window.location.reload(); // Quick refresh to show new product
+    } catch (err) {
+      console.error('Failed to add product', err);
+      alert('Failed to add product');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1097,7 +1946,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Product Images (Up to 5)</label>
             <div className="flex flex-wrap gap-3">
-              {images.map((image, index) => (
+              {images && images.map((image, index) => (
                 <div key={index} className="relative w-24 h-24 rounded-xl overflow-hidden border border-gray-200">
                   <Image src={image} alt={`Product ${index + 1}`} fill className="object-cover" />
                   <button
@@ -1170,47 +2019,32 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Condition */}
+          {/* Category */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Condition</label>
-            <div className="flex gap-3">
-              {['NEW', 'USED', 'RECONDITIONED'].map(condition => (
-                <button
-                  key={condition}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, condition })}
-                  className={`px-4 py-2 rounded-xl font-medium transition-colors ${formData.condition === condition
-                      ? 'bg-[#00002E] text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                >
-                  {condition}
-                </button>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+            <select
+              title="Select product category"
+              value={formData.categoryId}
+              onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
+            >
+              <option value="">Select a category</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
-            </div>
+            </select>
           </div>
 
-          {/* Car Number Plate */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Car Number Plate</label>
-            <input
-              type="text"
-              value={formData.carNumberPlate}
-              onChange={e => setFormData({ ...formData, carNumberPlate: e.target.value.toUpperCase() })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] uppercase"
-              placeholder="e.g., CAB-1234"
-              required
-            />
-          </div>
 
           {/* Submit */}
           <div className="flex gap-3 pt-4">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl transition-all">
               Cancel
             </button>
-            <button type="submit" className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all">
-              Add Product
+            <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
+              {isSubmitting ? 'Adding...' : 'Add Product'}
             </button>
+
           </div>
         </form>
       </div>

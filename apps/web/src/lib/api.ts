@@ -3,7 +3,7 @@ import axios from 'axios';
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 /** Avatars are served from the API origin (e.g. /uploads/...), not the Next.js dev port. */
-export function resolveMediaUrl(path: string | null | undefined): string | null {
+export function resolveMediaUrl(path: string | null | undefined): string | null { // exported function
   if (!path || typeof path !== 'string') return null;
   const trimmed = path.trim();
   if (!trimmed) return null;
@@ -53,7 +53,10 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('digifix_token');
-        window.location.href = '/login';
+        // Do not force redirect if already on login or register pages
+        if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);
@@ -102,6 +105,27 @@ export interface Category {
 }
 
 // API Functions
+export const productsApi = {
+  // Get salesman's own products
+  getSalesmanProducts: async () => {
+    const response = await api.get('/products/salesman/my-products');
+    return response.data;
+  },
+
+  // Create a new product
+  createProduct: async (data: any) => {
+    const response = await api.post('/products', data);
+    return response.data;
+  },
+};
+
+export const commonApi = {
+  getStats: async () => {
+    const response = await api.get('/stats');
+    return response.data;
+  },
+};
+
 export const carPartsApi = {
   // Get all car parts
   getAll: async (params?: { limit?: number; page?: number; categoryId?: string; condition?: string }) => {
@@ -179,6 +203,22 @@ export const authApi = {
     const response = await api.put('/auth/profile', payload);
     return response.data;
   },
+
+  // Forgot Password Flow
+  requestOtp: async (email: string) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+
+  verifyOtp: async (email: string, otp: string) => {
+    const response = await api.post('/auth/verify-otp', { email, otp });
+    return response.data;
+  },
+
+  resetPassword: async (resetToken: string, newPassword: string) => {
+    const response = await api.post('/auth/reset-password', { resetToken, newPassword });
+    return response.data;
+  },
 };
 
 export async function uploadProfilePicture(file: File) {
@@ -233,3 +273,99 @@ export const ordersApi = {
     return response.data;
   },
 };
+
+export const deliveryRequestsApi = {
+  // Create a delivery request for an order (salesman dispatches a rider)
+  create: async (data: {
+    orderId: string;
+    pickupLatitude: number;
+    pickupLongitude: number;
+    pickupAddress?: string;
+    pickupContactName?: string;
+    pickupContactPhone?: string;
+    deliveryLatitude: number;
+    deliveryLongitude: number;
+    deliveryAddress: string;
+    packageNotes?: string;
+    paymentType: 'PREPAID' | 'COD';
+    estimatedEarnings?: number;
+    customerName?: string;
+    customerPhone?: string;
+    partnerId?: number;
+  }) => {
+    const response = await api.post('/delivery-requests', data);
+    return response.data;
+  },
+
+  // Get online riders who can receive a delivery request from this pickup point
+  getAvailableRiders: async (pickupLatitude: number, pickupLongitude: number) => {
+    const response = await api.get('/delivery-requests/available-riders', {
+      params: { pickupLatitude, pickupLongitude },
+    });
+    return response.data;
+  },
+
+  // Get full delivery job status for an order (salesman / customer)
+  getDeliveryStatus: async (orderId: string) => {
+    const response = await api.get(`/tracking/order/${orderId}/delivery-status`);
+    return response.data;
+  },
+
+  // Get rider's latest GPS location for an order (customer live tracking)
+  getRiderLocation: async (orderId: string) => {
+    const response = await api.get(`/tracking/order/${orderId}/rider-location`);
+    return response.data;
+  },
+};
+
+export const adminApi = {
+  // Get system stats for overview
+  getStats: async () => {
+    const response = await api.get('/admin/stats');
+    return response.data;
+  },
+
+  // Get users for management
+  getUsers: async (params?: { role?: string }) => {
+    const response = await api.get('/admin/users', { params });
+    return response.data;
+  },
+
+  // Update user status (ACTIVE/SUSPENDED)
+  updateUserStatus: async (userId: string, status: string, additionalInfo?: any) => {
+    const response = await api.patch(`/admin/users/${userId}/status`, { status, ...additionalInfo });
+    return response.data;
+  },
+
+
+  // Get finance records (order ledger)
+  getFinances: async (params?: { status?: string; paymentStatus?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/admin/finances', { params });
+    return response.data;
+  },
+
+  // Get global catalog
+  getCatalog: async (params?: { type?: string; status?: string }) => {
+    const response = await api.get('/admin/catalog', { params });
+    return response.data;
+  },
+
+  // Update catalog item status
+  updateCatalogItemStatus: async (id: string, type: string, isActive: boolean) => {
+    const response = await api.patch(`/admin/catalog/${id}/status`, { type, isActive });
+    return response.data;
+  },
+
+  // Approve customer cancellation/refund request
+  approveCancellation: async (orderId: string) => {
+    const response = await api.post(`/orders/${orderId}/approve-cancel`);
+    return response.data;
+  },
+
+  // Reject customer cancellation/refund request
+  rejectCancellation: async (orderId: string, message?: string) => {
+    const response = await api.post(`/orders/${orderId}/reject-cancel`, { message });
+    return response.data;
+  },
+};
+

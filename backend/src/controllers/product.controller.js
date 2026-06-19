@@ -154,10 +154,10 @@ const createProduct = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!name || !price || !categoryId) {
+    if (!name || !price) {
       return res.status(400).json({
         success: false,
-        message: 'Name, price, and category are required',
+        message: 'Name and price are required',
       });
     }
 
@@ -176,7 +176,7 @@ const createProduct = async (req, res) => {
         sku,
         stock: stock ? parseInt(stock) : 0,
         images: images || [],
-        categoryId,
+        categoryId: categoryId || null,
         salesmanId: userId,
         storeId: store?.id,
         compatibleVehicles: compatibleVehicles
@@ -236,7 +236,7 @@ const updateProduct = async (req, res) => {
         sku: updateData.sku,
         stock: updateData.stock ? parseInt(updateData.stock) : undefined,
         images: updateData.images,
-        categoryId: updateData.categoryId,
+        categoryId: updateData.categoryId || null,
         isActive: updateData.isActive,
       },
       include: {
@@ -305,28 +305,70 @@ const getSalesmanProducts = async (req, res) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    const [products, total] = await Promise.all([
+    // Fetch both regular products and car parts
+    const [products, carParts] = await Promise.all([
       prisma.product.findMany({
         where: { salesmanId: userId },
-        skip,
-        take: limitNum,
-        orderBy: { createdAt: 'desc' },
         include: {
           category: {
             select: { id: true, name: true },
           },
-          _count: {
-            select: { reviews: true, orderItems: true },
-          },
+          orderItems: {
+            select: {
+              id: true,
+              order: {
+                select: { status: true }
+              }
+            }
+          }
         },
       }),
-      prisma.product.count({ where: { salesmanId: userId } }),
+      prisma.carPart.findMany({
+        where: { sellerId: userId },
+        include: {
+          category: {
+            select: { id: true, name: true },
+          },
+          orderItems: {
+            select: {
+              id: true,
+              order: {
+                select: { status: true }
+              }
+            }
+          }
+        },
+      }),
     ]);
+
+    // Compute status function
+    const computeStatus = (item) => {
+      const statuses = item.orderItems.map(oi => oi.order.status);
+      let status = 'IN_STORE';
+      if (statuses.includes('PROCESSING')) status = 'PROCESSING';
+      else if (statuses.includes('PENDING')) status = 'PENDING';
+      else if (statuses.includes('SHIPPED')) status = 'SHIPPED';
+      else if (statuses.includes('DELIVERED')) status = 'DELIVERED';
+      else if (statuses.includes('CANCELLED')) status = 'CANCELLED';
+      return { ...item, computedStatus: status };
+    };
+
+    const enrichedProducts = products.map(computeStatus);
+    const enrichedCarParts = carParts.map(computeStatus);
+
+    // Combine and sort by createdAt descending
+    const allItems = [...enrichedProducts, ...enrichedCarParts].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
+    // Paginate manually
+    const total = allItems.length;
+    const paginatedItems = allItems.slice(skip, skip + limitNum);
 
     res.json({
       success: true,
       data: {
-        products,
+        products: paginatedItems,
         pagination: {
           page: pageNum,
           limit: limitNum,

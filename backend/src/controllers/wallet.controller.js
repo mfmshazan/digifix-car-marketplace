@@ -1,6 +1,8 @@
 import prisma from '../lib/prisma.js';
+import Stripe from 'stripe';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
-import { getStripeClient } from '../lib/stripe.js';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 class WalletController {
 
@@ -345,16 +347,6 @@ class WalletController {
             if (wallet.balance <= 0) return res.status(400).json({ success: false, msg: 'No balance to withdraw' });
             if (!wallet.user.stripeAccountId) {
                 return res.status(400).json({ success: false, msg: 'Stripe account not connected. Complete onboarding first.' });
-            }
-
-            let stripe;
-            try {
-                stripe = getStripeClient();
-            } catch (stripeConfigError) {
-                return res.status(stripeConfigError.status || 500).json({
-                    success: false,
-                    msg: stripeConfigError.message,
-                });
             }
 
             const payoutAmount = wallet.balance;

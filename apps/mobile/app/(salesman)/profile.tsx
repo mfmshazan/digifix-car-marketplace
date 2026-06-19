@@ -70,6 +70,7 @@ const menuItems = [
     icon: "help-circle-outline",
     label: "Help & Support",
     color: "#6B7280",
+    route: "/help-support" as const,
   },
   {
     id: "8",
@@ -392,7 +393,7 @@ export default function SalesmanProfileScreen() {
             key={item.id}
             style={styles.menuItem}
             onPress={() => {
-              if ("route" in item && item.route) router.push(item.route);
+              if ("route" in item && item.route) router.push(item.route as any);
             }}
           >
             <View

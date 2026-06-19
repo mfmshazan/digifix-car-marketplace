@@ -1,22 +1,15 @@
+// Initialize Stripe with the Secret Key
+import Stripe from 'stripe';
 import prisma from '../lib/prisma.js';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
-import { getStripeClient } from '../lib/stripe.js';
 
-const stripeErrorResponse = (res, error, fallbackMessage) => {
-    const status = error.status || 500;
-    return res.status(status).json({
-        success: false,
-        message: status === 503 ? error.message : fallbackMessage,
-        error: error.message
-    });
-};
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 /**
  * Pure service function — creates a Stripe Express connected account.
  * Safe to call from any controller without req/res.
  */
 export const createStripeAccountForSalesman = async (opts = {}) => {
-    const stripe = getStripeClient();
     const account = await stripe.accounts.create({ type: 'express' });
     const accountLink = await stripe.accountLinks.create({
         account: account.id,
@@ -30,7 +23,6 @@ export const createStripeAccountForSalesman = async (opts = {}) => {
 class StripeController {
     stripeTest = async (req, res) => {
         try {
-            const stripe = getStripeClient();
             // Attempt to retrieve the platform's main account details
             const account = await stripe.account.retrieve();
             
@@ -42,7 +34,11 @@ class StripeController {
             });
         } catch (error) {
             console.error("Stripe Connection Error:", error.message);
-            stripeErrorResponse(res, error, "Failed to connect to Stripe.");
+            res.status(500).json({
+                success: false,
+                message: "Failed to connect to Stripe.",
+                error: error.message
+            });
         }
     }
 
@@ -54,13 +50,16 @@ class StripeController {
             res.status(200).json({ success: true, ...result });
         } catch (error) {
             console.error("Error creating connected account:", error.message);
-            stripeErrorResponse(res, error, "Failed to create onboarding session.");
+            res.status(500).json({
+                success: false,
+                message: "Failed to create onboarding session.",
+                error: error.message
+            });
         }
     }
 
     createCheckoutSession = async (req, res) => {
         try {
-            const stripe = getStripeClient();
             const { items, userID, userRole, successUrl, cancelUrl } = req.body;
             const line_items = items.map((item) => {
                 return {
@@ -78,7 +77,7 @@ class StripeController {
             });
 
             // Use URLs passed from the mobile app (dynamically resolved) or fall back to env var
-            const EXPO_HOST = process.env.EXPO_HOST || 'localhost';
+            const EXPO_HOST = process.env.EXPO_HOST || '192.168.43.171';
             const resolvedSuccessUrl = successUrl || `exp://${EXPO_HOST}:8081/--/(customer)/checkout-success?session_id={CHECKOUT_SESSION_ID}`;
             const resolvedCancelUrl = cancelUrl || `exp://${EXPO_HOST}:8081/--/(customer)/cart`;
 
@@ -106,13 +105,12 @@ class StripeController {
             res.json({ url: session.url });
         } catch (error) {
             console.error("Stripe Checkout Error:", error);
-            stripeErrorResponse(res, error, "Stripe checkout failed.");
+            res.status(500).json({ error: error.message });
         }
     };
 
     verifyPaymentAndSaveOrder = async (req, res) => {
         try {
-            const stripe = getStripeClient();
             const { sessionId } = req.params;
             const customerId = req.user.id;
 
@@ -225,7 +223,7 @@ class StripeController {
 
         } catch (error) {
             console.error("Verification & DB Save Error:", error);
-            stripeErrorResponse(res, error, "Failed to verify Stripe payment.");
+            res.status(500).json({ error: error.message });
         }
     };
 }

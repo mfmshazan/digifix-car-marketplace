@@ -1,54 +1,65 @@
 import { io, Socket } from 'socket.io-client';
-import { API_URL } from '../config/api.config';
-
-// Strip "/api" from the URL to get the base server URL (e.g., "http://192.168.x.x:3000")
-const BACKEND_URL = API_URL.replace(/\/api$/, '');
+import { getApiUrl } from '../config/api.config';
 
 let socket: Socket | null = null;
+let joinedUserId: string | null = null;
+let listenersAttached = false;
 
-/**
- * Returns a singleton Socket.io client connected to the backend.
- */
+const getBackendUrl = (): string => getApiUrl().replace(/\/api\/?$/, '');
+
+const joinUserRoom = (userId?: string | null): void => {
+  if (!userId || !socket?.connected) return;
+  socket.emit('join', userId);
+};
+
+const attachSocketListeners = (): void => {
+  if (!socket || listenersAttached) return;
+  listenersAttached = true;
+
+  // 'connect' fires on every successful connection AND every reconnection in socket.io-client v4
+  socket.on('connect', () => {
+    // Re-join user room after every connect/reconnect
+    joinUserRoom(joinedUserId);
+  });
+
+  socket.on('connect_error', (err) => {
+    console.warn('Mobile socket connection error:', err.message);
+  });
+};
+
 export function getSocket(): Socket {
   if (!socket) {
-    socket = io(BACKEND_URL, {
-      transports: ['websocket', 'polling'],
+    socket = io(getBackendUrl(), {
+      transports: ['polling', 'websocket'],
       autoConnect: false,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
     });
-
-    socket.on('connect', () => {
-      console.log('🔌 Mobile socket connected:', socket?.id);
-    });
-
-    socket.on('connect_error', (err) => {
-      console.warn('🔌 Mobile socket connection error:', err.message);
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.log('🔌 Mobile socket disconnected:', reason);
-    });
+    attachSocketListeners();
   }
   return socket;
 }
 
-/**
- * Connects to the backend socket and joins the user's private room.
- * Call this after the customer logs in.
- */
 export function connectSocket(userId: string): Socket {
   const s = getSocket();
+  joinedUserId = userId;
   if (!s.connected) {
     s.connect();
+  } else {
+    joinUserRoom(userId);
   }
-  s.emit('join', userId);
   return s;
 }
 
-/**
- * Disconnects the socket. Call on logout.
- */
 export function disconnectSocket(): void {
-  if (socket?.connected) {
+  if (socket) {
     socket.disconnect();
+    socket.removeAllListeners();
+    socket = null;
+    listenersAttached = false;
   }
+  joinedUserId = null;
 }

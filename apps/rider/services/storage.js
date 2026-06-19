@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { DeviceEventEmitter, Platform } from 'react-native';
+import { Platform } from 'react-native';
 
 // Platform-specific storage
 // Use SecureStore on mobile, localStorage on web
@@ -51,8 +51,6 @@ const KEYS = {
 
 };
 
-export const AUTH_STATE_CHANGED_EVENT = 'digifix:rider-auth-state-changed';
-
 /**
  * Save authentication tokens securely
  */
@@ -60,7 +58,6 @@ export const saveTokens = async (accessToken, refreshToken) => {
     try {
         await storage.setItem(KEYS.ACCESS_TOKEN, accessToken);
         await storage.setItem(KEYS.REFRESH_TOKEN, refreshToken);
-        DeviceEventEmitter.emit(AUTH_STATE_CHANGED_EVENT, { isAuthenticated: true });
     } catch (error) {
         console.error('Error saving tokens:', error);
         throw error;
@@ -101,7 +98,6 @@ export const clearTokens = async () => {
         await storage.removeItem(KEYS.ACCESS_TOKEN);
         await storage.removeItem(KEYS.REFRESH_TOKEN);
         await storage.removeItem(KEYS.USER_DATA);
-        DeviceEventEmitter.emit(AUTH_STATE_CHANGED_EVENT, { isAuthenticated: false });
 
     } catch (error) {
         console.error('Error clearing tokens:', error);

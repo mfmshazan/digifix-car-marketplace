@@ -70,15 +70,15 @@ export default function RealtimeDispatchLayer({ isAuthenticated }) {
     }, [incomingRequest?.requestId]);
 
     const remainingMs = useMemo(() => {
-        if (!incomingRequest?.clientExpiresAt && !incomingRequest?.expiresAt) {
+        if (!incomingRequest?.expiresAt) {
             return 0;
         }
 
         return Math.max(
             0,
-            new Date(incomingRequest.clientExpiresAt || incomingRequest.expiresAt).getTime() - now
+            new Date(incomingRequest.expiresAt).getTime() - now
         );
-    }, [incomingRequest?.clientExpiresAt, incomingRequest?.expiresAt, now]);
+    }, [incomingRequest?.expiresAt, now]);
 
     useEffect(() => {
         if (

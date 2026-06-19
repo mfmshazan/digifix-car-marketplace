@@ -1,19 +1,21 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Alert } from "react-native";
 import { useEffect } from "react";
 import { usePendingOrders } from "../../src/store/pendingOrdersStore";
+import { connectSocket } from "../../src/lib/socket";
+import { getToken } from "../../src/api/storage";
 
-function TabBarIconWithBadge({ 
-  name, 
-  color, 
-  size, 
-  badgeCount 
-}: { 
-  name: keyof typeof Ionicons.glyphMap; 
-  color: string; 
-  size: number; 
-  badgeCount?: number 
+function TabBarIconWithBadge({
+  name,
+  color,
+  size,
+  badgeCount
+}: {
+  name: keyof typeof Ionicons.glyphMap;
+  color: string;
+  size: number;
+  badgeCount?: number
 }) {
   return (
     <View style={{ width: 24, height: 24 }}>
@@ -30,14 +32,56 @@ function TabBarIconWithBadge({
 }
 
 export default function SalesmanTabLayout() {
-  const { pendingCount, refreshPendingCount } = usePendingOrders();
+  const { pendingCount, refreshPendingCount, incrementPendingCount } = usePendingOrders();
 
+  // Initial badge count fetch + 30s polling as fallback
   useEffect(() => {
     refreshPendingCount();
-    // Refresh every 30 seconds
     const interval = setInterval(refreshPendingCount, 30000);
     return () => clearInterval(interval);
   }, [refreshPendingCount]);
+
+  // Real-time socket: connect with the salesman's own userId and listen for new orders
+  useEffect(() => {
+    let cancelled = false;
+
+    const setupSocket = async () => {
+      try {
+        const token = await getToken();
+        if (!token || cancelled) return;
+
+        const decoded = JSON.parse(atob(token.split('.')[1]));
+        const userId: string = decoded?.userId || decoded?.id || decoded?.sub;
+        if (!userId || cancelled) return;
+
+        const socket = connectSocket(userId);
+
+        const handleNewOrder = (payload: { orderNumber: string; total?: number }) => {
+          if (cancelled) return;
+          incrementPendingCount();
+          Alert.alert(
+            '🛒 New Order!',
+            `Order ${payload.orderNumber} received${payload.total ? ` — Rs. ${payload.total.toLocaleString()}` : ''}.`,
+            [{ text: 'OK' }]
+          );
+        };
+
+        socket.on('newOrder', handleNewOrder);
+
+        return () => {
+          socket.off('newOrder', handleNewOrder);
+        };
+      } catch { /* ignore setup errors */ }
+    };
+
+    let cleanup: (() => void) | undefined;
+    setupSocket().then((fn) => { cleanup = fn; });
+
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, [incrementPendingCount]);
 
   return (
     <Tabs
@@ -102,7 +146,7 @@ export default function SalesmanTabLayout() {
             <Ionicons name="cube-outline" size={size} color={color} />
           ),
           headerTitle: "Add New Product",
-          href: null, // Hide from tab bar
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -110,13 +154,23 @@ export default function SalesmanTabLayout() {
         options={{
           title: "Orders",
           tabBarIcon: ({ color, size }) => (
-            <TabBarIconWithBadge 
-              name="receipt" 
-              size={size} 
-              color={color} 
+            <TabBarIconWithBadge
+              name="receipt"
+              size={size}
+              color={color}
               badgeCount={pendingCount}
             />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="wallet"
+        options={{
+          title: "Wallet",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="wallet" size={size} color={color} />
+          ),
+          headerTitle: "My Wallet",
         }}
       />
       <Tabs.Screen

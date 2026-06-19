@@ -10,7 +10,7 @@ import {
     TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Input, SurfaceCard, StatusBadge } from '../components/Common';
+import { Button, Input, Dropdown, SurfaceCard, StatusBadge } from '../components/Common';
 import { authAPI } from '../services/api';
 import { saveTokens, saveUserData } from '../services/storage';
 import { colors, spacing, typography, radii } from '../styles/theme';
@@ -62,7 +62,10 @@ export default function RegisterScreen({ navigation }) {
 
             Alert.alert('Success', 'Account created successfully!', [
                 {
-                    text: 'OK'
+                    text: 'OK',
+                    onPress: () => {
+                        navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+                    }
                 }
             ]);
         } catch (error) {
@@ -147,11 +150,12 @@ export default function RegisterScreen({ navigation }) {
                             </TouchableOpacity>
                         }
                     />
-                    <Input
+                    <Dropdown
                         label="Vehicle Type"
-                        placeholder="Motorcycle, car, bicycle"
+                        placeholder="Select vehicle type"
                         value={formData.vehicleType}
-                        onChangeText={(text) => setFormData({ ...formData, vehicleType: text })}
+                        onSelect={(text) => setFormData({ ...formData, vehicleType: text })}
+                        options={['Car', 'Motorcycle', 'Bicycle']}
                     />
                     <Input
                         label="Vehicle Number"

@@ -3,7 +3,7 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, View, StyleSheet, Platform, DeviceEventEmitter } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
 import { Provider, useDispatch } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -19,7 +19,7 @@ import JobHistoryScreen from './screens/JobHistoryScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import RealtimeDispatchLayer from './components/RealtimeDispatchLayer';
 
-import { AUTH_STATE_CHANGED_EVENT, getAccessToken, getRefreshToken } from './services/storage';
+import { getAccessToken, getRefreshToken } from './services/storage';
 import { requestLocationPermission } from './services/location';
 
 import { flushPendingNavigation, navigationRef } from './services/navigation';
@@ -100,12 +100,6 @@ function AppContent() {
     useEffect(() => {
         checkAuth();
         requestLocationPermission();
-
-        const subscription = DeviceEventEmitter.addListener(AUTH_STATE_CHANGED_EVENT, (event) => {
-            setIsAuthenticated(Boolean(event?.isAuthenticated));
-        });
-
-        return () => subscription.remove();
     }, []);
 
 
@@ -154,49 +148,43 @@ function AppContent() {
                         headerShadowVisible: false,
                         cardStyle: { backgroundColor: colors.background },
                     }}
+                    initialRouteName={isAuthenticated ? 'MainTabs' : 'Login'}
                 >
-                    {isAuthenticated ? (
-                        <>
-                            <Stack.Screen
-                                name="MainTabs"
-                                component={MainTabs}
-                                options={{ headerShown: false }}
-                            />
-                            <Stack.Screen
-                                name="DeliveryDetails"
-                                component={DeliveryDetailsScreen}
-                                options={{ title: 'Delivery Details' }}
-                            />
-                            <Stack.Screen
-                                name="AvailableJobs"
-                                component={AvailableJobsScreen}
-                                options={{ title: 'Available Jobs' }}
-                            />
-                            <Stack.Screen
-                                name="ActiveDelivery"
-                                component={ActiveDeliveryScreen}
-                                options={{ title: 'Active Delivery' }}
-                            />
-                            <Stack.Screen
-                                name="ProofOfDelivery"
-                                component={ProofOfDeliveryScreen}
-                                options={{ title: 'Proof of Delivery' }}
-                            />
-                        </>
-                    ) : (
-                        <>
-                            <Stack.Screen
-                                name="Login"
-                                component={LoginScreen}
-                                options={{ headerShown: false }}
-                            />
-                            <Stack.Screen
-                                name="Register"
-                                component={RegisterScreen}
-                                options={{ headerShown: false }}
-                            />
-                        </>
-                    )}
+                    <Stack.Screen
+                        name="MainTabs"
+                        component={MainTabs}
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="DeliveryDetails"
+                        component={DeliveryDetailsScreen}
+                        options={{ title: 'Delivery Details' }}
+                    />
+                    <Stack.Screen
+                        name="AvailableJobs"
+                        component={AvailableJobsScreen}
+                        options={{ title: 'Available Jobs' }}
+                    />
+                    <Stack.Screen
+                        name="ActiveDelivery"
+                        component={ActiveDeliveryScreen}
+                        options={{ title: 'Active Delivery' }}
+                    />
+                    <Stack.Screen
+                        name="ProofOfDelivery"
+                        component={ProofOfDeliveryScreen}
+                        options={{ title: 'Proof of Delivery' }}
+                    />
+                    <Stack.Screen
+                        name="Login"
+                        component={LoginScreen}
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="Register"
+                        component={RegisterScreen}
+                        options={{ headerShown: false }}
+                    />
                 </Stack.Navigator>
             </NavigationContainer>
             <RealtimeDispatchLayer isAuthenticated={isAuthenticated} />

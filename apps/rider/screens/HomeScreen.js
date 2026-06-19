@@ -299,6 +299,17 @@ export default function HomeScreen({ navigation }) {
                 </View>
             ) : null}
 
+            {/* -- QUICK ACTIONS ------------------------ */}
+            <View style={styles.quickActions}>
+                <TouchableOpacity
+                    style={styles.quickBtn}
+                    onPress={() => navigation.navigate('AvailableJobs')}
+                    activeOpacity={0.85}
+                >
+                    <Ionicons name="briefcase-outline" size={20} color={colors.secondary} />
+                    <Text style={styles.quickBtnText}>Available Jobs</Text>
+                </TouchableOpacity>
+            </View>
         </ScrollView>
     );
 }
@@ -671,6 +682,29 @@ const styles = StyleSheet.create({
     miniCardPay: {
         ...typography.bodySmall,
         fontWeight: '800',
+        color: colors.secondary,
+    },
+
+    // -- Quick Actions -------------------------------------
+    quickActions: {
+        paddingHorizontal: spacing.lg,
+        marginTop: spacing.lg,
+    },
+    quickBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: spacing.sm,
+        backgroundColor: colors.surface,
+        borderRadius: radii.md,
+        paddingVertical: 16,
+        borderWidth: 1,
+        borderColor: colors.border,
+        ...shadows.small,
+    },
+    quickBtnText: {
+        ...typography.body,
+        fontWeight: '700',
         color: colors.secondary,
     },
 

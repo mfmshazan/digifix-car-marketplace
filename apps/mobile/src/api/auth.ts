@@ -129,3 +129,52 @@ export const updateUserProfile = async (
     throw error;
   }
 };
+
+// Forgot Password Flow
+export const requestOtp = async (email: string) => {
+  try {
+    const response = await fetch(`${getApiUrl()}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || 'Failed to request OTP');
+    return result;
+  } catch (error) {
+    console.error('Request OTP error:', error);
+    throw error;
+  }
+};
+
+export const verifyOtp = async (email: string, otp: string) => {
+  try {
+    const response = await fetch(`${getApiUrl()}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || 'Failed to verify OTP');
+    return result;
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    throw error;
+  }
+};
+
+export const resetPassword = async (resetToken: string, newPassword: string) => {
+  try {
+    const response = await fetch(`${getApiUrl()}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resetToken, newPassword }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || 'Failed to reset password');
+    return result;
+  } catch (error) {
+    console.error('Reset password error:', error);
+    throw error;
+  }
+};

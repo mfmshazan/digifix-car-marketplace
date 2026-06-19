@@ -632,6 +632,7 @@ export const createOrder = async (req, res) => {
   try {
     const customerId = req.user.id;
     const { items, addressId, paymentMethod, notes } = req.body;
+    const normalizedPaymentMethod = String(paymentMethod || 'COD').trim().toUpperCase();
 
     if (!items || items.length === 0) {
       return res.status(400).json({
@@ -783,7 +784,7 @@ export const createOrder = async (req, res) => {
     // ==========================================
     // WALLET INTEGRATION: UPFRONT DEDUCTION
     // ==========================================
-    if (paymentMethod === 'WALLET') {
+    if (normalizedPaymentMethod === 'WALLET') {
         const customerWallet = await prisma.wallet.findUnique({ where: { userId: customerId } });
         
         if (!customerWallet || customerWallet.balance < grandTotal) {
@@ -800,7 +801,7 @@ export const createOrder = async (req, res) => {
     const createdOrders = await prisma.$transaction(async (tx) => {
       
       // If WALLET, deduct balance now
-      if (paymentMethod === 'WALLET') {
+      if (normalizedPaymentMethod === 'WALLET') {
           const customerWallet = await tx.wallet.findUnique({ where: { userId: customerId } });
           
           await tx.wallet.update({
@@ -836,10 +837,10 @@ export const createOrder = async (req, res) => {
           // Only the first order carries the delivery fee to avoid double-charging
           total: sellerGroup.subtotal + sellerGroup.serviceCharge + (Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0),
           deliveryFee: Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0,
-          paymentMethod,
+          paymentMethod: normalizedPaymentMethod,
           notes,
           status: 'PENDING',
-          paymentStatus: paymentMethod === 'WALLET' ? 'PAID' : 'PENDING', // Mark paid automatically if Wallet
+          paymentStatus: normalizedPaymentMethod === 'WALLET' ? 'PAID' : 'PENDING', // Mark paid automatically if Wallet
           items: {
             create: sellerGroup.items.map(item => ({
               productId: item.itemType === 'PRODUCT' ? item.productId : null,
@@ -905,7 +906,7 @@ export const createOrder = async (req, res) => {
       total: grandTotal,
       deliveryFee,
       status: 'PENDING',
-      paymentStatus: paymentMethod === 'WALLET' ? 'PAID' : 'PENDING',
+      paymentStatus: normalizedPaymentMethod === 'WALLET' ? 'PAID' : 'PENDING',
       createdAt: createdOrders[0]?.createdAt,
       orders: createdOrders.map(order => ({
         id: order.id,

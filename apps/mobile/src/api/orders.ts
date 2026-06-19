@@ -282,7 +282,7 @@ export const createOrder = async (
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.message || 'Failed to create order');
+      throw new Error(result.error || result.message || 'Failed to create order');
     }
 
     return result;

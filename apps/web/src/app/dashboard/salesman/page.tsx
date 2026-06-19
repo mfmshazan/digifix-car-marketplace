@@ -789,25 +789,60 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [deliveryStatus, setDeliveryStatus] = useState<string | null>(null);
   const [loadingDeliveryStatus, setLoadingDeliveryStatus] = useState(false);
+  const [retryingDelivery, setRetryingDelivery] = useState(false);
+  const [retryMessage, setRetryMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Load delivery status when the card mounts for PROCESSING / SHIPPED orders
   useEffect(() => {
     const eligible = ['PROCESSING', 'SHIPPED', 'CONFIRMED'];
     if (!eligible.includes(order.status)) return;
     let cancelled = false;
-    (async () => {
-      setLoadingDeliveryStatus(true);
+    const loadDeliveryStatus = async (showLoading = false) => {
+      if (showLoading) {
+        setLoadingDeliveryStatus(true);
+      }
       try {
         const res = await deliveryRequestsApi.getDeliveryStatus(order.id);
         if (!cancelled && res.success && res.data?.hasDelivery) {
           setDeliveryStatus(res.data.deliveryStatus);
         }
       } catch { /* silently ignore */ } finally {
-        if (!cancelled) setLoadingDeliveryStatus(false);
+        if (!cancelled && showLoading) {
+          setLoadingDeliveryStatus(false);
+        }
       }
-    })();
-    return () => { cancelled = true; };
+    };
+
+    void loadDeliveryStatus(true);
+    const intervalId = window.setInterval(() => {
+      void loadDeliveryStatus(false);
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [order.id, order.status]);
+
+  const retryDelivery = async () => {
+    setRetryingDelivery(true);
+    setRetryMessage(null);
+    try {
+      const response = await deliveryRequestsApi.retry(order.id);
+      setDeliveryStatus('available');
+      setRetryMessage({
+        type: 'success',
+        text: response?.message || 'Request sent to another connected rider.',
+      });
+    } catch (error: any) {
+      setRetryMessage({
+        type: 'error',
+        text: error?.response?.data?.message || error?.message || 'Failed to find another rider.',
+      });
+    } finally {
+      setRetryingDelivery(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
@@ -891,9 +926,32 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
       {['CONFIRMED', 'PROCESSING', 'SHIPPED'].includes(order.status) && (
         <div className="px-4 pb-4 border-t border-gray-50 pt-3">
           {deliveryStatus ? (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500 font-medium">Delivery Status</span>
-              <DeliveryStatusBadge status={deliveryStatus} />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500 font-medium">Delivery Status</span>
+                <DeliveryStatusBadge status={deliveryStatus} />
+              </div>
+              {['pending', 'available'].includes(deliveryStatus) && (
+                <>
+                  <button
+                    onClick={retryDelivery}
+                    disabled={retryingDelivery}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-xl text-sm font-semibold hover:bg-orange-700 disabled:opacity-60 transition-colors"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${retryingDelivery ? 'animate-spin' : ''}`} />
+                    {retryingDelivery ? 'Searching...' : 'Find Another Rider'}
+                  </button>
+                  {retryMessage && (
+                    <p className={`text-xs rounded-lg px-3 py-2 ${
+                      retryMessage.type === 'success'
+                        ? 'bg-green-50 text-green-700'
+                        : 'bg-red-50 text-red-700'
+                    }`}>
+                      {retryMessage.text}
+                    </p>
+                  )}
+                </>
+              )}
             </div>
           ) : (
             <button

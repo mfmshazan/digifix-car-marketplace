@@ -36,7 +36,7 @@ export default function ProofOfDeliveryScreen({ route, navigation }) {
 
         const result = await ImagePicker.launchCameraAsync({
             allowsEditing: true,
-            quality: 0.7,
+            quality: 0.5,
         });
 
         if (!result.canceled) {

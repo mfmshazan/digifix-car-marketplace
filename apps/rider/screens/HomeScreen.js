@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
     View,
     Text,
@@ -9,6 +9,7 @@ import {
     TouchableOpacity,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
     Button,
@@ -167,6 +168,12 @@ export default function HomeScreen({ navigation }) {
     useEffect(() => {
         dispatch(fetchDriverHome());
     }, [dispatch]);
+
+    useFocusEffect(
+        useCallback(() => {
+            dispatch(fetchDriverHome());
+        }, [dispatch])
+    );
 
     const handleRefresh = () => {
         dispatch(fetchDriverHome());

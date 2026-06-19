@@ -60,18 +60,18 @@ export const getAvailableRiderJobs = async (req, res, next) => {
 export const getActiveRiderJob = async (req, res, next) => {
   try {
     const result = await riderQuery(
-      `SELECT id, order_number, customer_name, customer_phone,
-              pickup_address, pickup_latitude, pickup_longitude,
-              pickup_contact_name, pickup_contact_phone,
-              dropoff_address, dropoff_latitude, dropoff_longitude,
-              distance_km, payment_amount, items_description, special_instructions,
-              status, assigned_at, accepted_at, picked_up_at, created_at,
-              current_latitude, current_longitude
-         FROM "DeliveryJob"
-         LEFT JOIN "Rider" ON "Rider".id = "DeliveryJob".partner_id
-        WHERE partner_id = $1
-          AND "DeliveryJob".status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
-        ORDER BY "DeliveryJob".assigned_at DESC
+      `SELECT dj.id, dj.order_number, dj.customer_name, dj.customer_phone,
+              dj.pickup_address, dj.pickup_latitude, dj.pickup_longitude,
+              dj.pickup_contact_name, dj.pickup_contact_phone,
+              dj.dropoff_address, dj.dropoff_latitude, dj.dropoff_longitude,
+              dj.distance_km, dj.payment_amount, dj.items_description, dj.special_instructions,
+              dj.status, dj.assigned_at, dj.accepted_at, dj.picked_up_at, dj.created_at,
+              rider.current_latitude, rider.current_longitude
+         FROM "DeliveryJob" dj
+         LEFT JOIN "Rider" rider ON rider.id = dj.partner_id
+        WHERE dj.partner_id = $1
+          AND dj.status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
+        ORDER BY dj.assigned_at DESC
         LIMIT 1`,
       [req.user.id]
     );
@@ -608,8 +608,11 @@ export const submitRiderProof = async (req, res, next) => {
     const longitude = body.longitude ?? body.deliveryLongitude ?? body.delivery_longitude ?? null;
     const proofNotes = notes || null;
 
-    if (!photoUrl) {
-      return res.status(400).json({ success: false, message: 'Delivery photo proof is required' });
+    if (!photoUrl && !signatureData) {
+      return res.status(400).json({
+        success: false,
+        message: 'A delivery photo or customer signature is required',
+      });
     }
 
     await client.query('BEGIN');

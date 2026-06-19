@@ -4,6 +4,7 @@ import {
   dispatchJobToNextEligibleDriver,
   dispatchJobToSelectedDriver,
   listEligibleDeliveryPartners,
+  retryJobDispatch,
 } from '../services/riderRealtimeDispatch.js';
 
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
@@ -228,6 +229,60 @@ export const getAvailableDeliveryPartners = async (req, res) => {
       success: false,
       message: 'Failed to fetch available riders',
       error: error.message,
+    });
+  }
+};
+
+export const retryDeliveryRequest = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, salesmanId: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (req.user.role === 'SALESMAN' && order.salesmanId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only retry delivery requests for your own orders',
+      });
+    }
+
+    const jobResult = await riderQuery(
+      `SELECT id
+         FROM "DeliveryJob"
+        WHERE marketplace_order_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [orderId]
+    );
+
+    if (!jobResult.rows.length) {
+      return res.status(404).json({ success: false, message: 'Delivery request not found' });
+    }
+
+    const result = await retryJobDispatch(jobResult.rows[0].id);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Searching for another available rider',
+      data: result.data,
+    });
+  } catch (error) {
+    console.error('Retry delivery request error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to retry delivery request',
     });
   }
 };

@@ -2,6 +2,7 @@ import { URL } from 'url';
 import { WebSocketServer } from 'ws';
 import { getRiderClient, riderQuery } from '../lib/riderDb.js';
 import { verifyRiderAccessToken } from '../lib/riderTokens.js';
+import { recordRiderAvailability } from './riderAvailability.js';
 
 export const REQUEST_WINDOW_SECONDS = Number(process.env.DISPATCH_REQUEST_WINDOW_SECONDS || 30);
 const MATCH_RADIUS_KM = Number(process.env.RIDER_MATCH_RADIUS_KM || 2);
@@ -539,6 +540,12 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
       await client.query(`UPDATE "Rider" SET status = 'busy' WHERE id = $1`, [offer.partner_id]);
       const job = await fetchJobDetails(offer.job_id, client);
       await client.query('COMMIT');
+      await recordRiderAvailability(
+        { query: riderQuery },
+        offer.partner_id,
+        'busy',
+        'delivery_accepted'
+      );
 
       clearOfferTimer(offerId);
       emitToPartner(offer.partner_id, 'order_request_resolved', {

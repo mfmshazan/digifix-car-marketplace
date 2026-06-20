@@ -142,6 +142,13 @@ export const partnerAPI = {
     updateLocation: (latitude, longitude) =>
         api.put('/partner/location', { latitude, longitude }),
 };
+
+export const performanceAPI = {
+    getDashboard: (period = 'week') =>
+        api.get(`/partner/performance?period=${encodeURIComponent(period)}`),
+    flagReview: (reviewId) => api.post(`/ratings/${reviewId}/flag`),
+};
+
 export const jobsAPI = {
     getAvailable: () => api.get('/jobs/available'),
     getActive: () => api.get('/jobs/active'),

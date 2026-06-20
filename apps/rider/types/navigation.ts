@@ -11,6 +11,7 @@ export type RootStackParamList = {
     AssignedDeliveries: undefined;
     ProofOfDelivery: { jobId?: Delivery['id'] } | undefined;
     JobHistory: undefined;
+    Performance: undefined;
     Profile: undefined;
     Login: undefined;
 };

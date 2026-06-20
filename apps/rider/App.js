@@ -16,6 +16,7 @@ import AssignedDeliveriesScreen from './screens/AssignedDeliveriesScreen';
 import ProofOfDeliveryScreen from './screens/ProofOfDeliveryScreen';
 import JobHistoryScreen from './screens/JobHistoryScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import PerformanceDashboardScreen from './screens/PerformanceDashboardScreen';
 import RealtimeDispatchLayer from './components/RealtimeDispatchLayer';
 
 import { getAccessToken, getRefreshToken } from './services/storage';
@@ -60,6 +61,8 @@ function MainTabs() {
                         iconName = focused ? 'car' : 'car-outline';
                     } else if (route.name === 'JobHistory') {
                         iconName = focused ? 'receipt' : 'receipt-outline';
+                    } else if (route.name === 'Performance') {
+                        iconName = focused ? 'analytics' : 'analytics-outline';
                     } else if (route.name === 'Profile') {
                         iconName = focused ? 'person-circle' : 'person-circle-outline';
                     }
@@ -81,6 +84,11 @@ function MainTabs() {
                 name="JobHistory"
                 component={JobHistoryScreen}
                 options={{ tabBarLabel: 'History' }}
+            />
+            <Tab.Screen
+                name="Performance"
+                component={PerformanceDashboardScreen}
+                options={{ tabBarLabel: 'Performance' }}
             />
             <Tab.Screen
                 name="Profile"

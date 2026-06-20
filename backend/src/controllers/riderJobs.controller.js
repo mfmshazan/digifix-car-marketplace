@@ -1,6 +1,7 @@
 import { getRiderClient, riderQuery } from '../lib/riderDb.js';
 import { dispatchAvailableJobs, resolveOffer } from '../services/riderRealtimeDispatch.js';
 import { isFloatInRange, validationError } from '../utils/riderValidation.js';
+import { recordRiderAvailability } from '../services/riderAvailability.js';
 
 const ACTIVE_JOB_STATUSES = ['assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff'];
 
@@ -287,6 +288,12 @@ export const acceptRiderJob = async (req, res, next) => {
 
     await client.query(`UPDATE "Rider" SET status = 'busy' WHERE id = $1`, [req.user.id]);
     await client.query('COMMIT');
+    await recordRiderAvailability(
+      { query: riderQuery },
+      req.user.id,
+      'busy',
+      'delivery_accepted'
+    );
 
     return res.json({
       success: true,
@@ -336,6 +343,12 @@ export const rejectRiderAssignedJob = async (req, res, next) => {
 
     await client.query(`UPDATE "Rider" SET status = 'online' WHERE id = $1 AND status = 'busy'`, [req.user.id]);
     await client.query('COMMIT');
+    await recordRiderAvailability(
+      { query: riderQuery },
+      req.user.id,
+      'online',
+      'delivery_rejected'
+    );
     await dispatchAvailableJobs();
 
     return res.json({ success: true, message: 'Assigned delivery rejected successfully', data: result.rows[0] });
@@ -511,6 +524,14 @@ export const updateRiderJobStatus = async (req, res, next) => {
 
     await syncMarketplaceOrderStatus(client, jobId, status);
     await client.query('COMMIT');
+    if (status === 'delivered' || status === 'failed') {
+      await recordRiderAvailability(
+        { query: riderQuery },
+        req.user.id,
+        'online',
+        status === 'delivered' ? 'delivery_completed' : 'delivery_failed'
+      );
+    }
 
     if (status === 'failed') await dispatchAvailableJobs();
 
@@ -666,6 +687,14 @@ export const submitRiderProof = async (req, res, next) => {
     }
 
     await client.query('COMMIT');
+    if (job.status !== 'delivered') {
+      await recordRiderAvailability(
+        { query: riderQuery },
+        req.user.id,
+        'online',
+        'delivery_completed'
+      );
+    }
     dispatchAvailableJobs().catch((error) => {
       console.error('Failed to dispatch available jobs after proof submission:', error);
     });

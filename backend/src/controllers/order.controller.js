@@ -541,10 +541,16 @@ export const updateOrderStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('Update order status error:', error);
-    res.status(500).json({
+    const databaseUnavailable =
+      error?.code === 'P1001' ||
+      String(error?.message || '').includes("Can't reach database server");
+
+    res.status(databaseUnavailable ? 503 : 500).json({
       success: false,
-      message: 'Failed to update order status',
-      error: error.message
+      message: databaseUnavailable
+        ? 'The database is temporarily unavailable. Please try again shortly.'
+        : 'Failed to update order status',
+      error: error.message,
     });
   }
 };

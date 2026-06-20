@@ -1,5 +1,6 @@
 import { riderQuery } from '../lib/riderDb.js';
 import { dispatchAvailableJobs, cancelPendingOffersForPartner } from '../services/riderRealtimeDispatch.js';
+import { recordRiderAvailability } from '../services/riderAvailability.js';
 import { hasValue, isFloatInRange, validationError } from '../utils/riderValidation.js';
 
 export const getRiderProfile = async (req, res, next) => {
@@ -155,6 +156,12 @@ export const updateRiderStatus = async (req, res, next) => {
     const result = await riderQuery(
       'UPDATE "Rider" SET status = $1 WHERE id = $2 RETURNING status',
       [status, req.user.id]
+    );
+    await recordRiderAvailability(
+      { query: riderQuery },
+      req.user.id,
+      status,
+      status === 'online' ? 'rider_went_online' : 'rider_went_offline'
     );
 
     if (status === 'offline') {

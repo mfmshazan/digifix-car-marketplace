@@ -240,8 +240,11 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
                 onClick={async () => {
                   setOpen(false);
                   setLoading(true);
-                  await onUpdate(order.id, s);
-                  setLoading(false);
+                  try {
+                    await onUpdate(order.id, s);
+                  } finally {
+                    setLoading(false);
+                  }
                 }}
                 className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 ${meta.color}`}
               >
@@ -1009,6 +1012,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
+  const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -1073,9 +1077,19 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
   }, [userId, loadOrders]);
 
   const handleUpdateStatus = async (id: string, status: OrderStatus) => {
-    await ordersApi.updateOrderStatus(id, status);
-    // Optimistically update UI immediately — socket will confirm shortly too
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+    setStatusUpdateError(null);
+
+    try {
+      await ordersApi.updateOrderStatus(id, status);
+      setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to update order status. Please try again.';
+      setStatusUpdateError(message);
+      console.error('Failed to update order status', error);
+    }
   };
 
   const activeOrders = orders.filter(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED');
@@ -1097,6 +1111,20 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
         <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2 text-green-800 text-sm font-medium animate-pulse">
           <span className="text-lg">🔔</span>
           {newOrderAlert}
+        </div>
+      )}
+      {statusUpdateError && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2 text-red-800 text-sm font-medium">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{statusUpdateError}</span>
+          <button
+            type="button"
+            onClick={() => setStatusUpdateError(null)}
+            className="ml-auto text-red-600 hover:text-red-800"
+            aria-label="Dismiss error"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
       {/* Toolbar */}

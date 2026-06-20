@@ -7,7 +7,8 @@ import {
   flagReview,
   changeReviewStatus,
   getDriverSummary,
-  getTargetReviews
+  getTargetReviews,
+  getAdminReviews
 } from '../controllers/review.controller.js';
 
 const router = Router();
@@ -30,6 +31,7 @@ router.post('/:id/flag', flagReview);
 router.get('/driver/summary', authorize('DELIVERY_PARTNER', 'DELIVERY_PERSON', 'RIDER'), getDriverSummary);
 
 // Admin endpoints
+router.get('/admin/all', authorize('ADMIN'), getAdminReviews);
 router.patch('/admin/:id/status', authorize('ADMIN'), changeReviewStatus);
 
 export default router;

@@ -596,8 +596,39 @@ export const getCustomerOrders = async (req, res) => {
             id: true,
             targetId: true,
             targetType: true,
-            rating: true
+            rating: true,
+            comment: true,
+            replies: {
+              select: {
+                id: true,
+                replyText: true,
+                createdAt: true,
+                seller: {
+                  select: { name: true }
+                }
+              }
+            }
           }
+        },
+        riderDeliveryJobs: {
+          select: {
+            id: true,
+            status: true,
+            partnerId: true,
+            partner: {
+              select: {
+                id: true,
+                fullName: true,
+                profilePhotoUrl: true,
+                vehicleType: true,
+                vehicleNumber: true,
+              }
+            }
+          },
+          where: {
+            status: 'delivered'
+          },
+          take: 1
         }
       },
       orderBy: {

@@ -32,7 +32,7 @@ import { connectSocket, disconnectSocket } from '@/lib/socket';
 
 
 
-type AdminTab = 'overview' | 'users' | 'finances' | 'catalog';
+type AdminTab = 'overview' | 'users' | 'finances' | 'catalog' | 'reviews';
 
 interface AdminCancellationNotification {
     id: string;
@@ -164,6 +164,7 @@ export default function AdminDashboard() {
         { id: 'users', label: 'User Management', icon: Users },
         { id: 'finances', label: 'System Finances', icon: DollarSign },
         { id: 'catalog', label: 'Global Catalog', icon: ShoppingBag },
+        { id: 'reviews', label: 'Reviews Moderation', icon: ShieldAlert },
     ];
 
     const unreadCancelCount = cancelNotifs.filter((n) => !n.read).length;
@@ -332,12 +333,14 @@ export default function AdminDashboard() {
                         {activeTab === 'users' && 'User Management'}
                         {activeTab === 'finances' && 'Platform Finances'}
                         {activeTab === 'catalog' && 'Global Catalog'}
+                        {activeTab === 'reviews' && 'Reviews Moderation'}
                     </h1>
                     <p className="text-gray-500 text-sm mt-0.5">
                         {activeTab === 'overview' && 'Monitor key platform metrics and recent activities.'}
                         {activeTab === 'users' && 'Manage customers, salesmen, and account statuses.'}
                         {activeTab === 'finances' && 'Track platform fees, total revenue, and system wallets.'}
                         {activeTab === 'catalog' && 'View all products, categories, and active car parts.'}
+                        {activeTab === 'reviews' && 'Moderate flagged and pending reviews.'}
                     </p>
                 </div>
 
@@ -346,6 +349,7 @@ export default function AdminDashboard() {
                 {activeTab === 'users' && <UsersTab />}
                 {activeTab === 'finances' && <FinancesTab />}
                 {activeTab === 'catalog' && <CatalogTab />}
+                {activeTab === 'reviews' && <ReviewsModerationTab />}
             </main>
         </div>
     );
@@ -958,6 +962,150 @@ function CatalogTab() {
                     </div>
                 )}
             </div>
+        </div>
+    );
+}
+
+function ReviewsModerationTab() {
+    const [reviews, setReviews] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [filters, setFilters] = useState({
+        status: 'PENDING',
+        targetType: '',
+        page: 1,
+    });
+    const [meta, setMeta] = useState<any>(null);
+
+    const fetchReviews = async () => {
+        setLoading(true);
+        try {
+            const params: any = { page: filters.page, limit: 10 };
+            if (filters.status) params.status = filters.status;
+            if (filters.targetType) params.targetType = filters.targetType;
+            
+            const res = await adminApi.getReviews(params);
+            if (res.success) {
+                setReviews(res.data);
+                setMeta(res.meta);
+            }
+        } catch (error) {
+            console.error('Failed to fetch reviews', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchReviews();
+    }, [filters.status, filters.targetType, filters.page]);
+
+    const handleModerate = async (reviewId: string, status: 'PUBLISHED' | 'HIDDEN') => {
+        try {
+            const res = await adminApi.moderateReview(reviewId, status);
+            if (res.success) {
+                fetchReviews();
+            } else {
+                alert(res.message || 'Failed to moderate review');
+            }
+        } catch (error) {
+            console.error('Moderation error:', error);
+            alert('Failed to update review status.');
+        }
+    };
+
+    return (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+                <h2 className="text-lg font-bold text-gray-900">Review Queue</h2>
+                <div className="flex gap-2 bg-gray-50 p-1 rounded-xl border border-gray-200">
+                    {['PENDING', 'FLAGGED', 'PUBLISHED', 'HIDDEN', ''].map((status) => (
+                        <button
+                            key={status}
+                            onClick={() => setFilters(f => ({ ...f, status, page: 1 }))}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${filters.status === status ? 'bg-white shadow-sm text-[#00002E]' : 'text-gray-500 hover:text-gray-900'
+                                }`}
+                        >
+                            {status === '' ? 'All' : status}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {loading ? (
+                <div className="py-10 flex justify-center"><div className="animate-spin w-6 h-6 border-2 border-[#00002E] border-t-transparent rounded-full" /></div>
+            ) : reviews.length === 0 ? (
+                <div className="py-16 text-center text-gray-400 text-sm flex flex-col items-center">
+                    <ShieldAlert className="w-10 h-10 text-gray-200 mb-3" />
+                    <p>No reviews found matching the criteria.</p>
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    {reviews.map((r) => (
+                        <div key={r.id} className="border border-gray-100 rounded-xl p-4 hover:bg-gray-50/50 transition-colors">
+                            <div className="flex justify-between items-start mb-2">
+                                <div>
+                                    <h3 className="font-bold text-gray-900 text-sm">
+                                        Rating: {r.rating} ⭐ 
+                                        <span className="ml-2 px-2 py-0.5 rounded text-[10px] bg-gray-100 text-gray-600 font-medium">
+                                            {r.targetType}
+                                        </span>
+                                        <span className={`ml-2 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                            r.status === 'PUBLISHED' ? 'bg-green-100 text-green-700' :
+                                            r.status === 'HIDDEN' ? 'bg-red-100 text-red-700' :
+                                            r.status === 'FLAGGED' ? 'bg-orange-100 text-orange-700' :
+                                            'bg-amber-100 text-amber-700'
+                                        }`}>
+                                            {r.status}
+                                        </span>
+                                    </h3>
+                                    <p className="text-xs text-gray-500 mt-0.5">By: {r.user?.name || 'Anonymous'} ({r.user?.email})</p>
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                    {new Date(r.createdAt).toLocaleString()}
+                                </div>
+                            </div>
+                            <p className="text-sm text-gray-700 mt-2">{r.comment || <span className="italic text-gray-400">No comment provided</span>}</p>
+                            
+                            <div className="mt-4 flex gap-2">
+                                {r.status !== 'PUBLISHED' && (
+                                    <button
+                                        onClick={() => handleModerate(r.id, 'PUBLISHED')}
+                                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#00002E] text-white hover:bg-[#00002E]/90"
+                                    >
+                                        Approve & Publish
+                                    </button>
+                                )}
+                                {r.status !== 'HIDDEN' && (
+                                    <button
+                                        onClick={() => handleModerate(r.id, 'HIDDEN')}
+                                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                                    >
+                                        Hide Review
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+
+                    {meta && meta.totalPages > 1 && (
+                        <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-6">
+                            <p className="text-xs text-gray-500">Page {meta.page} of {meta.totalPages}</p>
+                            <div className="flex gap-2">
+                                <button disabled={filters.page <= 1} 
+                                    onClick={() => setFilters(f => ({ ...f, page: f.page - 1 }))}
+                                    className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-40">
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <button disabled={filters.page >= meta.totalPages} 
+                                    onClick={() => setFilters(f => ({ ...f, page: f.page + 1 }))}
+                                    className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-40">
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

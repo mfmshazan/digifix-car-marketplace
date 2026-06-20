@@ -60,12 +60,12 @@ export const getAvailableRiderJobs = async (req, res, next) => {
 export const getActiveRiderJob = async (req, res, next) => {
   try {
     const result = await riderQuery(
-      `SELECT id, order_number, customer_name, customer_phone,
+      `SELECT "DeliveryJob".id, order_number, customer_name, customer_phone,
               pickup_address, pickup_latitude, pickup_longitude,
               pickup_contact_name, pickup_contact_phone,
               dropoff_address, dropoff_latitude, dropoff_longitude,
               distance_km, payment_amount, items_description, special_instructions,
-              status, assigned_at, accepted_at, picked_up_at, created_at,
+              "DeliveryJob".status, assigned_at, accepted_at, picked_up_at, "DeliveryJob".created_at,
               current_latitude, current_longitude
          FROM "DeliveryJob"
          LEFT JOIN "Rider" ON "Rider".id = "DeliveryJob".partner_id

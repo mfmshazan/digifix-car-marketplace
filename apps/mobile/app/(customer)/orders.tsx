@@ -13,6 +13,8 @@ import {
   TextInput,
   Alert,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
@@ -550,6 +552,36 @@ export default function OrdersScreen() {
           </View>
         )}
 
+        {hasReviews && item.reviews?.[0] && (
+          <View style={styles.reviewSection}>
+            <View style={styles.reviewHeader}>
+              <Text style={styles.reviewTitle}>Your Rating</Text>
+              <View style={styles.reviewStars}>
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <Ionicons
+                    key={s}
+                    name={s <= (item.reviews?.[0]?.rating || 0) ? "star" : "star-outline"}
+                    size={14}
+                    color="#FF6B35"
+                  />
+                ))}
+              </View>
+            </View>
+            {item.reviews?.[0]?.comment ? (
+              <Text style={styles.reviewComment}>"{item.reviews?.[0]?.comment}"</Text>
+            ) : null}
+            
+            {item.reviews?.[0]?.replies && item.reviews?.[0].replies.length > 0 && (
+              <View style={styles.sellerReplyBox}>
+                <Text style={styles.sellerReplyTitle}>Seller Reply</Text>
+                <Text style={styles.sellerReplyText}>
+                  {item.reviews?.[0].replies[0].replyText}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.trackButton, { flex: 1 }]}
@@ -879,20 +911,26 @@ export default function OrdersScreen() {
         animationType="slide"
         onRequestClose={() => setRatingOrder(null)}
       >
-        <View style={styles.ratingModalOverlay}>
-          <ScrollView contentContainerStyle={styles.ratingModalScroll}>
-            <View style={styles.ratingModalContent}>
-              <View style={styles.ratingModalHeader}>
-                <Text style={styles.ratingModalTitle}>Rate Your Order</Text>
-                <TouchableOpacity onPress={() => setRatingOrder(null)}>
-                  <Ionicons name="close" size={24} color="#666" />
-                </TouchableOpacity>
-              </View>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+          style={styles.ratingModalOverlay}
+        >
+          <View style={[styles.ratingModalContent, { flexShrink: 1, maxHeight: '90%' }]}>
+            <View style={styles.ratingModalHeader}>
+              <Text style={styles.ratingModalTitle}>Rate Your Order</Text>
+              <TouchableOpacity onPress={() => setRatingOrder(null)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
 
-              <Text style={styles.ratingModalSubtitle}>
-                Order: {ratingOrder?.orderNumber}
-              </Text>
+            <Text style={styles.ratingModalSubtitle}>
+              Order: {ratingOrder?.orderNumber}
+            </Text>
 
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
+            >
               {/* 1. PRODUCT / PART CARD */}
               <View style={styles.ratingSectionCard}>
                 <Text style={styles.ratingSectionTitle}>Rate the Items & Shop</Text>
@@ -1118,9 +1156,9 @@ export default function OrdersScreen() {
                   <Text style={styles.ratingSubmitText}>Submit Reviews</Text>
                 )}
               </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1859,5 +1897,51 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  reviewSection: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  reviewHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  reviewTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#475569",
+  },
+  reviewStars: {
+    flexDirection: "row",
+    gap: 2,
+  },
+  reviewComment: {
+    fontSize: 14,
+    color: "#1E293B",
+    fontStyle: "italic",
+    marginBottom: 8,
+  },
+  sellerReplyBox: {
+    backgroundColor: "#EFF6FF",
+    borderLeftWidth: 3,
+    borderLeftColor: "#3B82F6",
+    padding: 10,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  sellerReplyTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1D4ED8",
+    marginBottom: 4,
+  },
+  sellerReplyText: {
+    fontSize: 13,
+    color: "#1E3A8A",
+    lineHeight: 18,
   },
 });

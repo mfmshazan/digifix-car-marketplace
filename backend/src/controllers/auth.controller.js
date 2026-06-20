@@ -189,17 +189,20 @@ const login = async (req, res) => {
       },
     });
 
-    if (!user) {
+    if (!user || user.role === 'DELIVERY_PARTNER' || user.role === 'RIDER') {
       const riderLoginResult = await loginRiderByEmail({ email, password });
 
       if (riderLoginResult && riderLoginResult !== false) {
         return res.json(riderLoginResult);
       }
 
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password',
-      });
+      // If they only exist in Rider table (or don't exist at all), or they are a rider and auth failed
+      if (!user || user.role === 'DELIVERY_PARTNER' || user.role === 'RIDER') {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid email or password',
+        });
+      }
     }
 
     const isWeb = req.headers.origin || req.headers.referer || (req.headers['user-agent'] && req.headers['user-agent'].includes('Mozilla'));

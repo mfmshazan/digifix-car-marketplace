@@ -229,10 +229,6 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
             return deliveryRoute.coordinates;
         }
 
-        if (driverCoordinate && nextStopCoordinate) {
-            return [driverCoordinate, nextStopCoordinate];
-        }
-
         return [];
     }, [deliveryRoute?.coordinates, driverCoordinate, nextStopCoordinate]);
 
@@ -316,7 +312,6 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                         coordinates={routeCoordinates}
                         strokeColor={colors.primary}
                         strokeWidth={5}
-                        geodesic
                     />
                 ) : null}
             </MapView>

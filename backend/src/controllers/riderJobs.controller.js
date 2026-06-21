@@ -553,7 +553,13 @@ export const addRiderJobLocation = async (req, res, next) => {
       return validationError(res, 'Invalid location data');
     }
 
-    const jobCheck = await riderQuery('SELECT id FROM "DeliveryJob" WHERE id = $1 AND partner_id = $2', [jobId, req.user.id]);
+    const jobCheck = await riderQuery(
+      `SELECT id, marketplace_order_id, status
+         FROM "DeliveryJob"
+        WHERE id = $1
+          AND partner_id = $2`,
+      [jobId, req.user.id]
+    );
 
     if (jobCheck.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Job not found or not assigned to you' });
@@ -572,6 +578,35 @@ export const addRiderJobLocation = async (req, res, next) => {
         WHERE id = $3`,
       [latitude, longitude, req.user.id]
     );
+
+    const marketplaceOrderId = jobCheck.rows[0].marketplace_order_id;
+
+    if (marketplaceOrderId && global.io) {
+      const orderResult = await riderQuery(
+        `SELECT "customerId"
+           FROM "Order"
+          WHERE id = $1`,
+        [marketplaceOrderId]
+      );
+      const customerId = orderResult.rows[0]?.customerId;
+
+      if (customerId) {
+        global.io.to(`user:${customerId}`).emit('riderLocationUpdated', {
+          orderId: marketplaceOrderId,
+          deliveryId: jobId,
+          status: jobCheck.rows[0].status,
+          riderId: req.user.id,
+          location: {
+            latitude: Number(latitude),
+            longitude: Number(longitude),
+            accuracy: accuracy === undefined || accuracy === null ? null : Number(accuracy),
+            speed: speed === undefined || speed === null ? null : Number(speed),
+            heading: heading === undefined || heading === null ? null : Number(heading),
+            recordedAt: new Date().toISOString(),
+          },
+        });
+      }
+    }
 
     return res.json({ success: true, message: 'Location tracked successfully' });
   } catch (error) {

@@ -17,6 +17,7 @@ import AssignedDeliveriesScreen from './screens/AssignedDeliveriesScreen';
 import ProofOfDeliveryScreen from './screens/ProofOfDeliveryScreen';
 import JobHistoryScreen from './screens/JobHistoryScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import WalletScreen from './screens/WalletScreen';
 import RealtimeDispatchLayer from './components/RealtimeDispatchLayer';
 
 import { getAccessToken, getRefreshToken } from './services/storage';
@@ -61,6 +62,8 @@ function MainTabs() {
                         iconName = focused ? 'car' : 'car-outline';
                     } else if (route.name === 'JobHistory') {
                         iconName = focused ? 'receipt' : 'receipt-outline';
+                    } else if (route.name === 'Wallet') {
+                        iconName = focused ? 'wallet' : 'wallet-outline';
                     } else if (route.name === 'Profile') {
                         iconName = focused ? 'person-circle' : 'person-circle-outline';
                     }
@@ -82,6 +85,11 @@ function MainTabs() {
                 name="JobHistory"
                 component={JobHistoryScreen}
                 options={{ tabBarLabel: 'History' }}
+            />
+            <Tab.Screen
+                name="Wallet"
+                component={WalletScreen}
+                options={{ tabBarLabel: 'Wallet' }}
             />
             <Tab.Screen
                 name="Profile"

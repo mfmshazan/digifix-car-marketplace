@@ -333,7 +333,7 @@ class WalletController {
      * Uses a two-phase approach: record DB deduction first, then call Stripe.
      * On Stripe failure, the DB deduction is rolled back (idempotent via payoutTxId).
      */
-    substractSaleRevenueFromSalesman = async (req, res) => {
+    triggerPayout = async (req, res) => {
         try {
             const userId = req.user?.id || req.body.userId;
 

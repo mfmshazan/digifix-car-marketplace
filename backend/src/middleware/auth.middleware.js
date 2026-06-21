@@ -1,9 +1,11 @@
 import jwt from 'jsonwebtoken';
+import { verifyRiderAccessToken } from '../lib/riderTokens.js';
+import prisma from '../lib/prisma.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 // Authenticate user
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -15,15 +17,35 @@ const authenticate = (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
-
-    // Map userId from JWT to both id and userId for consistency across controllers
-    req.user = {
-      id: decoded.userId,
-      userId: decoded.userId,
-      role: decoded.role
-    };
-    next();
+    
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+      req.user = {
+        id: decoded.userId,
+        userId: decoded.userId,
+        role: decoded.role
+      };
+      return next();
+    } catch (err) {
+      try {
+        const riderDecoded = verifyRiderAccessToken(token);
+        // Find user by email to get string ID
+        const user = await prisma.user.findUnique({ where: { email: riderDecoded.email } });
+        if (!user) throw new Error('User not synced');
+        req.user = {
+          id: user.id,
+          userId: user.id,
+          role: user.role
+        };
+        return next();
+      } catch (riderErr) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid or expired token',
+        });
+      }
+    }
   } catch (error) {
     return res.status(401).json({
       success: false,

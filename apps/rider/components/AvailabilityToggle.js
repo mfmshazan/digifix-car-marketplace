@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     wrapper: {
         alignItems: 'flex-end',
         gap: spacing.xs,
-        maxWidth: 220,
+        maxWidth: 190,
     },
     topRow: {
         flexDirection: 'row',
@@ -142,10 +142,10 @@ const styles = StyleSheet.create({
         borderRadius: radii.pill,
     },
     dotOnline: {
-        backgroundColor: '#7EF7C6',
+        backgroundColor: colors.success,
     },
     dotOffline: {
-        backgroundColor: 'rgba(255,255,255,0.6)',
+        backgroundColor: colors.textMuted,
     },
     label: {
         ...typography.bodySmall,
@@ -177,9 +177,10 @@ const styles = StyleSheet.create({
     },
     helperText: {
         ...typography.caption,
-        maxWidth: 220,
+        maxWidth: 190,
         color: colors.textSecondary,
         textAlign: 'right',
-        lineHeight: 18,
+        lineHeight: 16,
+        fontSize: 10,
     },
 });

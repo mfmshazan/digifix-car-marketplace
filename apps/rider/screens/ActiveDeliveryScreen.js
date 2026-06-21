@@ -310,31 +310,59 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                 {routeCoordinates.length >= 2 ? (
                     <Polyline
                         coordinates={routeCoordinates}
-                        strokeColor={colors.primary}
-                        strokeWidth={5}
+                        strokeColor={colors.secondary}
+                        strokeWidth={6}
                     />
                 ) : null}
             </MapView>
+
+            <View style={styles.mapOverlay}>
+                <View style={styles.mapOverlayTop}>
+                    <View style={styles.liveRouteBadge}>
+                        <View style={styles.liveRouteDot} />
+                        <Text style={styles.liveRouteText}>LIVE ROUTE</Text>
+                    </View>
+                    <StatusBadge
+                        label={formatStatusLabel(job.status)}
+                        tone={toneForStatus(job.status)}
+                    />
+                </View>
+                <Text style={styles.mapOverlayOrder}>
+                    {job.orderNumber ?? job.order_number}
+                </Text>
+                <View style={styles.mapOverlayMetrics}>
+                    <View style={styles.mapOverlayMetric}>
+                        <Ionicons name="time-outline" size={15} color="#BFDBFE" />
+                        <Text style={styles.mapOverlayMetricText}>
+                            {etaMinutes ? `${etaMinutes} min` : 'Calculating ETA'}
+                        </Text>
+                    </View>
+                    <View style={styles.mapOverlayMetric}>
+                        <Ionicons name="navigate-outline" size={15} color="#BFDBFE" />
+                        <Text style={styles.mapOverlayMetricText}>
+                            {formatDistance(distanceRemainingKm)}
+                        </Text>
+                    </View>
+                </View>
+            </View>
 
             <ScrollView
                 style={styles.sheet}
                 contentContainerStyle={styles.sheetContent}
                 showsVerticalScrollIndicator={false}
             >
+                <View style={styles.sheetHandle} />
                 <SectionHeader
-                    eyebrow="Active Delivery"
-                    title={job.orderNumber ?? job.order_number}
-                    subtitle="Monitor your live route, progress, and next stop."
-                    right={
-                        <StatusBadge
-                            label={formatStatusLabel(job.status)}
-                            tone={toneForStatus(job.status)}
-                        />
-                    }
+                    eyebrow="Route operations"
+                    title="Delivery Control"
+                    subtitle="Follow the road route, update each checkpoint, and keep customer tracking accurate."
                 />
 
                 <View style={styles.metricGrid}>
                     <SurfaceCard style={styles.metricCard}>
+                        <View style={styles.metricIcon}>
+                            <Ionicons name="time-outline" size={18} color={colors.secondary} />
+                        </View>
                         <Text style={styles.metricLabel}>ETA</Text>
                         <Text style={styles.metricValue}>
                             {etaMinutes ? `${etaMinutes} min` : isLoadingRoute ? 'Loading' : 'Calculating'}
@@ -342,6 +370,9 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                     </SurfaceCard>
 
                     <SurfaceCard style={styles.metricCard}>
+                        <View style={[styles.metricIcon, styles.distanceMetricIcon]}>
+                            <Ionicons name="navigate-outline" size={18} color={colors.accent} />
+                        </View>
                         <Text style={styles.metricLabel}>Distance Left</Text>
                         <Text style={styles.metricValue}>
                             {formatDistance(distanceRemainingKm)}
@@ -349,14 +380,21 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                     </SurfaceCard>
 
                     <SurfaceCard style={styles.metricCardWide}>
-                        <Text style={styles.metricLabel}>Driver Location</Text>
-                        <Text style={styles.metricValueSmall}>
-                            {driverCoordinate
-                                ? `${driverCoordinate.latitude.toFixed(5)}, ${driverCoordinate.longitude.toFixed(5)}`
-                                : isResolvingRoute
-                                    ? 'Resolving GPS...'
-                                    : 'Unavailable'}
-                        </Text>
+                        <View style={styles.locationMetricRow}>
+                            <View style={[styles.metricIcon, styles.locationMetricIcon]}>
+                                <Ionicons name="radio-outline" size={18} color={colors.successDark} />
+                            </View>
+                            <View style={styles.locationMetricCopy}>
+                                <Text style={styles.metricLabel}>Live GPS Broadcast</Text>
+                                <Text style={styles.metricValueSmall}>
+                                    {driverCoordinate
+                                        ? `${driverCoordinate.latitude.toFixed(5)}, ${driverCoordinate.longitude.toFixed(5)}`
+                                        : isResolvingRoute
+                                            ? 'Resolving GPS...'
+                                            : 'Unavailable'}
+                                </Text>
+                            </View>
+                        </View>
                     </SurfaceCard>
                 </View>
 
@@ -404,7 +442,8 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                             style={styles.callButton}
                             onPress={() => Linking.openURL(`tel:${job.customerPhone ?? job.customer_phone}`)}
                         >
-                            <Text style={styles.callButtonText}>📞  Call Customer</Text>
+                            <Ionicons name="call-outline" size={18} color="#FFFFFF" />
+                            <Text style={styles.callButtonText}>Call Customer</Text>
                         </TouchableOpacity>
                     ) : null}
                 </SurfaceCard>
@@ -476,6 +515,58 @@ const styles = StyleSheet.create({
     map: {
         height: 320,
     },
+    mapOverlay: {
+        position: 'absolute',
+        top: spacing.md,
+        left: spacing.md,
+        right: spacing.md,
+        zIndex: 5,
+        borderRadius: radii.md,
+        padding: spacing.md,
+        backgroundColor: 'rgba(15,23,42,0.94)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+    },
+    mapOverlayTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: spacing.sm,
+    },
+    liveRouteBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    liveRouteDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: colors.success,
+    },
+    liveRouteText: {
+        ...typography.overline,
+        color: '#A7F3D0',
+    },
+    mapOverlayOrder: {
+        ...typography.h3,
+        color: colors.textOnDark,
+        marginTop: spacing.sm,
+    },
+    mapOverlayMetrics: {
+        flexDirection: 'row',
+        gap: spacing.md,
+        marginTop: spacing.sm,
+    },
+    mapOverlayMetric: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
+    mapOverlayMetricText: {
+        ...typography.caption,
+        color: colors.textOnDarkMuted,
+    },
     mapMarkerWrap: {
         alignItems: 'center',
     },
@@ -514,6 +605,15 @@ const styles = StyleSheet.create({
         padding: spacing.lg,
         paddingBottom: spacing.xl,
     },
+    sheetHandle: {
+        width: 42,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: colors.borderStrong,
+        alignSelf: 'center',
+        marginTop: -8,
+        marginBottom: spacing.lg,
+    },
     metricGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -524,9 +624,34 @@ const styles = StyleSheet.create({
         flexGrow: 1,
         flexBasis: '47%',
         minWidth: 140,
+        padding: spacing.md,
     },
     metricCardWide: {
         width: '100%',
+    },
+    metricIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.secondarySoft,
+        marginBottom: spacing.sm,
+    },
+    distanceMetricIcon: {
+        backgroundColor: colors.accentSoft,
+    },
+    locationMetricRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    locationMetricIcon: {
+        backgroundColor: colors.successSoft,
+        marginBottom: 0,
+        marginRight: spacing.sm,
+    },
+    locationMetricCopy: {
+        flex: 1,
     },
     metricLabel: {
         ...typography.caption,
@@ -551,6 +676,7 @@ const styles = StyleSheet.create({
     },
     detailCard: {
         marginBottom: spacing.md,
+        padding: spacing.lg,
     },
     cardTitle: {
         ...typography.h3,
@@ -573,10 +699,13 @@ const styles = StyleSheet.create({
     },
     callButton: {
         marginTop: spacing.sm,
-        backgroundColor: colors.primary,
-        borderRadius: 10,
-        paddingVertical: spacing.sm,
+        backgroundColor: colors.secondary,
+        borderRadius: radii.sm,
+        paddingVertical: 12,
         alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row',
+        gap: spacing.sm,
     },
     callButtonText: {
         ...typography.body,

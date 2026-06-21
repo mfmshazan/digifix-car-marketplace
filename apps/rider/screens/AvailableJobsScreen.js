@@ -7,11 +7,15 @@ import {
     RefreshControl,
     Alert,
 } from 'react-native';
-import { SurfaceCard, EmptyState, StatusBadge, SectionHeader } from '../components/Common';
+import { SurfaceCard, EmptyState, StatusBadge, ScreenHero } from '../components/Common';
 import { jobsAPI } from '../services/api';
 import { colors, spacing, typography } from '../styles/theme';
 
-const formatCurrency = (value) => `$${Number(value || 0).toFixed(2)}`;
+const formatCurrency = (value) =>
+    `Rs. ${Number(value || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
 
 export default function AvailableJobsScreen() {
     const [jobs, setJobs] = useState([]);
@@ -69,10 +73,11 @@ export default function AvailableJobsScreen() {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <SectionHeader
-                    eyebrow="Dispatch"
+                <ScreenHero
+                    eyebrow="Dispatch opportunities"
                     title="Available Jobs"
-                    subtitle="Fresh opportunities ready for acceptance."
+                    subtitle="Nearby open work is listed for awareness. Acceptance still happens through a direct incoming offer."
+                    icon="radio-outline"
                 />
             </View>
 
@@ -98,6 +103,7 @@ export default function AvailableJobsScreen() {
                                 ? 'We are checking the latest open jobs for your area.'
                                 : 'There are no open jobs at the moment. Pull to refresh and check again soon.'
                         }
+                        icon="radio-outline"
                     />
                 }
             />
@@ -130,7 +136,8 @@ const styles = StyleSheet.create({
         marginTop: spacing.md,
     },
     listContent: {
-        padding: spacing.lg,
+        paddingHorizontal: spacing.lg,
+        paddingBottom: 120,
         gap: spacing.md,
     },
     jobCard: {

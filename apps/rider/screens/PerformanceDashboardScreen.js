@@ -70,6 +70,7 @@ const Card = ({ children, style }) => (
 
 const MetricCard = ({ metric, value }) => (
     <Card style={styles.metricCard}>
+        <View style={[styles.metricAccent, { backgroundColor: metric.color }]} />
         <View style={[styles.metricIcon, { backgroundColor: `${metric.color}18` }]}>
             <Ionicons name={metric.icon} size={20} color={metric.color} />
         </View>
@@ -550,9 +551,9 @@ export default function PerformanceDashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: colors.surface },
+    safeArea: { flex: 1, backgroundColor: colors.primary },
     container: { flex: 1, backgroundColor: colors.background },
-    content: { paddingBottom: spacing.xl },
+    content: { paddingBottom: 120 },
     hero: {
         backgroundColor: colors.primary,
         paddingHorizontal: spacing.lg,
@@ -619,12 +620,23 @@ const styles = StyleSheet.create({
     card: {
         backgroundColor: colors.surface,
         borderRadius: radii.lg,
-        ...shadows.medium,
+        borderWidth: 1,
+        borderColor: colors.borderSubtle,
+        ...shadows.small,
     },
     metricCard: {
+        position: 'relative',
+        overflow: 'hidden',
         width: '48.5%',
         minHeight: 132,
         padding: spacing.md,
+    },
+    metricAccent: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 3,
     },
     metricIcon: {
         width: 40,
@@ -750,9 +762,12 @@ const styles = StyleSheet.create({
     },
     chartDate: { ...typography.caption, fontSize: 10 },
     reviewCard: {
-        paddingVertical: spacing.md,
-        borderTopWidth: 1,
-        borderTopColor: colors.border,
+        padding: spacing.md,
+        borderRadius: radii.sm,
+        backgroundColor: colors.surfaceMuted,
+        borderWidth: 1,
+        borderColor: colors.borderSubtle,
+        marginTop: spacing.sm,
     },
     reviewHeader: {
         flexDirection: 'row',

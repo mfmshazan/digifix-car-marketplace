@@ -31,7 +31,7 @@ const menuItems = [
     icon: "location-outline",
     label: "Saved Addresses",
     color: "#1A1A1A",
-    route: null,
+    route: "/(customer)/addresses" as const,
   },
   {
     id: "3",

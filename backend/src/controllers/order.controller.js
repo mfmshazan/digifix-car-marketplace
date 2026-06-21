@@ -647,19 +647,27 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // Address is optional - verify only if provided
-    let validAddressId = null;
-    if (addressId) {
-      const address = await prisma.address.findFirst({
-        where: {
-          id: addressId,
-          userId: customerId
-        }
+    if (!addressId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please add and select a delivery address before placing your order',
       });
-      if (address) {
-        validAddressId = address.id;
-      }
     }
+
+    const address = await prisma.address.findFirst({
+      where: {
+        id: addressId,
+        userId: customerId,
+      },
+    });
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        message: 'The selected delivery address is invalid. Please choose one of your saved addresses',
+      });
+    }
+    const validAddressId = address.id;
 
     // Get item IDs
     const itemIds = items.map(item => item.productId);
@@ -860,9 +868,7 @@ export const createOrder = async (req, res) => {
           }
         };
         
-        if (validAddressId) {
-          orderData.addressId = validAddressId;
-        }
+        orderData.addressId = validAddressId;
         
         const order = await tx.order.create({
           data: orderData,

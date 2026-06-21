@@ -541,10 +541,16 @@ export const updateOrderStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('Update order status error:', error);
-    res.status(500).json({
+    const databaseUnavailable =
+      error?.code === 'P1001' ||
+      String(error?.message || '').includes("Can't reach database server");
+
+    res.status(databaseUnavailable ? 503 : 500).json({
       success: false,
-      message: 'Failed to update order status',
-      error: error.message
+      message: databaseUnavailable
+        ? 'The database is temporarily unavailable. Please try again shortly.'
+        : 'Failed to update order status',
+      error: error.message,
     });
   }
 };
@@ -632,6 +638,7 @@ export const createOrder = async (req, res) => {
   try {
     const customerId = req.user.id;
     const { items, addressId, paymentMethod, notes } = req.body;
+    const normalizedPaymentMethod = String(paymentMethod || 'COD').trim().toUpperCase();
 
     if (!items || items.length === 0) {
       return res.status(400).json({
@@ -640,19 +647,27 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // Address is optional - verify only if provided
-    let validAddressId = null;
-    if (addressId) {
-      const address = await prisma.address.findFirst({
-        where: {
-          id: addressId,
-          userId: customerId
-        }
+    if (!addressId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please add and select a delivery address before placing your order',
       });
-      if (address) {
-        validAddressId = address.id;
-      }
     }
+
+    const address = await prisma.address.findFirst({
+      where: {
+        id: addressId,
+        userId: customerId,
+      },
+    });
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        message: 'The selected delivery address is invalid. Please choose one of your saved addresses',
+      });
+    }
+    const validAddressId = address.id;
 
     // Get item IDs
     const itemIds = items.map(item => item.productId);
@@ -783,7 +798,7 @@ export const createOrder = async (req, res) => {
     // ==========================================
     // WALLET INTEGRATION: UPFRONT DEDUCTION
     // ==========================================
-    if (paymentMethod === 'WALLET') {
+    if (normalizedPaymentMethod === 'WALLET') {
         const customerWallet = await prisma.wallet.findUnique({ where: { userId: customerId } });
         
         if (!customerWallet || customerWallet.balance < grandTotal) {
@@ -800,7 +815,7 @@ export const createOrder = async (req, res) => {
     const createdOrders = await prisma.$transaction(async (tx) => {
       
       // If WALLET, deduct balance now
-      if (paymentMethod === 'WALLET') {
+      if (normalizedPaymentMethod === 'WALLET') {
           const customerWallet = await tx.wallet.findUnique({ where: { userId: customerId } });
           
           await tx.wallet.update({
@@ -836,10 +851,10 @@ export const createOrder = async (req, res) => {
           // Only the first order carries the delivery fee to avoid double-charging
           total: sellerGroup.subtotal + sellerGroup.serviceCharge + (Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0),
           deliveryFee: Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0,
-          paymentMethod,
+          paymentMethod: normalizedPaymentMethod,
           notes,
           status: 'PENDING',
-          paymentStatus: paymentMethod === 'WALLET' ? 'PAID' : 'PENDING', // Mark paid automatically if Wallet
+          paymentStatus: normalizedPaymentMethod === 'WALLET' ? 'PAID' : 'PENDING', // Mark paid automatically if Wallet
           items: {
             create: sellerGroup.items.map(item => ({
               productId: item.itemType === 'PRODUCT' ? item.productId : null,
@@ -853,9 +868,7 @@ export const createOrder = async (req, res) => {
           }
         };
         
-        if (validAddressId) {
-          orderData.addressId = validAddressId;
-        }
+        orderData.addressId = validAddressId;
         
         const order = await tx.order.create({
           data: orderData,
@@ -905,7 +918,7 @@ export const createOrder = async (req, res) => {
       total: grandTotal,
       deliveryFee,
       status: 'PENDING',
-      paymentStatus: paymentMethod === 'WALLET' ? 'PAID' : 'PENDING',
+      paymentStatus: normalizedPaymentMethod === 'WALLET' ? 'PAID' : 'PENDING',
       createdAt: createdOrders[0]?.createdAt,
       orders: createdOrders.map(order => ({
         id: order.id,

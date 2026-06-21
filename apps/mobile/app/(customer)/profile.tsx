@@ -31,7 +31,7 @@ const menuItems = [
     icon: "location-outline",
     label: "Saved Addresses",
     color: "#1A1A1A",
-    route: null,
+    route: "/(customer)/addresses" as const,
   },
   {
     id: "3",
@@ -365,7 +365,7 @@ export default function ProfileScreen() {
             key={item.id}
             style={styles.menuItem}
             onPress={() => {
-              if (item.route) router.push(item.route);
+              if (item.route) router.push(item.route as any);
             }}
           >
             <View

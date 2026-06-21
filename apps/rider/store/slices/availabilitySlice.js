@@ -1,8 +1,10 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { partnerAPI } from '../../services/api';
 
-const normalizeAvailabilityStatus = (status) =>
-    status === 'offline' ? 'offline' : 'online';
+const normalizeAvailabilityStatus = (status) => {
+    if (status === 'busy') return 'busy';
+    return status === 'online' ? 'online' : 'offline';
+};
 
 export const hydrateAvailability = createAsyncThunk(
     'availability/hydrate',
@@ -86,6 +88,7 @@ const availabilitySlice = createSlice({
 
 export const { setStatus, initStatus, clearSyncError } = availabilitySlice.actions;
 export const selectIsOnline = (state) => state.availability.status === 'online';
+export const selectIsBusy = (state) => state.availability.status === 'busy';
 export const selectStatus = (state) => state.availability.status;
 export const selectIsSyncing = (state) => state.availability.isSyncing;
 export const selectSyncError = (state) => state.availability.lastSyncError;

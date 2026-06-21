@@ -37,8 +37,6 @@ type ActionRequestState = {
 };
 
 const ACTION_ORDER: readonly DeliveryWorkflowAction[] = [
-    DeliveryWorkflowAction.REJECT,
-    DeliveryWorkflowAction.ACCEPT,
     DeliveryWorkflowAction.ARRIVE_PICKUP,
     DeliveryWorkflowAction.PICK_UP,
     DeliveryWorkflowAction.START_TRANSIT,

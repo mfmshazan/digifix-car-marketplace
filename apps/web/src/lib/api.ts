@@ -305,6 +305,11 @@ export const deliveryRequestsApi = {
     return response.data;
   },
 
+  retry: async (orderId: string) => {
+    const response = await api.post(`/delivery-requests/${orderId}/retry`);
+    return response.data;
+  },
+
   // Get full delivery job status for an order (salesman / customer)
   getDeliveryStatus: async (orderId: string) => {
     const response = await api.get(`/tracking/order/${orderId}/delivery-status`);

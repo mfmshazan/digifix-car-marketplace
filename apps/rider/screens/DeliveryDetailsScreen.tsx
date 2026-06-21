@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { useDispatch, useSelector } from 'react-redux';
-import { SectionHeader, StatusBadge } from '../components/Common';
+import { ScreenHero, StatusBadge } from '../components/Common';
 import DeliveryActionControls from '../components/DeliveryActionControls';
 import DeliveryDetailSection from '../components/DeliveryDetailSection';
 import { colors, spacing, typography } from '../styles/theme';
@@ -44,7 +45,11 @@ const toneForStatus = (status: DeliveryStatus) => {
     return 'warning' as const;
 };
 
-const formatCurrency = (value: number | null) => `$${Number(value || 0).toFixed(2)}`;
+const formatCurrency = (value: number | null) =>
+    `Rs. ${Number(value || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
 
 export default function DeliveryDetailsScreen({
     route,
@@ -120,23 +125,37 @@ export default function DeliveryDetailsScreen({
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
         >
-            <SectionHeader
-                eyebrow="Delivery Details"
+            <ScreenHero
+                eyebrow="Delivery brief"
                 title={delivery.orderNumber}
-                subtitle="Review the full order before taking action."
+                subtitle="Review the complete route, contacts, payout, and instructions before taking action."
+                icon="document-text-outline"
                 right={
                     <StatusBadge
                         label={formatStatus(delivery.status)}
                         tone={toneForStatus(delivery.status)}
                     />
                 }
-            />
+            >
+                <View style={styles.heroMetaRow}>
+                    <View style={styles.heroMetaItem}>
+                        <Ionicons name="wallet-outline" size={16} color="#BFDBFE" />
+                        <Text style={styles.heroMetaText}>{formatCurrency(delivery.paymentAmount)}</Text>
+                    </View>
+                    <View style={styles.heroMetaItem}>
+                        <Ionicons name="navigate-outline" size={16} color="#BFDBFE" />
+                        <Text style={styles.heroMetaText}>
+                            {delivery.distanceKm ? `${delivery.distanceKm.toFixed(1)} km` : 'Route pending'}
+                        </Text>
+                    </View>
+                </View>
+            </ScreenHero>
 
-            <DeliveryDetailSection title="Order ID">
+            <DeliveryDetailSection title="Order ID" icon="barcode-outline">
                 <Text style={styles.primaryText}>{delivery.orderNumber}</Text>
             </DeliveryDetailSection>
 
-            <DeliveryDetailSection title="Pickup Information">
+            <DeliveryDetailSection title="Pickup Information" icon="storefront-outline">
                 <Text style={styles.primaryText}>{delivery.pickupAddress}</Text>
                 {delivery.pickupContactName ? (
                     <Text style={styles.secondaryText}>
@@ -153,13 +172,17 @@ export default function DeliveryDetailsScreen({
                 ) : null}
             </DeliveryDetailSection>
 
-            <DeliveryDetailSection title="Customer / Drop-off Information">
+            <DeliveryDetailSection
+                title="Customer / Drop-off Information"
+                icon="home-outline"
+                iconColor={colors.danger}
+            >
                 <Text style={styles.primaryText}>{delivery.dropoffAddress}</Text>
                 <Text style={styles.secondaryText}>Customer: {delivery.customerName}</Text>
                 <Text style={styles.secondaryText}>Phone: {delivery.customerPhone}</Text>
             </DeliveryDetailSection>
 
-            <DeliveryDetailSection title="Item Details">
+            <DeliveryDetailSection title="Item Details" icon="cube-outline" iconColor={colors.accent}>
                 <Text style={styles.primaryText}>
                     {delivery.itemSummary || 'No item details provided'}
                 </Text>
@@ -171,13 +194,13 @@ export default function DeliveryDetailsScreen({
                 ) : null}
             </DeliveryDetailSection>
 
-            <DeliveryDetailSection title="Special Instructions">
+            <DeliveryDetailSection title="Special Instructions" icon="alert-circle-outline" iconColor={colors.warning}>
                 <Text style={styles.primaryText}>
                     {delivery.specialInstructions || 'No special instructions'}
                 </Text>
             </DeliveryDetailSection>
 
-            <DeliveryDetailSection title="Current Status">
+            <DeliveryDetailSection title="Current Status" icon="pulse-outline" iconColor={colors.success}>
                 <Text style={styles.primaryText}>{formatStatus(delivery.status)}</Text>
                 {delivery.assignedAt ? (
                     <Text style={styles.metaText}>
@@ -251,7 +274,25 @@ const styles = StyleSheet.create({
     },
     metaText: {
         ...typography.bodySmall,
-        color: colors.primary,
+        color: colors.secondaryDark,
+        fontWeight: '700',
+    },
+    heroMetaRow: {
+        flexDirection: 'row',
+        gap: spacing.lg,
+        marginTop: spacing.lg,
+        paddingTop: spacing.md,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.12)',
+    },
+    heroMetaItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    heroMetaText: {
+        ...typography.bodySmall,
+        color: colors.textOnDarkMuted,
         fontWeight: '700',
     },
 });

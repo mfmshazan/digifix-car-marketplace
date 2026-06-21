@@ -11,7 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Button, Input, Dropdown, SurfaceCard, SectionHeader, StatusBadge } from '../components/Common';
-import { partnerAPI, authAPI } from '../services/api';
+import { partnerAPI, authAPI, reviewsAPI } from '../services/api';
 import { clearTokens, getRefreshToken } from '../services/storage';
 import { colors, spacing, typography, radii } from '../styles/theme';
 
@@ -39,6 +39,7 @@ export default function ProfileScreen({ navigation }) {
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [formData, setFormData] = useState(createProfileForm());
+    const [feedbackSummary, setFeedbackSummary] = useState(null);
 
     useEffect(() => {
         loadProfile();
@@ -46,12 +47,19 @@ export default function ProfileScreen({ navigation }) {
 
     const loadProfile = async () => {
         try {
-            const response = await partnerAPI.getProfile();
-            const profile = response.data.data;
+            const profileRes = await partnerAPI.getProfile();
+            const profile = profileRes.data.data;
             setPartner(profile);
             setFormData(createProfileForm(profile));
         } catch (error) {
             Alert.alert('Error', 'Failed to load profile');
+        }
+        // Load feedback summary separately so it never blocks the profile page
+        try {
+            const feedbackRes = await reviewsAPI.getDriverSummary();
+            setFeedbackSummary(feedbackRes.data?.data || null);
+        } catch (_) {
+            // Silently ignore — feedback is optional
         }
     };
 
@@ -350,6 +358,52 @@ export default function ProfileScreen({ navigation }) {
                 />
             </SurfaceCard>
 
+
+            <View style={styles.statsRow}>
+                <SurfaceCard style={styles.statCard}>
+                    <Text style={styles.statValue}>{partner.total_deliveries}</Text>
+                    <Text style={styles.statLabel}>Total Deliveries</Text>
+                </SurfaceCard>
+                <SurfaceCard style={styles.statCard}>
+                    <Text style={styles.statValue}>{formatRating(partner.rating)}</Text>
+                    <Text style={styles.statLabel}>Rating</Text>
+                </SurfaceCard>
+            </View>
+
+            {/* Feedback Summary */}
+            {!editing && feedbackSummary && (
+                <View style={styles.feedbackSection}>
+                    <SectionHeader
+                        title="Customer Feedback"
+                        subtitle="Recent ratings and comments from your deliveries"
+                    />
+                    {feedbackSummary.recentFeedback?.length > 0 ? (
+                        feedbackSummary.recentFeedback.map((review, index) => (
+                            <SurfaceCard key={index} style={styles.feedbackCard}>
+                                <View style={styles.feedbackHeader}>
+                                    <View style={styles.starsRow}>
+                                        {[1, 2, 3, 4, 5].map((s) => (
+                                            <Text key={s} style={{ color: s <= review.rating ? '#FFB800' : '#E2E8F0', fontSize: 16 }}>★</Text>
+                                        ))}
+                                    </View>
+                                    <Text style={styles.feedbackDate}>
+                                        {new Date(review.createdAt).toLocaleDateString()}
+                                    </Text>
+                                </View>
+                                {review.comment ? (
+                                    <Text style={styles.feedbackComment}>"{review.comment}"</Text>
+                                ) : (
+                                    <Text style={styles.feedbackCommentEmpty}>No comment provided</Text>
+                                )}
+                            </SurfaceCard>
+                        ))
+                    ) : (
+                        <Text style={styles.noFeedbackText}>No recent feedback.</Text>
+                    )}
+                </View>
+            )}
+
+
             {editing ? (
                 <View style={styles.actions}>
                     <Button
@@ -574,6 +628,41 @@ const styles = StyleSheet.create({
     actionButton: {
         marginBottom: 0,
     },
+    feedbackSection: {
+        marginBottom: spacing.xl,
+    },
+    feedbackCard: {
+        padding: spacing.md,
+        marginBottom: spacing.sm,
+    },
+    feedbackHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: spacing.xs,
+    },
+    starsRow: {
+        flexDirection: 'row',
+        gap: 2,
+    },
+    feedbackDate: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+    },
+    feedbackComment: {
+        ...typography.bodyMedium,
+        fontStyle: 'italic',
+        color: colors.text,
+    },
+    feedbackCommentEmpty: {
+        ...typography.bodyMedium,
+        fontStyle: 'italic',
+        color: colors.textLight,
+    },
+    noFeedbackText: {
+        ...typography.bodyMedium,
+        color: colors.textSecondary,
+        textAlign: 'center',
+        marginTop: spacing.md,
+    },
 });
-
-

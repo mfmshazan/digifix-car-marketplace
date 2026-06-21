@@ -372,5 +372,55 @@ export const adminApi = {
     const response = await api.post(`/orders/${orderId}/reject-cancel`, { message });
     return response.data;
   },
+
+  // Get all reviews for moderation (admin only)
+  getReviews: async (params?: { status?: string; targetType?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/reviews/admin/all', { params });
+    return response.data;
+  },
+
+  // Approve or hide a review (admin only)
+  moderateReview: async (reviewId: string, status: 'PUBLISHED' | 'HIDDEN') => {
+    const response = await api.patch(`/reviews/admin/${reviewId}/status`, { status });
+    return response.data;
+  },
+};
+
+// ─── Reviews Types ────────────────────────────────────────────────────────────
+
+export interface ReviewReply {
+  id: string;
+  replyText: string;
+  createdAt: string;
+  seller: { id: string; name: string; avatar: string | null };
+}
+
+export interface Review {
+  id: string;
+  targetId: string;
+  targetType: string;
+  rating: number;
+  comment: string | null;
+  title: string | null;
+  status: string;
+  createdAt: string;
+  user: { id: string; name: string; avatar: string | null };
+  replies: ReviewReply[];
+}
+
+// ─── Reviews API ──────────────────────────────────────────────────────────────
+
+export const reviewsApi = {
+  /** Fetch all PUBLISHED reviews for a given target (store owner ID, product ID, etc.) */
+  getTargetReviews: async (targetId: string): Promise<{ success: boolean; data: Review[] }> => {
+    const response = await api.get(`/reviews/target/${targetId}`);
+    return response.data;
+  },
+
+  /** Submit a salesman reply to a review */
+  replyToReview: async (reviewId: string, replyText: string): Promise<{ success: boolean; data: ReviewReply }> => {
+    const response = await api.post(`/reviews/${reviewId}/reply`, { replyText });
+    return response.data;
+  },
 };
 

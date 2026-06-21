@@ -237,7 +237,9 @@ export const jobsAPI = {
         }
     },
 };
+
+export const reviewsAPI = {
+    getDriverSummary: () => api.get('/reviews/driver/summary'),
+};
+
 export default api;
-
-
-

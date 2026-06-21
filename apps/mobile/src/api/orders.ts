@@ -9,11 +9,16 @@ export interface OrderItem {
   quantity: number;
   price: number;
   total: number;
+  productId?: string;
+  carPartId?: string;
+  product?: any;
+  carPart?: any;
 }
 
 export interface Order {
   id: string;
   orderNumber: string;
+  salesmanId?: string;
   customer: string;
   customerEmail?: string;
   items: OrderItem[];
@@ -24,6 +29,8 @@ export interface Order {
   status: string;
   paymentStatus: string;
   createdAt: string;
+  reviews?: any[];
+  riderDeliveryJobs?: any[];
 }
 
 export interface SalesmanSalesSummary {

@@ -596,7 +596,46 @@ export const getCustomerOrders = async (req, res) => {
             }
           }
         },
-        address: true
+        address: true,
+        reviews: {
+          select: {
+            id: true,
+            targetId: true,
+            targetType: true,
+            rating: true,
+            comment: true,
+            replies: {
+              select: {
+                id: true,
+                replyText: true,
+                createdAt: true,
+                seller: {
+                  select: { name: true }
+                }
+              }
+            }
+          }
+        },
+        riderDeliveryJobs: {
+          select: {
+            id: true,
+            status: true,
+            partnerId: true,
+            partner: {
+              select: {
+                id: true,
+                fullName: true,
+                profilePhotoUrl: true,
+                vehicleType: true,
+                vehicleNumber: true,
+              }
+            }
+          },
+          where: {
+            status: 'delivered'
+          },
+          take: 1
+        }
       },
       orderBy: {
         createdAt: 'desc'

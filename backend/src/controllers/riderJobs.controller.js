@@ -73,6 +73,7 @@ export const getActiveRiderJob = async (req, res, next) => {
         WHERE dj.partner_id = $1
           AND dj.status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
         ORDER BY dj.assigned_at DESC
+
         LIMIT 1`,
       [req.user.id]
     );

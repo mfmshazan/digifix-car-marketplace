@@ -1,18 +1,72 @@
 import prisma from './lib/prisma.js';
 import bcrypt from 'bcryptjs';
 
-const categories = [
-  { name: 'Brakes', description: 'Brake pads, rotors, calipers, and brake fluid', icon: '🛑' },
-  { name: 'Engine Parts', description: 'Engine components and accessories', icon: '⚙️' },
-  { name: 'Filters', description: 'Oil filters, air filters, fuel filters', icon: '🔧' },
-  { name: 'Lighting', description: 'Headlights, taillights, bulbs', icon: '💡' },
-  { name: 'Suspension', description: 'Shocks, struts, springs', icon: '🚗' },
-  { name: 'Electrical', description: 'Batteries, alternators, starters', icon: '🔋' },
-  { name: 'Tires & Wheels', description: 'Tires, rims, wheel accessories', icon: '🛞' },
-  { name: 'Fluids & Chemicals', description: 'Motor oil, coolant, lubricants', icon: '🛢️' },
-  { name: 'Exhaust', description: 'Mufflers, catalytic converters, pipes', icon: '💨' },
-  { name: 'Interior', description: 'Seats, floor mats, steering wheels', icon: '🪑' },
+const categoriesData = [
+  {
+    name: 'Essential Maintenance & Service',
+    icon: '🔧',
+    children: [
+      { name: 'Filters & Fluids', description: 'Engine Oil, Oil Filters, Air Filters, Fuel Filters, Coolant, Brake Fluid', icon: '🛢️' },
+      { name: 'Braking System', description: 'Brake Pads, Brake Discs/Rotors, Brake Calipers, ABS Sensors', icon: '🛑' },
+      { name: 'Belts & Chains', description: 'Timing Belts, Serpentine Belts, Tensioners', icon: '⛓️' },
+    ]
+  },
+  {
+    name: 'Engine & Drivetrain',
+    icon: '⚙️',
+    children: [
+      { name: 'Engine Components', description: 'Spark Plugs, Gaskets, Pistons, Valves, Cylinder Heads', icon: '⚙️' },
+      { name: 'Transmission', description: 'Gearboxes (Manual/Auto), Clutch Kits, Torque Converters', icon: '⚙️' },
+      { name: 'Fuel System', description: 'Fuel Pumps, Injectors, Fuel Tanks, Carburetors', icon: '⛽' },
+      { name: 'Cooling & Heating', description: 'Radiators, Water Pumps, Thermostats, Intercoolers', icon: '❄️' },
+    ]
+  },
+  {
+    name: 'Suspension & Steering',
+    icon: '🚜',
+    children: [
+      { name: 'Suspension', description: 'Shock Absorbers, Struts, Control Arms, Bushings, Coil Springs', icon: '🚗' },
+      { name: 'Steering', description: 'Steering Racks, Tie Rod Ends, Power Steering Pumps', icon: '🚜' },
+      { name: 'Wheels & Tires', description: 'New/Used Tires, Alloy Wheels, Hubcaps, Lug Nuts', icon: '🛞' },
+    ]
+  },
+  {
+    name: 'Electrical & Lighting',
+    icon: '💡',
+    children: [
+      { name: 'Lighting', description: 'Headlights, Tail Lights, Fog Lights, LED Upgrades, Bulbs', icon: '💡' },
+      { name: 'Electrical', description: 'Batteries, Alternators, Starter Motors, Fuses, Wiring Harnesses', icon: '🔋' },
+      { name: 'Sensors (ADAS)', description: 'Parking Sensors, O2 Sensors, MAF Sensors, TPMS', icon: '📡' },
+    ]
+  },
+  {
+    name: 'Body & Exterior',
+    icon: '🚘',
+    children: [
+      { name: 'Body Panels', description: 'Bumpers, Grilles, Hoods/Bonnets, Fenders, Doors', icon: '🚘' },
+      { name: 'Mirrors & Glass', description: 'Side Mirrors, Windshields, Door Glass, Wipers', icon: '🪟' },
+      { name: 'Accessories', description: 'Roof Racks, Side Steps, Tow Hitches, Spoilers', icon: '🎒' },
+    ]
+  },
+  {
+    name: 'Interior & Comfort',
+    icon: '🪑',
+    children: [
+      { name: 'Upholstery', description: 'Seat Covers, Floor Mats, Dashboard Covers', icon: '🪑' },
+      { name: 'Dash & Controls', description: 'Steering Wheels, Gear Knobs, Switches, Gauges', icon: '🕹️' },
+      { name: 'AC System', description: 'AC Compressors, Evaporators, Blower Motors', icon: '🌬️' },
+    ]
+  },
+  {
+    name: 'Modern & EV Specific',
+    icon: '⚡',
+    children: [
+      { name: 'EV Components', description: 'High-Voltage Batteries, Charging Cables, Inverters, Thermal Management', icon: '⚡' },
+    ]
+  }
 ];
+
+
 
 // Mock cars with Sri Lankan number plates
 const cars = [
@@ -92,7 +146,7 @@ const getShopACarParts = (carId, categoryMap, sellerId) => [
     condition: 'NEW',
     images: ['https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800'],
     carId,
-    categoryId: categoryMap['Brakes'],
+    categoryId: categoryMap['Braking System'],
     sellerId,
   },
   {
@@ -104,7 +158,7 @@ const getShopACarParts = (carId, categoryMap, sellerId) => [
     condition: 'NEW',
     images: ['https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800'],
     carId,
-    categoryId: categoryMap['Brakes'],
+    categoryId: categoryMap['Braking System'],
     sellerId,
   },
   {
@@ -117,7 +171,7 @@ const getShopACarParts = (carId, categoryMap, sellerId) => [
     condition: 'NEW',
     images: ['https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=800'],
     carId,
-    categoryId: categoryMap['Engine Parts'],
+    categoryId: categoryMap['Engine Components'],
     sellerId,
   },
   {
@@ -130,7 +184,7 @@ const getShopACarParts = (carId, categoryMap, sellerId) => [
     condition: 'NEW',
     images: ['https://images.unsplash.com/photo-1487754180451-c456f719a1fc?w=800'],
     carId,
-    categoryId: categoryMap['Filters'],
+    categoryId: categoryMap['Filters & Fluids'],
     sellerId,
   },
   {
@@ -143,7 +197,7 @@ const getShopACarParts = (carId, categoryMap, sellerId) => [
     condition: 'NEW',
     images: ['https://images.unsplash.com/photo-1487754180451-c456f719a1fc?w=800'],
     carId,
-    categoryId: categoryMap['Filters'],
+    categoryId: categoryMap['Filters & Fluids'],
     sellerId,
   },
   {
@@ -169,7 +223,7 @@ const getShopACarParts = (carId, categoryMap, sellerId) => [
     condition: 'NEW',
     images: ['https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=800'],
     carId,
-    categoryId: categoryMap['Exhaust'],
+    categoryId: categoryMap['Engine Components'], // Moving exhaust to engine components
     sellerId,
   },
   {
@@ -182,7 +236,7 @@ const getShopACarParts = (carId, categoryMap, sellerId) => [
     condition: 'NEW',
     images: ['https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800'],
     carId,
-    categoryId: categoryMap['Tires & Wheels'],
+    categoryId: categoryMap['Wheels & Tires'],
     sellerId,
   },
 ];
@@ -249,7 +303,7 @@ const getShopBCarParts = (carId, categoryMap, sellerId) => [
     condition: 'NEW',
     images: ['https://images.unsplash.com/photo-1489824904134-891ab64532f1?w=800'],
     carId,
-    categoryId: categoryMap['Interior'],
+    categoryId: categoryMap['Upholstery'],
     sellerId,
   },
 ];
@@ -270,19 +324,57 @@ async function seed() {
   // Create categories
   console.log('Creating categories...');
   const categoryMap = {};
-  for (const category of categories) {
-    const created = await prisma.category.upsert({
-      where: { name: category.name },
+  for (const parentData of categoriesData) {
+    const parent = await prisma.category.upsert({
+      where: { name: parentData.name },
       update: {},
-      create: category,
+      create: {
+        name: parentData.name,
+        icon: parentData.icon,
+      },
     });
-    categoryMap[created.name] = created.id;
-    console.log(`  ✅ ${created.name}`);
+    console.log(`  ✅ Parent: ${parent.name}`);
+
+    if (parentData.children) {
+      for (const childData of parentData.children) {
+        const child = await prisma.category.upsert({
+          where: { name: childData.name },
+          update: {},
+          create: {
+            ...childData,
+            parentId: parent.id,
+          },
+        });
+        categoryMap[child.name] = child.id;
+        console.log(`    ✅ Child: ${child.name}`);
+      }
+    }
   }
+
 
   // Create test users
   console.log('\nCreating test users...');
   const hashedPassword = await bcrypt.hash('password123', 10);
+
+  // ADMIN
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@gmail.com' },
+    update: {
+      password: hashedPassword,
+      name: 'System Admin',
+      role: 'ADMIN',
+      isVerified: true,
+    },
+    create: {
+      email: 'admin@gmail.com',
+      password: hashedPassword,
+      name: 'System Admin',
+      phone: '+94770000000',
+      role: 'ADMIN',
+      isVerified: true,
+    },
+  });
+  console.log(`  ✅ Admin: ${admin.email}`);
 
   // SHOP A - Salesman 1 (Brakes, Engine, Filters, Lighting)
   const salesmanA = await prisma.user.upsert({
@@ -542,7 +634,8 @@ async function seed() {
   console.log('='.repeat(50));
 
   console.log('\n📦 SUMMARY:');
-  console.log(`   - ${categories.length} categories`);
+  console.log(`   - ${categoriesData.length} parent categories`);
+
   console.log(`   - ${createdCars.length} cars`);
   console.log(`   - ${shopAPartsCount} parts (Shop A)`);
   console.log(`   - ${shopBPartsCount} parts (Shop B)`);
@@ -563,6 +656,10 @@ async function seed() {
   console.log('');
   console.log('👤 CUSTOMER:');
   console.log('   Email:    customer@gmail.com');
+  console.log('   Password: password123');
+  console.log('');
+  console.log('🛡️  ADMIN:');
+  console.log('   Email:    admin@gmail.com');
   console.log('   Password: password123');
   console.log('');
   console.log('─'.repeat(50));

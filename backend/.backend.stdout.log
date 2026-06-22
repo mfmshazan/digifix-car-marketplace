@@ -1,0 +1,7 @@
+🛠️  Development mode: Auth rate limiters are bypassed.
+[dotenv@17.2.3] injecting env (11) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+🚀 Server running on port 3000
+🔌 Socket.io ready on port 3000
+📱 Mobile access: http://0.0.0.0:3000/api
+🔌 Socket connected: 5Wds9WWJS-xeTT6XAAAB
+👤 Socket 5Wds9WWJS-xeTT6XAAAB joined room user:cmoewk563000au086l7jup2n0

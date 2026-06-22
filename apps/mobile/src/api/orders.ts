@@ -9,11 +9,16 @@ export interface OrderItem {
   quantity: number;
   price: number;
   total: number;
+  productId?: string;
+  carPartId?: string;
+  product?: any;
+  carPart?: any;
 }
 
 export interface Order {
   id: string;
   orderNumber: string;
+  salesmanId?: string;
   customer: string;
   customerEmail?: string;
   items: OrderItem[];
@@ -24,6 +29,8 @@ export interface Order {
   status: string;
   paymentStatus: string;
   createdAt: string;
+  reviews?: any[];
+  riderDeliveryJobs?: any[];
 }
 
 export interface SalesmanSalesSummary {
@@ -66,12 +73,12 @@ export interface SalesSummaryResponse {
 export const getSalesmanSalesSummary = async (date?: string): Promise<SalesSummaryResponse> => {
   try {
     const token = await getToken();
-    
+
     if (!token) {
       throw new Error('Not authenticated');
     }
 
-    const url = date 
+    const url = date
       ? `${getApiUrl()}/orders/salesman/summary?date=${date}`
       : `${getApiUrl()}/orders/salesman/summary`;
 
@@ -87,7 +94,7 @@ export const getSalesmanSalesSummary = async (date?: string): Promise<SalesSumma
 
     // Get raw text first to handle non-JSON responses
     const text = await response.text();
-    
+
     // Check if response is HTML (server not reachable or wrong endpoint)
     if (text.startsWith('<') || text.startsWith('<!')) {
       console.error('Received HTML instead of JSON. Server may not be reachable.');
@@ -102,7 +109,7 @@ export const getSalesmanSalesSummary = async (date?: string): Promise<SalesSumma
       console.error('Invalid JSON response:', text.substring(0, 200));
       throw new Error('Invalid server response');
     }
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to get sales summary');
     }
@@ -122,7 +129,7 @@ export const getSalesmanOrders = async (
 ) => {
   try {
     const token = await getToken();
-    
+
     if (!token) {
       throw new Error('Not authenticated');
     }
@@ -141,7 +148,7 @@ export const getSalesmanOrders = async (
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to get orders');
     }
@@ -157,7 +164,7 @@ export const getSalesmanOrders = async (
 export const updateOrderStatus = async (orderId: string, status: string) => {
   try {
     const token = await getToken();
-    
+
     if (!token) {
       throw new Error('Not authenticated');
     }
@@ -172,7 +179,7 @@ export const updateOrderStatus = async (orderId: string, status: string) => {
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to update order status');
     }
@@ -184,6 +191,22 @@ export const updateOrderStatus = async (orderId: string, status: string) => {
   }
 };
 
+// Get salesman pending orders count (lightweight - avoids connection exhaustion)
+export const getSalesmanPendingCount = async (): Promise<number> => {
+  try {
+    const token = await getToken();
+    if (!token) return 0;
+    const response = await fetch(`${getApiUrl()}/orders/salesman/pending-count`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    });
+    const result = await response.json();
+    return result.success ? (result.count ?? 0) : 0;
+  } catch {
+    return 0;
+  }
+};
+
 // Get customer orders
 export const getCustomerOrders = async (
   status?: string,
@@ -192,7 +215,7 @@ export const getCustomerOrders = async (
 ) => {
   try {
     const token = await getToken();
-    
+
     if (!token) {
       throw new Error('Not authenticated');
     }
@@ -211,7 +234,7 @@ export const getCustomerOrders = async (
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to get orders');
     }
@@ -223,16 +246,16 @@ export const getCustomerOrders = async (
   }
 };
 
-// Create order (address is optional)
+// Create order using an address owned by the signed-in customer
 export const createOrder = async (
   items: { productId: string; quantity: number }[],
   paymentMethod: string,
-  addressId?: string,
+  addressId: string,
   notes?: string
 ) => {
   try {
     const token = await getToken();
-    
+
     if (!token) {
       throw new Error('Not authenticated');
     }
@@ -240,16 +263,14 @@ export const createOrder = async (
     const orderData: {
       items: { productId: string; quantity: number }[];
       paymentMethod: string;
-      addressId?: string;
+      addressId: string;
       notes?: string;
     } = {
       items,
-      paymentMethod
+      paymentMethod,
+      addressId,
     };
 
-    if (addressId) {
-      orderData.addressId = addressId;
-    }
     if (notes) {
       orderData.notes = notes;
     }
@@ -264,14 +285,158 @@ export const createOrder = async (
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
-      throw new Error(result.message || 'Failed to create order');
+      throw new Error(result.error || result.message || 'Failed to create order');
     }
 
     return result;
   } catch (error) {
     console.error('Create order error:', error);
+    throw error;
+  }
+};
+
+// Get rider's live location for a given order (customer live tracking)
+export const getRiderLiveLocation = async (orderId: string) => {
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const response = await fetch(`${getApiUrl()}/tracking/order/${orderId}/rider-location`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || result.message || 'Failed to get rider location');
+    return result;
+  } catch (error) {
+    console.warn('getRiderLiveLocation error:', error);
+    throw error;
+  }
+};
+
+// Get full delivery status for a given order (customer + salesman)
+export const getOrderDeliveryStatus = async (orderId: string) => {
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const response = await fetch(`${getApiUrl()}/tracking/order/${orderId}/delivery-status`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || result.message || 'Failed to get delivery status');
+    return result;
+  } catch (error) {
+    console.warn('getOrderDeliveryStatus error:', error);
+    throw error;
+  }
+};
+
+// Create a delivery request for an order (salesman dispatches a rider from mobile)
+export const createDeliveryRequest = async (data: {
+  orderId: string;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  pickupAddress?: string;
+  pickupContactName?: string;
+  pickupContactPhone?: string;
+  deliveryLatitude: number;
+  deliveryLongitude: number;
+  deliveryAddress: string;
+  packageNotes?: string;
+  paymentType: 'PREPAID' | 'COD';
+  estimatedEarnings?: number;
+  customerName?: string;
+  customerPhone?: string;
+  partnerId?: number;
+}) => {
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const response = await fetch(`${getApiUrl()}/delivery-requests`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      // Prefer the detailed backend error over the generic outer message
+      const detail = result.error || result.message || 'Failed to create delivery request';
+      throw new Error(detail);
+    }
+    return result;
+  } catch (error) {
+    console.error('createDeliveryRequest error:', error);
+    throw error;
+  }
+};
+
+// Request cancellation — requires a reason so admin can evaluate the request
+export const getAvailableRiders = async (pickupLatitude: number, pickupLongitude: number) => {
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const query = `pickupLatitude=${encodeURIComponent(pickupLatitude)}&pickupLongitude=${encodeURIComponent(pickupLongitude)}`;
+    const response = await fetch(`${getApiUrl()}/delivery-requests/available-riders?${query}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || result.message || 'Failed to load available riders');
+    return result;
+  } catch (error) {
+    console.error('getAvailableRiders error:', error);
+    throw error;
+  }
+};
+
+export const cancelOrder = async (orderId: string, reason: string) => {
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    const response = await fetch(`${getApiUrl()}/orders/${orderId}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reason }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to submit cancellation request');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Cancel order error:', error);
     throw error;
   }
 };

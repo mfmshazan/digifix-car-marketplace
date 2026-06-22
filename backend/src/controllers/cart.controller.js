@@ -43,6 +43,8 @@ const getCart = async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
+    // The cart can hold either a Product or a CarPart, so we flatten both
+    // database shapes into one response shape that the frontend can render.
     const normalizedItems = cartItems.map((item) => {
       const isCarPart = item.itemType === 'CAR_PART';
       const data = isCarPart ? item.carPart : item.product;
@@ -69,11 +71,16 @@ const getCart = async (req, res) => {
       return sum + (item.discountPrice || item.price) * item.quantity;
     }, 0);
 
+    // The fee is calculated on the server so every client sees the same total.
+    const serviceCharge = parseFloat((total * 0.10).toFixed(2));
+
     res.json({
       success: true,
       data: {
         items: normalizedItems,
-        total,
+        subtotal: total,
+        serviceCharge,
+        total: total + serviceCharge,
         itemCount: normalizedItems.reduce((sum, item) => sum + item.quantity, 0),
       },
     });
@@ -125,12 +132,13 @@ const addToCart = async (req, res) => {
       });
     }
 
-    // Check if already in cart & upsert in one go
-    const existingWhere = isCarPart
-      ? { userId_carPartId: { userId, carPartId: productId } }
-      : { userId_productId: { userId, productId } };
-
-    const existingItem = await prisma.cartItem.findUnique({ where: existingWhere, select: { id: true, quantity: true } });
+    // FIX: Use findFirst instead of findUnique because optional fields (productId/carPartId) 
+    // cannot be queried using compound unique constraints in Prisma.
+    const existingItem = await prisma.cartItem.findFirst({
+      where: isCarPart
+        ? { userId: userId, carPartId: productId }
+        : { userId: userId, productId: productId },
+    });
 
     let cartItem;
     if (existingItem) {

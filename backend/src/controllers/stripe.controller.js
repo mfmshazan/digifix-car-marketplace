@@ -1,0 +1,293 @@
+// Initialize Stripe with the Secret Key
+import Stripe from 'stripe';
+import prisma from '../lib/prisma.js';
+import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+/**
+ * Pure service function — creates a Stripe Express connected account.
+ * Safe to call from any controller without req/res.
+ */
+export const createStripeAccountForSalesman = async (opts = {}) => {
+    const account = await stripe.accounts.create({ type: 'express' });
+    const accountLink = await stripe.accountLinks.create({
+        account: account.id,
+        refresh_url: opts.refreshUrl || 'http://localhost:3000/reauth',
+        return_url: opts.returnUrl || 'http://localhost:3000/dashboard',
+        type: 'account_onboarding',
+    });
+    return { accountId: account.id, onboardingUrl: accountLink.url };
+};
+
+class StripeController {
+    stripeTest = async (req, res) => {
+        try {
+            // Attempt to retrieve the platform's main account details
+            const account = await stripe.account.retrieve();
+            
+            res.status(200).json({
+                success: true,
+                message: "Stripe is successfully connected!",
+                accountId: account.id,
+                accountSettings: account.settings.dashboard
+            });
+        } catch (error) {
+            console.error("Stripe Connection Error:", error.message);
+            res.status(500).json({
+                success: false,
+                message: "Failed to connect to Stripe.",
+                error: error.message
+            });
+        }
+    }
+
+    createConnectedAccount = async (req, res) => {
+        try {
+            console.log("Creating connected account with Stripe...");
+            const { refreshUrl, returnUrl } = req.body || {};
+            const result = await createStripeAccountForSalesman({ refreshUrl, returnUrl });
+            res.status(200).json({ success: true, ...result });
+        } catch (error) {
+            console.error("Error creating connected account:", error.message);
+            res.status(500).json({
+                success: false,
+                message: "Failed to create onboarding session.",
+                error: error.message
+            });
+        }
+    }
+
+    createCheckoutSession = async (req, res) => {
+        try {
+            const { items, addressId, successUrl, cancelUrl } = req.body;
+            const userID = req.user.id;
+            const userRole = String(req.user.role || 'customer').toLowerCase();
+
+            if (!Array.isArray(items) || items.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Your cart is empty.',
+                });
+            }
+
+            if (!addressId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Please add and select a delivery address before payment.',
+                });
+            }
+
+            const address = await prisma.address.findFirst({
+                where: {
+                    id: addressId,
+                    userId: userID,
+                },
+                select: { id: true },
+            });
+
+            if (!address) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'The selected delivery address is invalid.',
+                });
+            }
+
+            const line_items = items.map((item) => {
+                return {
+                    price_data: {
+                        currency: 'lkr',
+                        product_data: {
+                            // Enforcing official template naming
+                            name: `Digifix - ${item.name}`,
+                        },
+                        // Math.round is required to prevent decimal errors if prices have floating points
+                        unit_amount: Math.round((item.discountPrice ? item.discountPrice : item.price) * 100),
+                    },
+                    quantity: item.quantity,
+                };
+            });
+
+            // Use URLs passed from the mobile app (dynamically resolved) or fall back to env var
+            const EXPO_HOST = process.env.EXPO_HOST || '192.168.43.171';
+            const resolvedSuccessUrl = successUrl || `exp://${EXPO_HOST}:8081/--/(customer)/checkout-success?session_id={CHECKOUT_SESSION_ID}`;
+            const resolvedCancelUrl = cancelUrl || `exp://${EXPO_HOST}:8081/--/(customer)/cart`;
+
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                line_items: line_items,
+                mode: 'payment',
+                
+                metadata: {
+                    userID: userID,
+                    userRole: userRole,
+                    addressId: address.id,
+                    cartSummary: JSON.stringify(items.map(i => ({ productId: i.productId, itemType: i.itemType || 'PRODUCT', quantity: i.quantity })))
+                },
+
+                payment_intent_data: {
+                    transfer_group: `ORDER_${userID}_${userRole}`, 
+                },
+                // Stripe will automatically redirect the user to these deep links
+                success_url: resolvedSuccessUrl,
+                cancel_url: resolvedCancelUrl,
+            });
+            
+            console.log("Checkout session created with metadata:", session.metadata);
+            
+            res.json({ url: session.url });
+        } catch (error) {
+            console.error("Stripe Checkout Error:", error);
+            res.status(500).json({ error: error.message });
+        }
+    };
+
+    verifyPaymentAndSaveOrder = async (req, res) => {
+        try {
+            const { sessionId } = req.params;
+            const customerId = req.user.id;
+
+            const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+            if (session.payment_status !== 'paid') {
+                return res.json({ success: false, message: 'Payment not completed.' });
+            }
+
+            const { cartSummary, addressId, userID } = session.metadata || {};
+            if (userID !== customerId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'This payment session does not belong to the signed-in customer.',
+                });
+            }
+
+            if (!cartSummary || !addressId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Payment session is missing delivery information.',
+                });
+            }
+
+            const address = await prisma.address.findFirst({
+                where: {
+                    id: addressId,
+                    userId: customerId,
+                },
+                select: { id: true },
+            });
+            if (!address) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'The delivery address for this payment is no longer available.',
+                });
+            }
+
+            const parsedItems = JSON.parse(cartSummary);
+
+            // Separate product IDs and car part IDs
+            const productIds = parsedItems.filter(i => i.itemType !== 'CAR_PART').map(i => i.productId);
+            const carPartIds = parsedItems.filter(i => i.itemType === 'CAR_PART').map(i => i.productId);
+
+            const [products, carParts] = await Promise.all([
+                productIds.length > 0
+                    ? prisma.product.findMany({ where: { id: { in: productIds } } })
+                    : Promise.resolve([]),
+                carPartIds.length > 0
+                    ? prisma.carPart.findMany({ where: { id: { in: carPartIds } } })
+                    : Promise.resolve([]),
+            ]);
+
+            // Build unified item lookup: productId -> item info with sellerId
+            const itemMap = {};
+            products.forEach(p => { itemMap[p.id] = { ...p, sellerId: p.salesmanId, type: 'PRODUCT' }; });
+            carParts.forEach(cp => { itemMap[cp.id] = { ...cp, type: 'CAR_PART' }; });
+
+            // Group cart items by seller
+            const groupedBySeller = {};
+            for (const item of parsedItems) {
+                const found = itemMap[item.productId];
+                if (!found) continue;
+                if (!groupedBySeller[found.sellerId]) {
+                    groupedBySeller[found.sellerId] = { sellerId: found.sellerId, items: [] };
+                }
+                const price = found.discountPrice || found.price;
+                groupedBySeller[found.sellerId].items.push({
+                    productId: item.productId,
+                    itemType: item.itemType || 'PRODUCT',
+                    name: found.name,
+                    quantity: item.quantity,
+                    price,
+                    total: price * item.quantity,
+                });
+            }
+
+            // Create one order per seller
+            const createdOrders = [];
+            for (const sellerGroup of Object.values(groupedBySeller)) {
+                const subtotal = sellerGroup.items.reduce((sum, i) => sum + i.total, 0);
+                const order = await prisma.order.create({
+                    data: {
+                        customerId,
+                        salesmanId: sellerGroup.sellerId,
+                        addressId: address.id,
+                        subtotal,
+                        total: subtotal,
+                        status: 'PENDING',
+                        paymentStatus: 'PAID',
+                        paymentMethod: 'Stripe',
+                        items: {
+                            create: sellerGroup.items.map(i => ({
+                                quantity: i.quantity,
+                                price: i.price,
+                                total: i.total,
+                                itemName: i.name,
+                                itemType: i.itemType,
+                                ...(i.itemType === 'CAR_PART'
+                                    ? { carPartId: i.productId }
+                                    : { productId: i.productId }),
+                            })),
+                        },
+                    },
+                });
+                createdOrders.push({ order, subtotal });
+            }
+
+            // ============================================================
+            // WALLET BRIDGE: Record Stripe payment as DEPOSIT to admin wallet
+            // Money flow: Stripe (external) → Admin wallet (held until delivery)
+            // ============================================================
+            try {
+                const adminWallet = await getAdminWallet();
+                const totalPaid = createdOrders.reduce((s, o) => s + o.subtotal, 0);
+
+                await prisma.$transaction([
+                    prisma.wallet.update({
+                        where: { id: adminWallet.id },
+                        data: { balance: { increment: totalPaid } }
+                    }),
+                    prisma.walletTransaction.create({
+                        data: {
+                            amount: totalPaid,
+                            type: 'DEPOSIT',
+                            senderWalletId: null,
+                            receiverWalletId: adminWallet.id,
+                            orderId: createdOrders[0]?.order.id,
+                            description: `Stripe payment received for ${createdOrders.length} order(s)`,
+                        }
+                    })
+                ]);
+            } catch (walletErr) {
+                // Non-fatal: orders are created, wallet is best-effort
+                console.error('Wallet DEPOSIT record failed (orders still created):', walletErr.message);
+            }
+
+            res.json({ success: true, status: 'paid', orderId: createdOrders[0]?.order.id });
+
+        } catch (error) {
+            console.error("Verification & DB Save Error:", error);
+            res.status(500).json({ error: error.message });
+        }
+    };
+}
+
+export default new StripeController();

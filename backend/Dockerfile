@@ -13,7 +13,8 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 RUN npm install && \
-    npx prisma generate
+    npx prisma generate && \
+    chown -R nodejs:nodejs /app/node_modules
 
 # Application source
 COPY --chown=nodejs:nodejs . .

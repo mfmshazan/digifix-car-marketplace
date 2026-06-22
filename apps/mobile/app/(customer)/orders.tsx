@@ -10,15 +10,21 @@ import {
   Image,
   Modal,
   Animated,
+  TextInput,
+  Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import MapView, { Marker } from "react-native-maps";
-import { getCustomerOrders, Order } from "../../src/api/orders";
+import MapView, { Marker, Polyline } from "react-native-maps";
+import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../../src/api/orders";
+import { submitReviews } from "../../src/api/reviews";
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
 
-// Status color mapping
+// Order badge colors are reused across the list, the tracking stepper, and socket updates.
 const getStatusColor = (status: string) => {
   switch (status.toUpperCase()) {
     case "DELIVERED":
@@ -34,6 +40,8 @@ const getStatusColor = (status: string) => {
       return "#9E9E9E";
     case "CANCELLED":
       return "#F44336";
+    case "REFUND_REQUESTED":
+      return "#FF5722";
     default:
       return "#666666";
   }
@@ -57,20 +65,89 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
-  const steps = [
-    { key: "PENDING", title: "Placed" },
-    { key: "CONFIRMED", title: "Confirmed" },
-    { key: "PROCESSING", title: "Processing" },
-    { key: "SHIPPED", title: "Shipped" },
-    { key: "DELIVERED", title: "Delivered" },
-  ];
+type Coordinate = { latitude: number; longitude: number };
+type RoadRoute = {
+  provider: string;
+  coordinates: Coordinate[];
+  distanceMeters: number;
+  durationSeconds: number;
+  etaMinutes: number;
+  generatedAt: string;
+};
+const DELIVERY_STEPS = [
+  { key: "pending", title: "Placed" },
+  { key: "confirmed", title: "Confirmed" },
+  { key: "processing", title: "Processing" },
+  { key: "shipped", title: "Shipped" },
+  { key: "delivered", title: "Delivered" },
+];
 
-  let currentIndex = steps.findIndex((s) => s.key === currentStatus.toUpperCase());
-  if (currentIndex === -1) {
-    if (currentStatus.toUpperCase() === "CANCELLED") currentIndex = 0; // Or handle separately
-    else currentIndex = 0;
+// Labels shown in the tracking card's status heading (detailed rider step labels)
+const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  // Order-level statuses (from DB)
+  pending: "Order Placed",
+  confirmed: "Order Confirmed",
+  processing: "Preparing Your Order",
+  shipped: "On Its Way to You",
+  delivered: "Delivered!",
+  cancelled: "Order Cancelled",
+  failed: "Delivery Failed",
+  refund_requested: "Refund Under Review",
+  // Detailed rider steps (from riderStep field in socket payload)
+  accepted: "Rider Accepted",
+  arrived_at_pickup: "Rider at Shop",
+  picked_up: "Package Collected",
+  in_transit: "On the Way",
+  arrived_at_dropoff: "Rider at Your Door",
+  available: "Finding Rider",
+  assigned: "Rider Assigned",
+};
+
+// Maps rider sub-steps to the correct stepper step key
+// so the 5-step progress bar always shows the right position.
+// Mirrors the backend userFacingStatusMap exactly.
+const riderStepToStepperKey = (status: string): string => {
+  const s = status.toLowerCase();
+  switch (s) {
+    case 'accepted':
+    case 'arrived_at_pickup':
+    case 'processing':
+      return 'processing';          // Rider collecting from shop → Processing
+    case 'picked_up':
+    case 'in_transit':
+    case 'arrived_at_dropoff':
+    case 'shipped':
+      return 'shipped';             // Package physically on its way → Shipped
+    case 'delivered':
+      return 'delivered';
+    case 'confirmed':
+      return 'confirmed';
+    case 'pending':
+    default:
+      return 'pending';
   }
+};
+
+const normalizeDeliveryStatus = (status: string | null | undefined) =>
+  String(status || "pending").trim().toLowerCase();
+
+const formatEta = (minutes: number | null) => {
+  if (minutes === null) return "GPS pending";
+  if (minutes <= 1) return "Arriving now";
+  if (minutes < 60) return `${Math.ceil(minutes)} min`;
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.ceil(minutes % 60);
+  return `${hours}h ${mins}m`;
+};
+
+const OrderStepper = ({ currentStatus, riderStep }: { currentStatus: string; riderStep?: string }) => {
+  const steps = DELIVERY_STEPS;
+  // Use riderStep to override the step if it maps to a known stepper key
+  const stepperKey = riderStep
+    ? riderStepToStepperKey(riderStep)
+    : riderStepToStepperKey(currentStatus);
+  let currentIndex = steps.findIndex((s) => s.key === stepperKey);
+  if (currentIndex === -1) currentIndex = 0;
 
   const pulseAnim = React.useRef(new Animated.Value(0)).current;
 
@@ -165,12 +242,130 @@ const OrderStepper = ({ currentStatus }: { currentStatus: string }) => {
 };
 
 export default function OrdersScreen() {
+  const trackingMapRef = React.useRef<MapView | null>(null);
+  const hasFitTrackingMap = React.useRef(false);
+  const trackingOrderRef = React.useRef<Order | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
+  // Cancellation modal state
+  const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [actionMenuOrderId, setActionMenuOrderId] = useState<string | null>(null);
+  
+  // Rating modal state
+  const [ratingOrder, setRatingOrder] = useState<Order | null>(null);
+  const [productRating, setProductRating] = useState<number>(0);
+  const [productComment, setProductComment] = useState("");
+  const [driverRating, setDriverRating] = useState<number>(0);
+  const [driverComment, setDriverComment] = useState("");
+  const [selectedDriverTags, setSelectedDriverTags] = useState<string[]>([]);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [riderLocation, setRiderLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [deliveryRoute, setDeliveryRoute] = useState<{
+    pickup: { latitude: number; longitude: number; address?: string };
+    dropoff: { latitude: number; longitude: number; address?: string };
+  } | null>(null);
+  const [roadRoute, setRoadRoute] = useState<RoadRoute | null>(null);
+  const [roadRouteError, setRoadRouteError] = useState<string | null>(null);
+  const [liveDeliveryStatus, setLiveDeliveryStatus] = useState<string | null>(null);
+  const [liveRiderStep, setLiveRiderStep] = useState<string | null>(null); // Detailed rider step for the label
+  const [lastTrackingUpdate, setLastTrackingUpdate] = useState<Date | null>(null);
+
+  const activeDeliveryStatus = normalizeDeliveryStatus(liveDeliveryStatus || trackingOrder?.status);
+  const etaMinutes = roadRoute?.etaMinutes ?? null;
+  const etaLabel = formatEta(etaMinutes);
+  // Show detailed rider step label if available, otherwise fall back to order status label
+  const activeDeliveryLabel =
+    (liveRiderStep && DELIVERY_STATUS_LABELS[liveRiderStep]) ||
+    DELIVERY_STATUS_LABELS[activeDeliveryStatus] ||
+    formatStatus(activeDeliveryStatus);
+  const lastUpdatedLabel = lastTrackingUpdate
+    ? lastTrackingUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "Waiting";
+
+  useEffect(() => {
+    trackingOrderRef.current = trackingOrder;
+  }, [trackingOrder]);
+
+  // Poll rider's GPS every few seconds while the tracking modal is open.
+  useEffect(() => {
+    if (!trackingOrder) {
+      setRiderLocation(null);
+      setDeliveryRoute(null);
+      setRoadRoute(null);
+      setRoadRouteError(null);
+      setLiveDeliveryStatus(null);
+      setLiveRiderStep(null);
+      setLastTrackingUpdate(null);
+      hasFitTrackingMap.current = false;
+      return;
+    }
+
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await getRiderLiveLocation(trackingOrder.id);
+        if (cancelled) return;
+        if (res?.success && res.data?.riderLocation) {
+          setRiderLocation(res.data.riderLocation);
+        }
+        if (res?.success && res.data?.route?.pickup && res.data?.route?.dropoff) {
+          setDeliveryRoute(res.data.route);
+        }
+        if (res?.success && res.data?.roadRoute?.coordinates?.length >= 2) {
+          setRoadRoute(res.data.roadRoute);
+          setRoadRouteError(null);
+        } else if (res?.success) {
+          setRoadRoute(null);
+          setRoadRouteError(
+            res.data?.routeError ||
+            'A real road route is not available for these coordinates yet.'
+          );
+        }
+        if (res?.success && res.data?.status) {
+          setLiveDeliveryStatus(res.data.status);
+        }
+        setLastTrackingUpdate(new Date());
+      } catch {
+        // silently ignore network errors between polls
+      }
+    };
+
+    poll();
+    const intervalId = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [trackingOrder]);
+
+  useEffect(() => {
+    if (!trackingOrder || !deliveryRoute || !trackingMapRef.current || hasFitTrackingMap.current) return;
+
+    const coordinates = roadRoute?.coordinates?.length
+      ? roadRoute.coordinates
+      : [
+        deliveryRoute.pickup,
+        ...(riderLocation ? [riderLocation] : []),
+        deliveryRoute.dropoff,
+      ];
+
+    const timeoutId = setTimeout(() => {
+      trackingMapRef.current?.fitToCoordinates(coordinates, {
+        edgePadding: { top: 80, right: 60, bottom: 220, left: 60 },
+        animated: true,
+      });
+      hasFitTrackingMap.current = true;
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [trackingOrder, deliveryRoute, roadRoute, riderLocation]);
 
   const fetchOrders = async (showRefresh = false) => {
     try {
@@ -207,8 +402,6 @@ export default function OrdersScreen() {
 
   // ── Real-time socket: listen for order status changes ───────────────────────
   useEffect(() => {
-    let connected = false;
-
     const setup = async () => {
       try {
         // Decode the user ID from the JWT stored on device
@@ -222,13 +415,73 @@ export default function OrdersScreen() {
         if (!userId) return;
 
         const socket = connectSocket(userId);
-        connected = true;
 
         const handleStatusUpdate = (payload: {
           orderId: string;
-          orderNumber: string;
+          orderNumber?: string;
           status: string;
+          riderStep?: string;    // Detailed rider step from the backend
+          description?: string;
         }) => {
+          // Update the order's main status (user-facing: SHIPPED, DELIVERED, etc.)
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === payload.orderId ? { ...o, status: payload.status } : o
+            )
+          );
+          // If the tracking modal is open for this order, update the detailed label
+          if (payload.riderStep) {
+            setLiveRiderStep(payload.riderStep);
+          }
+          // Also update the live status shown in the tracking panel
+          if (payload.status) {
+            setLiveDeliveryStatus(payload.status);
+          }
+        };
+
+        socket.on('orderStatusUpdated', handleStatusUpdate);
+
+        const handleRiderLocation = (payload: {
+          orderId: string;
+          deliveryId: number;
+          status?: string;
+          location?: {
+            latitude: number;
+            longitude: number;
+            accuracy?: number | null;
+            recordedAt?: string;
+          };
+        }) => {
+          const currentTrackingOrder = trackingOrderRef.current;
+          if (!currentTrackingOrder || payload.orderId !== currentTrackingOrder.id) {
+            return;
+          }
+
+          if (
+            payload.location &&
+            Number.isFinite(Number(payload.location.latitude)) &&
+            Number.isFinite(Number(payload.location.longitude))
+          ) {
+            setRiderLocation({
+              latitude: Number(payload.location.latitude),
+              longitude: Number(payload.location.longitude),
+            });
+            setLastTrackingUpdate(
+              payload.location.recordedAt
+                ? new Date(payload.location.recordedAt)
+                : new Date()
+            );
+          }
+
+          if (payload.status) {
+            setLiveRiderStep(payload.status);
+          }
+        };
+
+        socket.on('riderLocationUpdated', handleRiderLocation);
+
+        // Listen for cancellation approval/rejection so the UI updates without manual refresh
+        const handleCancellationApproved = (payload: { orderId: string; status: string }) => {
           setOrders((prev) =>
             prev.map((o) =>
               o.id === payload.orderId ? { ...o, status: payload.status } : o
@@ -236,11 +489,23 @@ export default function OrdersScreen() {
           );
         };
 
-        socket.on('orderStatusUpdated', handleStatusUpdate);
+        const handleCancellationRejected = (payload: { orderId: string; status: string; message?: string }) => {
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === payload.orderId ? { ...o, status: payload.status } : o
+            )
+          );
+          Alert.alert('Cancellation Rejected', payload.message || 'Your cancellation request was rejected by the admin.');
+        };
 
-        // Store cleanup reference
+        socket.on('cancellationApproved', handleCancellationApproved);
+        socket.on('cancellationRejected', handleCancellationRejected);
+
         return () => {
           socket.off('orderStatusUpdated', handleStatusUpdate);
+          socket.off('riderLocationUpdated', handleRiderLocation);
+          socket.off('cancellationApproved', handleCancellationApproved);
+          socket.off('cancellationRejected', handleCancellationRejected);
         };
       } catch (err) {
         console.warn('Socket setup failed:', err);
@@ -262,12 +527,18 @@ export default function OrdersScreen() {
   const renderOrder = ({ item }: { item: Order }) => {
     const statusColor = getStatusColor(item.status);
     const itemCount = item.items?.length || 0;
+    const normalizedStatus = item.status.toUpperCase();
+    const isDelivered = normalizedStatus === 'DELIVERED';
+    const isRefundRequested = normalizedStatus === 'REFUND_REQUESTED';
+    const canRequestAction = ['PENDING', 'CONFIRMED', 'DELIVERED'].includes(normalizedStatus);
+    const isMenuOpen = actionMenuOrderId === item.id;
+    const hasReviews = item.reviews && item.reviews.length > 0;
 
     return (
-      <TouchableOpacity style={styles.orderCard}>
+      <TouchableOpacity style={[styles.orderCard, isMenuOpen && styles.orderCardMenuOpen]}>
         <View style={styles.orderHeader}>
           <View>
-            <Text style={styles.orderId}>{item.orderNumber || `ORD-${item.id.slice(-6).toUpperCase()}`}</Text>
+            <Text style={styles.orderId}>Order #{(item.orderNumber || item.id).slice(-8).toUpperCase()}</Text>
             <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
           </View>
           <View
@@ -282,7 +553,7 @@ export default function OrdersScreen() {
           </View>
         </View>
         <View style={styles.orderDivider} />
-        
+
         {/* Render Order Items */}
         {item.items && item.items.length > 0 && (
           <View style={styles.itemsContainer}>
@@ -314,10 +585,116 @@ export default function OrdersScreen() {
           <Text style={styles.orderItems}>{itemCount} item(s)</Text>
           <Text style={styles.orderTotal}>Rs. {item.total.toFixed(2)}</Text>
         </View>
-        <TouchableOpacity style={styles.trackButton} onPress={() => setTrackingOrder(item)}>
-          <Ionicons name="location" size={16} color="#FF6B35" />
-          <Text style={styles.trackButtonText}>Track Order</Text>
-        </TouchableOpacity>
+
+        {isDelivered && (
+          <View style={styles.deliveredHighlight}>
+            <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+            <View style={styles.deliveredHighlightTextWrap}>
+              <Text style={styles.deliveredHighlightTitle}>Item Delivered</Text>
+              <Text style={styles.deliveredHighlightSubtitle}>
+                If you have any concerns, please raise a complaint for admin review.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {hasReviews && item.reviews?.[0] && (
+          <View style={styles.reviewSection}>
+            <View style={styles.reviewHeader}>
+              <Text style={styles.reviewTitle}>Your Rating</Text>
+              <View style={styles.reviewStars}>
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <Ionicons
+                    key={s}
+                    name={s <= (item.reviews?.[0]?.rating || 0) ? "star" : "star-outline"}
+                    size={14}
+                    color="#FF6B35"
+                  />
+                ))}
+              </View>
+            </View>
+            {item.reviews?.[0]?.comment ? (
+              <Text style={styles.reviewComment}>"{item.reviews?.[0]?.comment}"</Text>
+            ) : null}
+            
+            {item.reviews?.[0]?.replies && item.reviews?.[0].replies.length > 0 && (
+              <View style={styles.sellerReplyBox}>
+                <Text style={styles.sellerReplyTitle}>Seller Reply</Text>
+                <Text style={styles.sellerReplyText}>
+                  {item.reviews?.[0].replies[0].replyText}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.trackButton, { flex: 1 }]}
+            onPress={() => {
+              setActionMenuOrderId(null);
+              setTrackingOrder(item);
+            }}
+          >
+            <Ionicons name="location" size={16} color="#FF6B35" />
+            <Text style={styles.trackButtonText}>
+              {isDelivered && !hasReviews ? "Track" : "Track Order"}
+            </Text>
+          </TouchableOpacity>
+
+          {isDelivered && !hasReviews && (
+            <TouchableOpacity
+              style={styles.rateButton}
+              onPress={() => {
+                setActionMenuOrderId(null);
+                setRatingOrder(item);
+              }}
+            >
+              <Ionicons name="star" size={16} color="#FFFFFF" />
+              <Text style={styles.rateButtonText}>Rate Order</Text>
+            </TouchableOpacity>
+          )}
+          {/* Overflow actions keep Track Order as the primary horizontal action. */}
+          {canRequestAction && (
+            <View style={styles.moreActionsWrap}>
+              <TouchableOpacity
+                style={styles.moreActionsButton}
+                onPress={() => setActionMenuOrderId(isMenuOpen ? null : item.id)}
+              >
+                <Ionicons name="ellipsis-vertical" size={18} color="#1A1A2E" />
+              </TouchableOpacity>
+
+              {isMenuOpen && (
+                <View style={styles.moreActionsMenu}>
+                  <TouchableOpacity
+                    style={styles.moreActionItem}
+                    onPress={() => {
+                      setActionMenuOrderId(null);
+                      setCancellingOrder(item);
+                      setCancelReason("");
+                    }}
+                  >
+                    <Ionicons
+                      name={isDelivered ? "alert-circle-outline" : "close-circle-outline"}
+                      size={16}
+                      color={isDelivered ? "#B45309" : "#EF4444"}
+                    />
+                    <Text style={[styles.moreActionText, isDelivered && styles.moreActionTextComplaint]}>
+                      {isDelivered ? 'Raise Complaint' : 'Cancel Order'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+        {/* Tells the customer their request is queued so they don't submit duplicates */}
+        {isRefundRequested && (
+          <View style={styles.refundRequestedBadge}>
+            <Ionicons name="time-outline" size={14} color="#FF5722" />
+            <Text style={styles.refundRequestedText}>Complaint Under Review</Text>
+          </View>
+        )}
       </TouchableOpacity>
     );
   };
@@ -380,17 +757,17 @@ export default function OrdersScreen() {
         onRequestClose={() => setSelectedImage(null)}
       >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={styles.modalCloseButton} 
+          <TouchableOpacity
+            style={styles.modalCloseButton}
             onPress={() => setSelectedImage(null)}
           >
             <Ionicons name="close" size={30} color="#FFF" />
           </TouchableOpacity>
           {selectedImage && (
-            <Image 
-              source={{ uri: selectedImage }} 
-              style={styles.modalImage} 
-              resizeMode="contain" 
+            <Image
+              source={{ uri: selectedImage }}
+              style={styles.modalImage}
+              resizeMode="contain"
             />
           )}
         </View>
@@ -410,35 +787,425 @@ export default function OrdersScreen() {
             <Text style={styles.trackingModalTitle}>Tracking Order</Text>
             <View style={{ width: 28 }} />
           </View>
-          
+
           <MapView
+            ref={trackingMapRef}
             style={styles.map}
             initialRegion={{
-              latitude: 6.9271, // Colombo default
-              longitude: 79.8612,
-              latitudeDelta: 0.0922,
-              longitudeDelta: 0.0421,
+              latitude: riderLocation?.latitude ?? deliveryRoute?.pickup.latitude ?? 6.9271,
+              longitude: riderLocation?.longitude ?? deliveryRoute?.pickup.longitude ?? 79.8612,
+              latitudeDelta: 0.035,
+              longitudeDelta: 0.035,
             }}
           >
-            <Marker
-              coordinate={{ latitude: 6.9271, longitude: 79.8612 }}
-              title="Rider Location"
-              description="Your rider is here"
-            >
-              <View style={styles.markerContainer}>
-                <Ionicons name="bicycle" size={24} color="#FFF" />
-              </View>
-            </Marker>
+            {deliveryRoute && (
+              <>
+                {roadRoute && roadRoute.coordinates.length >= 2 && (
+                  <Polyline
+                    coordinates={roadRoute.coordinates}
+                    strokeColor="#FF6B35"
+                    strokeWidth={5}
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                )}
+                <Marker
+                  coordinate={deliveryRoute.pickup}
+                  title="Pickup"
+                  description={deliveryRoute.pickup.address || "Shop pickup location"}
+                  pinColor="#2563EB"
+                />
+                <Marker
+                  coordinate={deliveryRoute.dropoff}
+                  title="Customer"
+                  description={deliveryRoute.dropoff.address || "Customer delivery location"}
+                  pinColor="#16A34A"
+                />
+              </>
+            )}
+            {riderLocation && (
+              <Marker
+                coordinate={{ latitude: riderLocation.latitude, longitude: riderLocation.longitude }}
+                title="Rider Location"
+                description={`ETA ${etaLabel}`}
+              >
+                <View style={styles.markerContainer}>
+                  <Ionicons name="bicycle" size={24} color="#FFF" />
+                </View>
+              </Marker>
+            )}
           </MapView>
-          
+
+          {!riderLocation && (
+            <View style={styles.noRiderBanner} pointerEvents="none">
+              <Ionicons name="location-outline" size={32} color="#999" />
+              <Text style={styles.noRiderText}>Waiting for rider location…</Text>
+            </View>
+          )}
+
+          {roadRouteError && riderLocation && (
+            <View style={styles.routeErrorBanner} pointerEvents="none">
+              <Ionicons name="warning-outline" size={18} color="#B45309" />
+              <Text style={styles.routeErrorText}>{roadRouteError}</Text>
+            </View>
+          )}
+
           <View style={styles.trackingInfoCard}>
             <View style={styles.trackingInfoHeader}>
-               <Text style={styles.trackingStatusText}>Order Status</Text>
-               <Text style={styles.trackingOrderText}>Order {trackingOrder?.orderNumber}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.trackingStatusText}>{activeDeliveryLabel}</Text>
+                <Text style={styles.trackingOrderText}>Order {trackingOrder?.orderNumber}</Text>
+              </View>
+              <View style={styles.etaPill}>
+                <Ionicons name="time-outline" size={14} color="#FF6B35" />
+                <Text style={styles.etaText}>{etaLabel}</Text>
+              </View>
             </View>
-            <OrderStepper currentStatus={trackingOrder?.status || 'PENDING'} />
+            <View style={styles.liveMetaRow}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveMetaText}>Live GPS + road routing</Text>
+              <Text style={styles.liveMetaText}>Updated {lastUpdatedLabel}</Text>
+            </View>
+            <OrderStepper currentStatus={activeDeliveryStatus} riderStep={liveRiderStep ?? undefined} />
           </View>
         </View>
+      </Modal>
+
+      {/* Cancellation Reason Modal — customer must explain why they want to cancel */}
+      <Modal
+        visible={!!cancellingOrder}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setCancellingOrder(null)}
+      >
+        <View style={styles.cancelModalOverlay}>
+          <View style={styles.cancelModalContent}>
+            <View style={styles.cancelModalHeader}>
+              <Text style={styles.cancelModalTitle}>
+                {cancellingOrder?.status?.toUpperCase() === 'DELIVERED' ? 'Raise Complaint' : 'Cancel Order'}
+              </Text>
+              <TouchableOpacity onPress={() => setCancellingOrder(null)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.cancelModalSubtitle}>
+              Order: {cancellingOrder?.orderNumber}
+            </Text>
+
+            <Text style={styles.cancelModalLabel}>
+              {cancellingOrder?.status?.toUpperCase() === 'DELIVERED'
+                ? 'Please describe your concern clearly (this goes to admin):'
+                : 'Please provide a reason for your request:'}
+            </Text>
+
+            <TextInput
+              style={styles.cancelReasonInput}
+              multiline
+              numberOfLines={4}
+              placeholder="Enter your reason here (minimum 5 characters)..."
+              placeholderTextColor="#999"
+              value={cancelReason}
+              onChangeText={setCancelReason}
+              textAlignVertical="top"
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.cancelSubmitButton,
+                (cancelReason.trim().length < 5 || isCancelling) && styles.cancelSubmitDisabled
+              ]}
+              disabled={cancelReason.trim().length < 5 || isCancelling}
+              onPress={async () => {
+                if (!cancellingOrder) return;
+                setIsCancelling(true);
+                try {
+                  await cancelOrder(cancellingOrder.id, cancelReason.trim());
+                  // Update local state immediately so the badge shows
+                  setOrders(prev =>
+                    prev.map(o =>
+                      o.id === cancellingOrder.id ? { ...o, status: 'REFUND_REQUESTED' } : o
+                    )
+                  );
+                  setCancellingOrder(null);
+                  Alert.alert(
+                    'Request Submitted',
+                    cancellingOrder.status?.toUpperCase() === 'DELIVERED'
+                      ? 'Your complaint has been sent to admin for review.'
+                      : 'Your cancellation request has been sent to the admin for review.'
+                  );
+                } catch (err: any) {
+                  Alert.alert('Error', err.message || 'Failed to submit cancellation request.');
+                } finally {
+                  setIsCancelling(false);
+                }
+              }}
+            >
+              {isCancelling ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.cancelSubmitText}>Submit Request</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Rating & Review Modal */}
+      <Modal
+        visible={!!ratingOrder}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setRatingOrder(null)}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+          style={styles.ratingModalOverlay}
+        >
+          <View style={[styles.ratingModalContent, { flexShrink: 1, maxHeight: '90%' }]}>
+            <View style={styles.ratingModalHeader}>
+              <Text style={styles.ratingModalTitle}>Rate Your Order</Text>
+              <TouchableOpacity onPress={() => setRatingOrder(null)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.ratingModalSubtitle}>
+              Order: {ratingOrder?.orderNumber}
+            </Text>
+
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
+            >
+              {/* 1. PRODUCT / PART CARD */}
+              <View style={styles.ratingSectionCard}>
+                <Text style={styles.ratingSectionTitle}>Rate the Items & Shop</Text>
+                <Text style={styles.ratingSectionDesc}>How satisfied are you with the purchased item(s)?</Text>
+                
+                {/* Render order items preview */}
+                <View style={styles.itemsPreviewRow}>
+                  {ratingOrder?.items?.slice(0, 3).map((orderItem: any, idx: number) => {
+                    const itemImage = orderItem.productImage || orderItem.product?.images?.[0];
+                    return (
+                      <View key={idx} style={styles.ratingItemPreview}>
+                        {itemImage ? (
+                          <Image source={{ uri: itemImage }} style={styles.ratingItemImage} />
+                        ) : (
+                          <View style={styles.ratingItemImagePlaceholder}>
+                            <Ionicons name="car-sport-outline" size={16} color="#999" />
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                  {ratingOrder?.items && ratingOrder.items.length > 3 && (
+                    <Text style={styles.moreItemsText}>+{ratingOrder.items.length - 3} more</Text>
+                  )}
+                </View>
+
+                {/* Stars */}
+                <View style={styles.starsRow}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <TouchableOpacity
+                      key={star}
+                      onPress={() => setProductRating(star)}
+                      style={styles.starButton}
+                    >
+                      <Ionicons
+                        name={productRating >= star ? "star" : "star-outline"}
+                        size={32}
+                        color={productRating >= star ? "#FFD700" : "#CCC"}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <TextInput
+                  style={styles.ratingInput}
+                  multiline
+                  numberOfLines={3}
+                  placeholder="Tell us about the quality of the item(s)..."
+                  placeholderTextColor="#999"
+                  value={productComment}
+                  onChangeText={setProductComment}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              {/* 2. DRIVER CARD (if driver is assigned) */}
+              {(() => {
+                const driverJob = ratingOrder?.riderDeliveryJobs?.[0];
+                const driver = driverJob?.partner;
+                if (!driver) return null;
+
+                const tags = ["Fast", "Careful", "Polite", "On Time", "Friendly"];
+
+                return (
+                  <View style={styles.ratingSectionCard}>
+                    <Text style={styles.ratingSectionTitle}>Rate your Driver</Text>
+                    <Text style={styles.ratingSectionDesc}>How was your delivery by {driver.fullName}?</Text>
+
+                    <View style={styles.driverProfileRow}>
+                      {driver.profilePhotoUrl ? (
+                        <Image source={{ uri: driver.profilePhotoUrl }} style={styles.driverAvatar} />
+                      ) : (
+                        <View style={styles.driverAvatarPlaceholder}>
+                          <Ionicons name="person" size={24} color="#00002E" />
+                        </View>
+                      )}
+                      <Text style={styles.driverName}>{driver.fullName}</Text>
+                    </View>
+
+                    {/* Driver Stars */}
+                    <View style={styles.starsRow}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <TouchableOpacity
+                          key={star}
+                          onPress={() => setDriverRating(star)}
+                          style={styles.starButton}
+                        >
+                          <Ionicons
+                            name={driverRating >= star ? "star" : "star-outline"}
+                            size={32}
+                            color={driverRating >= star ? "#FFD700" : "#CCC"}
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {/* Tags selection */}
+                    <View style={styles.tagsContainer}>
+                      {tags.map((tag) => {
+                        const isSelected = selectedDriverTags.includes(tag);
+                        return (
+                          <TouchableOpacity
+                            key={tag}
+                            style={[
+                              styles.tagButton,
+                              isSelected && styles.tagButtonSelected
+                            ]}
+                            onPress={() => {
+                              if (isSelected) {
+                                setSelectedDriverTags(prev => prev.filter(t => t !== tag));
+                              } else {
+                                setSelectedDriverTags(prev => [...prev, tag]);
+                              }
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.tagText,
+                                isSelected && styles.tagTextSelected
+                              ]}
+                            >
+                              {tag}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <TextInput
+                      style={styles.ratingInput}
+                      multiline
+                      numberOfLines={2}
+                      placeholder="Optional comment about delivery..."
+                      placeholderTextColor="#999"
+                      value={driverComment}
+                      onChangeText={setDriverComment}
+                      textAlignVertical="top"
+                    />
+                  </View>
+                );
+              })()}
+
+              {/* Submit button */}
+              <TouchableOpacity
+                style={[
+                  styles.ratingSubmitButton,
+                  (!productRating || isSubmittingReview) && styles.ratingSubmitDisabled
+                ]}
+                disabled={!productRating || isSubmittingReview}
+                onPress={async () => {
+                  if (!ratingOrder) return;
+                  setIsSubmittingReview(true);
+                  try {
+                    const reviewsToSubmit: import('../../src/api/reviews').ReviewPayload[] = [];
+                    
+                    // 1. Submit product review (always required if modal opens)
+                    const storeOwnerId = ratingOrder.salesmanId;
+                    if (storeOwnerId) {
+                      reviewsToSubmit.push({
+                        targetId: storeOwnerId,
+                        targetType: 'SELLER' as const,
+                        rating: productRating,
+                        comment: productComment.trim() || undefined
+                      });
+                    }
+
+                    // 2. Submit product items reviews (each product inside the order)
+                    if (ratingOrder.items && ratingOrder.items.length > 0) {
+                      for (const orderItem of ratingOrder.items) {
+                        const productId = orderItem.productId || orderItem.carPartId;
+                        if (productId) {
+                          reviewsToSubmit.push({
+                            targetId: productId,
+                            targetType: 'PRODUCT' as const,
+                            rating: productRating, // share the star rating for now
+                            comment: productComment.trim() || undefined
+                          });
+                        }
+                      }
+                    }
+
+                    // 3. Submit driver review (if driver exists and is rated)
+                    const driver = ratingOrder.riderDeliveryJobs?.[0]?.partner;
+                    if (driver && driverRating > 0) {
+                      // Combine comment and tags
+                      const combinedComment = [
+                        selectedDriverTags.length > 0 ? `[Tags: ${selectedDriverTags.join(', ')}]` : '',
+                        driverComment.trim()
+                      ].filter(Boolean).join(' - ');
+
+                      reviewsToSubmit.push({
+                        targetId: driver.id.toString(),
+                        targetType: 'DELIVERY_PARTNER' as const,
+                        rating: driverRating,
+                        comment: combinedComment || undefined
+                      });
+                    }
+
+                    await submitReviews(ratingOrder.id, reviewsToSubmit);
+
+                    Alert.alert('Thank You', 'Your feedback was submitted successfully!');
+                    setRatingOrder(null);
+                    
+                    // Reset rating states
+                    setProductRating(0);
+                    setProductComment("");
+                    setDriverRating(0);
+                    setDriverComment("");
+                    setSelectedDriverTags([]);
+
+                    // Refresh orders list
+                    await fetchOrders();
+                  } catch (err: any) {
+                    Alert.alert('Error', err.message || 'Failed to submit reviews');
+                  } finally {
+                    setIsSubmittingReview(false);
+                  }
+                }}
+              >
+                {isSubmittingReview ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.ratingSubmitText}>Submit Reviews</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -457,11 +1224,16 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
+    position: "relative",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 2,
+  },
+  orderCardMenuOpen: {
+    zIndex: 1000,
+    elevation: 20,
   },
   orderHeader: {
     flexDirection: "row",
@@ -535,6 +1307,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   orderItems: {
     fontSize: 14,
     color: "#666",
@@ -552,11 +1329,56 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     height: 44,
   },
+  trackButtonFull: {
+    flex: 1,
+  },
   trackButtonText: {
     color: "#FF6B35",
     fontSize: 14,
     fontWeight: "600",
     marginLeft: 8,
+  },
+  moreActionsWrap: {
+    position: "relative",
+  },
+  moreActionsButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  moreActionsMenu: {
+    position: "absolute",
+    top: 48,
+    right: 0,
+    minWidth: 160,
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#EEE",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 6,
+    zIndex: 30,
+  },
+  moreActionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    gap: 8,
+  },
+  moreActionText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#EF4444",
+  },
+  moreActionTextComplaint: {
+    color: "#B45309",
   },
   emptyContainer: {
     flex: 1,
@@ -682,7 +1504,41 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 10,
+    gap: 12,
+  },
+  etaPill: {
+    minWidth: 92,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#FFF3EE",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    gap: 5,
+  },
+  etaText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#FF6B35",
+  },
+  liveMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginBottom: 16,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#16A34A",
+  },
+  liveMetaText: {
+    flexShrink: 1,
+    fontSize: 11,
+    color: "#6B7280",
   },
   stepperContainer: {
     flexDirection: "row",
@@ -692,12 +1548,12 @@ const styles = StyleSheet.create({
   },
   stepWrapper: {
     alignItems: "center",
-    width: 44, // Fixed width to center text properly
+    width: 36,
   },
   stepCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
@@ -728,7 +1584,7 @@ const styles = StyleSheet.create({
     color: "#999",
   },
   stepLabel: {
-    fontSize: 10,
+    fontSize: 9,
     textAlign: "center",
   },
   stepLabelActive: {
@@ -741,7 +1597,7 @@ const styles = StyleSheet.create({
   },
   lineWrapper: {
     flex: 1,
-    height: 28, // Matches circle height to center vertically
+    height: 24,
     justifyContent: "center",
     paddingHorizontal: 4,
   },
@@ -763,7 +1619,404 @@ const styles = StyleSheet.create({
     backgroundColor: "#00002E",
     borderRadius: 2,
   },
+  cancelButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FEE2E2",
+    borderRadius: 12,
+    height: 44,
+    marginTop: 8,
+  },
+  complaintButton: {
+    backgroundColor: "#FEF3C7",
+  },
+  cancelButtonText: {
+    color: "#EF4444",
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  complaintButtonText: {
+    color: "#B45309",
+  },
+  deliveredHighlight: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#ECFDF3",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  deliveredHighlightTextWrap: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  deliveredHighlightTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#166534",
+    marginBottom: 2,
+  },
+  deliveredHighlightSubtitle: {
+    fontSize: 12,
+    color: "#166534",
+    lineHeight: 17,
+  },
+  refundRequestedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF3E0",
+    borderRadius: 12,
+    height: 40,
+    marginTop: 8,
+  },
+  refundRequestedText: {
+    color: "#FF5722",
+    fontSize: 13,
+    fontWeight: "600",
+    marginLeft: 6,
+  },
+  cancelModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  cancelModalContent: {
+    backgroundColor: "#FFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  cancelModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  cancelModalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1A1A2E",
+  },
+  cancelModalSubtitle: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 16,
+  },
+  cancelModalLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1A1A2E",
+    marginBottom: 8,
+  },
+  cancelReasonInput: {
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 14,
+    color: "#1A1A2E",
+    minHeight: 100,
+    marginBottom: 16,
+    backgroundColor: "#F9FAFB",
+  },
+  cancelSubmitButton: {
+    backgroundColor: "#EF4444",
+    borderRadius: 12,
+    height: 52,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cancelSubmitDisabled: {
+    backgroundColor: "#FECACA",
+  },
+  cancelSubmitText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  noRiderBanner: {
+    position: "absolute",
+    top: 112,
+    left: 16,
+    right: 16,
+    minHeight: 54,
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  noRiderText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+    color: "#666",
+    fontWeight: "500",
+  },
+  routeErrorBanner: {
+    position: "absolute",
+    top: 112,
+    left: 16,
+    right: 16,
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+    backgroundColor: "#FFFBEB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  routeErrorText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#92400E",
+    fontWeight: "500",
+  },
+  rateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FF6B35",
+    borderRadius: 12,
+    height: 44,
+    flex: 1,
+    gap: 6,
+  },
+  rateButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  ratingModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  ratingModalScroll: {
+    flexGrow: 1,
+    justifyContent: "flex-end",
+  },
+  ratingModalContent: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: "85%",
+  },
+  ratingModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  ratingModalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1A1A2E",
+  },
+  ratingModalSubtitle: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 16,
+  },
+  ratingSectionCard: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  ratingSectionTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#00002E",
+    marginBottom: 4,
+  },
+  ratingSectionDesc: {
+    fontSize: 12,
+    color: "#64748B",
+    marginBottom: 12,
+  },
+  itemsPreviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 6,
+  },
+  ratingItemPreview: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    overflow: "hidden",
+    backgroundColor: "#E2E8F0",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+  },
+  ratingItemImage: {
+    width: "100%",
+    height: "100%",
+  },
+  ratingItemImagePlaceholder: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  moreItemsText: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "500",
+  },
+  starsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+    marginVertical: 12,
+  },
+  starButton: {
+    padding: 4,
+  },
+  ratingInput: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 12,
+    fontSize: 14,
+    color: "#1A1A2E",
+    minHeight: 60,
+  },
+  driverProfileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  driverAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  driverAvatarPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#E2E8F0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  driverName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1A1A2E",
+  },
+  tagsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+    marginVertical: 12,
+  },
+  tagButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#E2E8F0",
+  },
+  tagButtonSelected: {
+    backgroundColor: "#FF6B35",
+  },
+  tagText: {
+    fontSize: 12,
+    color: "#475569",
+    fontWeight: "500",
+  },
+  tagTextSelected: {
+    color: "#FFFFFF",
+  },
+  ratingSubmitButton: {
+    backgroundColor: "#FF6B35",
+    borderRadius: 14,
+    height: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  ratingSubmitDisabled: {
+    backgroundColor: "#FFBD9D",
+  },
+  ratingSubmitText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  reviewSection: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  reviewHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  reviewTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#475569",
+  },
+  reviewStars: {
+    flexDirection: "row",
+    gap: 2,
+  },
+  reviewComment: {
+    fontSize: 14,
+    color: "#1E293B",
+    fontStyle: "italic",
+    marginBottom: 8,
+  },
+  sellerReplyBox: {
+    backgroundColor: "#EFF6FF",
+    borderLeftWidth: 3,
+    borderLeftColor: "#3B82F6",
+    padding: 10,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  sellerReplyTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1D4ED8",
+    marginBottom: 4,
+  },
+  sellerReplyText: {
+    fontSize: 13,
+    color: "#1E3A8A",
+    lineHeight: 18,
+  },
 });
-
-
-

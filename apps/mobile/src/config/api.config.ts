@@ -10,11 +10,12 @@
  * This file handles API URL configuration for different environments:
  * - Android Emulator: Uses 10.0.2.2 (maps to host's localhost)
  * - iOS Simulator: Uses localhost
- * - Physical Device: Uses EXPO_PUBLIC_API_HOST env variable (your computer's IP)
+ * - Physical Device: Uses EXPO_PUBLIC_API_URL or EXPO_PUBLIC_API_HOST from .env
  * - Web: Uses localhost
  *
  * ⚠️  Set your computer's IP in apps/mobile/.env:
- *       EXPO_PUBLIC_API_HOST=10.241.244.60
+ *       EXPO_PUBLIC_API_URL=http://10.241.244.60:3000/api
+ *       or EXPO_PUBLIC_API_HOST=10.241.244.60
  */
 
 import { Platform } from 'react-native';
@@ -34,17 +35,52 @@ const getExpoGoHostIp = (): string | null => {
   return null;
 };
 
-// 1. Prioritize .env variable (EXPO_PUBLIC_API_HOST)
+const normalizeApiUrl = (raw: string | undefined): string | null => {
+  if (!raw) return null;
+
+  const trimmed = raw.trim().replace(/\/+$/, '');
+  if (!trimmed) return null;
+
+  let withProtocol = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
+
+  // Local Express dev server is HTTP. If Metro/Expo receives a stale HTTPS
+  // LAN URL, native fetch fails before it can reach the backend.
+  if (__DEV__ && /^https:\/\/(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/i.test(withProtocol)) {
+    withProtocol = withProtocol.replace(/^https:\/\//i, 'http://');
+  }
+
+  return withProtocol.endsWith('/api') ? withProtocol : `${withProtocol}/api`;
+};
+
+const extractHost = (raw: string | undefined): string | null => {
+  if (!raw) return null;
+
+  const normalized = raw
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .split(':')[0]
+    .trim();
+
+  return normalized || null;
+};
+
+// 1. Prioritize .env variables (EXPO_PUBLIC_API_URL, then EXPO_PUBLIC_API_HOST)
 // 2. Fallback to dynamically detecting the Expo Go host machine IP
 // 3. Last resort fallback to a hardcoded local IP
 const FALLBACK_LOCAL_IP = '10.185.114.60';
+const ENV_API_URL = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL);
+const ENV_API_HOST = process.env.EXPO_PUBLIC_API_HOST as string | undefined;
 export const LOCAL_IP: string =
-  (process.env.EXPO_PUBLIC_API_HOST as string) ||
+  extractHost(ENV_API_HOST) ||
+  extractHost(process.env.EXPO_PUBLIC_API_URL) ||
   getExpoGoHostIp() ||
   FALLBACK_LOCAL_IP;
 
-// Backend port (must match the backend server)
-export const API_PORT = 3000;
+// Backend port (should match Docker/backend configuration)
+export const API_PORT = Number(process.env.EXPO_PUBLIC_API_PORT || 3000);
 
 // ============================================
 // AUTO-DETECT ENVIRONMENT
@@ -57,6 +93,10 @@ export const API_PORT = 3000;
 export function getApiUrl(): string {
   if (!__DEV__) {
     return 'https://api.your-production-domain.com/api';
+  }
+
+  if (ENV_API_URL) {
+    return ENV_API_URL;
   }
 
   if (Platform.OS === 'web') {
@@ -73,11 +113,7 @@ export function getApiUrl(): string {
 
   // Expo Go: right after dev-server restart, hostUri can be missing briefly — use LAN IP
   if (isExpoGo) {
-    const raw = process.env.EXPO_PUBLIC_API_HOST || LOCAL_IP;
-    const ip = String(raw)
-      .replace(/^https?:\/\//, '')
-      .split('/')[0]
-      .trim();
+    const ip = extractHost(ENV_API_HOST) || LOCAL_IP;
     if (ip) {
       return `http://${ip}:${API_PORT}/api`;
     }
@@ -88,6 +124,24 @@ export function getApiUrl(): string {
   }
 
   return `http://localhost:${API_PORT}/api`;
+}
+
+/**
+ * Returns the Expo Go deep-link base (exp://<host>:8081) so Stripe can redirect
+ * back into the app after payment. Uses the same host resolution as getApiUrl().
+ */
+export function getExpoDeepLinkBase(): string {
+  const isExpoGo = Constants.appOwnership === 'expo';
+  const hostUri = Constants.expoConfig?.hostUri; // e.g. "172.20.10.14:8081"
+
+  if (isExpoGo && hostUri) {
+    const hostIp = hostUri.split(':')[0];
+    return `exp://${hostIp}:8081`;
+  }
+
+  const raw = process.env.EXPO_PUBLIC_API_HOST || LOCAL_IP;
+  const ip = String(raw).replace(/^https?:\/\//, '').split('/')[0].trim();
+  return `exp://${ip || LOCAL_IP}:8081`;
 }
 
 /**
@@ -138,6 +192,11 @@ const buildEndpoints = (base: string) => ({
     BY_ID: (id: string) => `${base}/orders/${id}`,
   },
   CART: `${base}/cart`,
+  WISHLIST: {
+    BASE: `${base}/wishlist`,
+    TOGGLE: `${base}/wishlist/toggle`,
+    BY_ID: (id: string) => `${base}/wishlist/${id}`,
+  },
   HEALTH: `http://${LOCAL_IP}:${API_PORT}/health`,
 });
 
@@ -167,7 +226,8 @@ if (__DEV__) {
     apiUrl: getApiUrl(),
     localIp: LOCAL_IP,
     isExpoGo: Constants.appOwnership === 'expo',
-    envHost: process.env.EXPO_PUBLIC_API_HOST,
+    envUrl: process.env.EXPO_PUBLIC_API_URL,
+    envHost: ENV_API_HOST,
   });
 }
 

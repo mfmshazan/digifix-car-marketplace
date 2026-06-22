@@ -11,12 +11,12 @@ function VerifyOtpContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const emailParam = searchParams.get('email');
-  
+
   const [email] = useState(emailParam || '');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -29,6 +29,7 @@ function VerifyOtpContent() {
     if (value.length > 1) value = value.slice(0, 1);
     if (!/^[0-9]*$/.test(value)) return;
 
+    // Update selected OTP box
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
@@ -57,7 +58,7 @@ function VerifyOtpContent() {
       setIsLoading(true);
       setError(null);
       const response = await authApi.verifyOtp(email, otpValue);
-      
+
       if (response.success && response.data?.resetToken) {
         // Store resetToken securely in memory/state or pass via URL securely (avoid local storage for this)
         // We will pass it via session storage for the next page to pick up quickly
@@ -84,13 +85,13 @@ function VerifyOtpContent() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Verify OTP</h1>
             <p className="text-gray-500 text-sm">
-              We've sent a 6-digit verification code to <br/>
+              We've sent a 6-digit verification code to <br />
               <span className="font-semibold text-gray-800">{email}</span>
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-             {error && (
+            {error && (
               <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
                 {error}
               </div>
@@ -129,13 +130,13 @@ function VerifyOtpContent() {
           </form>
 
           <div className="mt-8 text-center">
-             <p className="text-sm text-gray-600 mb-2">Didn't receive the code?</p>
-             <button
-               onClick={() => router.push('/forgot-password')} 
-               className="text-[#00002E] hover:underline font-semibold text-sm"
-             >
-                Try sending again
-             </button>
+            <p className="text-sm text-gray-600 mb-2">Didn't receive the code?</p>
+            <button
+              onClick={() => router.push('/forgot-password')}
+              className="text-[#00002E] hover:underline font-semibold text-sm"
+            >
+              Try sending again
+            </button>
           </div>
         </div>
       </div>
@@ -144,9 +145,9 @@ function VerifyOtpContent() {
 }
 
 export default function VerifyOtpPage() {
-    return (
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin" /></div>}>
-            <VerifyOtpContent />
-        </Suspense>
-    );
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin" /></div>}>
+      <VerifyOtpContent />
+    </Suspense>
+  );
 }

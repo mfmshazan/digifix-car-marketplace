@@ -31,7 +31,7 @@ const menuItems = [
     icon: "location-outline",
     label: "Saved Addresses",
     color: "#1A1A1A",
-    route: null,
+    route: "/(customer)/addresses" as const,
   },
   {
     id: "3",
@@ -52,7 +52,7 @@ const menuItems = [
     icon: "heart-outline",
     label: "Wishlist",
     color: "#00002E",
-    route: null,
+    route: "/(customer)/wishlist" as const,
   },
   {
     id: "6",
@@ -66,14 +66,14 @@ const menuItems = [
     icon: "help-circle-outline",
     label: "Help & Support",
     color: "#6B7280",
-    route: null,
+    route: "/help-support" as const,
   },
   {
     id: "8",
     icon: "information-circle-outline",
     label: "About Us",
     color: "#00002E",
-    route: null,
+    route: "/about-us" as const,
   },
 ];
 
@@ -365,7 +365,7 @@ export default function ProfileScreen() {
             key={item.id}
             style={styles.menuItem}
             onPress={() => {
-              if (item.route) router.push(item.route);
+              if (item.route) router.push(item.route as any);
             }}
           >
             <View

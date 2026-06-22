@@ -42,6 +42,16 @@ export const fetchCart = async (): Promise<CartResponse> => {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_URL}/cart`, { method: 'GET', headers });
     const result = await response.json();
+    
+    // Handle 401 Unauthorized - token is invalid or expired
+    if (response.status === 401) {
+      console.warn('Cart fetch: Invalid or expired token - clearing stored token');
+      // Clear the stale token so user is redirected to login
+      const { removeToken } = await import('./storage');
+      await removeToken();
+      throw new Error('Token expired. Please log in again.');
+    }
+    
     if (!response.ok) throw new Error(result.message || 'Failed to fetch cart');
     return result;
   } catch (error) {
@@ -51,6 +61,8 @@ export const fetchCart = async (): Promise<CartResponse> => {
 };
 
 // Add item to backend cart
+// We send the item type because the backend uses one endpoint for both regular
+// products and car parts, and it needs to know which table to read from.
 export const addItemToCart = async (
   productId: string,
   quantity: number = 1,

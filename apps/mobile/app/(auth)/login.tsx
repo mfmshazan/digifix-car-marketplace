@@ -45,6 +45,7 @@ export default function LoginScreen() {
   // Ref to prevent infinite sync loops
   const hasAttemptedSyncRef = useRef(false);
 
+  //Auto backend sync
   useEffect(() => {
     const checkExistingSession = async () => {
       // Only proceed if Clerk is loaded, a session exists, and we haven't tried syncing yet
@@ -94,6 +95,7 @@ export default function LoginScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  //Login button animation
   const handlePressIn = (animValue: Animated.Value) => {
     Animated.spring(animValue, {
       toValue: 0.95,
@@ -194,6 +196,7 @@ export default function LoginScreen() {
     }
   };
 
+  //backend sync for google users
   const handleBackendSync = async (clerkToken: string, sessionId?: string) => {
     try {
       console.log("Finalizing backend sync with sessionId:", sessionId);
@@ -247,7 +250,7 @@ export default function LoginScreen() {
 
 
   const handleForgotPassword = () => {
-    router.push('/(auth)/forgot-password');
+    router.push('/(auth)/forgot-password' as any);
   };
 
   return (

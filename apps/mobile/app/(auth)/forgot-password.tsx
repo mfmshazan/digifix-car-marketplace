@@ -5,6 +5,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { requestOtp, verifyOtp, resetPassword } from '../../src/api/auth';
 
 const { width } = Dimensions.get('window');
+const PASSWORD_REQUIREMENTS_ERROR = 'Password does not meet the minimum requirements.';
+const PASSWORD_REQUIREMENTS = [
+  'At least 8 characters',
+  'One uppercase letter',
+  'One lowercase letter',
+  'One number',
+  'One symbol',
+];
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+
+const isStrongPassword = (value: string) => passwordRegex.test(value);
 
 export default function ForgotPassword() {
   const router = useRouter();
@@ -18,12 +29,17 @@ export default function ForgotPassword() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
+  const [hasTouchedConfirmPassword, setHasTouchedConfirmPassword] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const otpInputRefs = useRef<Array<TextInput | null>>([]);
+  const otpInputRefs = useRef<(TextInput | null)[]>([]);
+  const isPasswordValid = isStrongPassword(password);
+  const isConfirmPasswordEntered = confirmPassword.length > 0;
+  const isConfirmPasswordValid = isConfirmPasswordEntered && confirmPassword === password;
 
   //Request OTP
 
@@ -76,9 +92,8 @@ export default function ForgotPassword() {
       return;
     }
 
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-    if (!passwordRegex.test(password)) {
-      setError('Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.');
+    if (!isStrongPassword(password)) {
+      setError(PASSWORD_REQUIREMENTS_ERROR);
       return;
     }
 
@@ -164,7 +179,7 @@ export default function ForgotPassword() {
             </Text>
           </View>
 
-          {error && (
+          {error && error !== PASSWORD_REQUIREMENTS_ERROR && (
             <View style={styles.errorArea}>
               <Ionicons name="alert-circle" size={18} color="#EF4444" style={styles.errorIcon} />
               <Text style={styles.errorText}>{error}</Text>
@@ -209,15 +224,32 @@ export default function ForgotPassword() {
 
             {step === 3 && (
               <View>
+                {hasTouchedPassword ? (
+                  <View style={styles.passwordRequirementsBox}>
+                    <Text style={styles.passwordRequirementsTitle}>Password must include:</Text>
+                    {PASSWORD_REQUIREMENTS.map((requirement) => (
+                      <Text key={requirement} style={styles.passwordRequirementsItem}>
+                        - {requirement}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+
                 <View style={styles.inputSpacing}>
                   <Text style={styles.inputLabel}>New Password</Text>
-                  <View style={styles.inputWrapper}>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      hasTouchedPassword && password.length > 0 && (isPasswordValid ? styles.inputValid : styles.inputInvalid),
+                    ]}
+                  >
                     <TextInput
                       style={styles.input}
-                      placeholder="Min 6 characters"
+                      placeholder="Enter your password"
                       placeholderTextColor="#9CA3AF"
                       value={password}
                       onChangeText={(text) => { setPassword(text); setError(null); }}
+                      onFocus={() => setHasTouchedPassword(true)}
                       secureTextEntry={!showPassword}
                     />
                     <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
@@ -228,13 +260,19 @@ export default function ForgotPassword() {
 
                 <View>
                   <Text style={styles.inputLabel}>Confirm Password</Text>
-                  <View style={styles.inputWrapper}>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      hasTouchedConfirmPassword && isConfirmPasswordEntered && (isConfirmPasswordValid ? styles.inputValid : styles.inputInvalid),
+                    ]}
+                  >
                     <TextInput
                       style={styles.input}
                       placeholder="Repeat your password"
                       placeholderTextColor="#9CA3AF"
                       value={confirmPassword}
                       onChangeText={(text) => { setConfirmPassword(text); setError(null); }}
+                      onFocus={() => setHasTouchedConfirmPassword(true)}
                       secureTextEntry={!showConfirmPassword}
                     />
                     <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
@@ -377,6 +415,26 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
+  passwordRequirementsBox: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FED7AA',
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 16,
+  },
+  passwordRequirementsTitle: {
+    color: '#9A3412',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  passwordRequirementsItem: {
+    color: '#9A3412',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '500',
+  },
   inputArea: {
     width: '100%',
   },
@@ -395,6 +453,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  inputInvalid: {
+    borderColor: '#EF4444',
+  },
+  inputValid: {
+    borderColor: '#10B981',
   },
   input: {
     flex: 1,

@@ -289,10 +289,17 @@ export const getTargetReviews = async (req, res) => {
 export const getAdminReviews = async (req, res) => {
   try {
     const { status, targetType, page = 1, limit = 20 } = req.query;
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
 
     const where = {};
-    if (status) where.status = status;
     if (targetType) where.targetType = targetType;
+    if (status === 'PENDING') {
+      where.status = 'PUBLISHED';
+      where.rating = { lt: 3 };
+    } else if (status) {
+      where.status = status;
+    }
 
     const reviews = await prisma.review.findMany({
       where,
@@ -300,8 +307,8 @@ export const getAdminReviews = async (req, res) => {
         user: { select: { id: true, name: true, email: true } },
       },
       orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: parseInt(limit)
+      skip: (pageNumber - 1) * limitNumber,
+      take: limitNumber
     });
 
     const total = await prisma.review.count({ where });
@@ -311,9 +318,9 @@ export const getAdminReviews = async (req, res) => {
       data: reviews,
       meta: {
         total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit)
+        page: pageNumber,
+        limit: limitNumber,
+        totalPages: Math.ceil(total / limitNumber)
       }
     });
   } catch (error) {

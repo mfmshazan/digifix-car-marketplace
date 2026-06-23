@@ -73,7 +73,7 @@ export default function SuccessScreen() {
         <>
           <Ionicons name="close-circle" size={80} color="#EF4444" />
           <Text style={styles.errorText}>Verification Failed</Text>
-          <Text style={styles.subText}>We couldn't confirm your payment.</Text>
+          <Text style={styles.subText}>{"We couldn't confirm your payment."}</Text>
           <TouchableOpacity 
             style={styles.buttonOutline} 
             onPress={() => router.push('/(customer)/cart')}

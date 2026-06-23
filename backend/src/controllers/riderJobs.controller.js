@@ -1,6 +1,7 @@
 import { getRiderClient, riderQuery } from '../lib/riderDb.js';
 import { dispatchAvailableJobs, resolveOffer } from '../services/riderRealtimeDispatch.js';
 import { isFloatInRange, validationError } from '../utils/riderValidation.js';
+import { recordRiderAvailability } from '../services/riderAvailability.js';
 
 const ACTIVE_JOB_STATUSES = ['assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff'];
 
@@ -60,18 +61,19 @@ export const getAvailableRiderJobs = async (req, res, next) => {
 export const getActiveRiderJob = async (req, res, next) => {
   try {
     const result = await riderQuery(
-      `SELECT "DeliveryJob".id, order_number, customer_name, customer_phone,
-              pickup_address, pickup_latitude, pickup_longitude,
-              pickup_contact_name, pickup_contact_phone,
-              dropoff_address, dropoff_latitude, dropoff_longitude,
-              distance_km, payment_amount, items_description, special_instructions,
-              "DeliveryJob".status, assigned_at, accepted_at, picked_up_at, "DeliveryJob".created_at,
-              current_latitude, current_longitude
-         FROM "DeliveryJob"
-         LEFT JOIN "Rider" ON "Rider".id = "DeliveryJob".partner_id
-        WHERE partner_id = $1
-          AND "DeliveryJob".status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
-        ORDER BY "DeliveryJob".assigned_at DESC
+      `SELECT dj.id, dj.order_number, dj.customer_name, dj.customer_phone,
+              dj.pickup_address, dj.pickup_latitude, dj.pickup_longitude,
+              dj.pickup_contact_name, dj.pickup_contact_phone,
+              dj.dropoff_address, dj.dropoff_latitude, dj.dropoff_longitude,
+              dj.distance_km, dj.payment_amount, dj.items_description, dj.special_instructions,
+              dj.status, dj.assigned_at, dj.accepted_at, dj.picked_up_at, dj.created_at,
+              rider.current_latitude, rider.current_longitude
+         FROM "DeliveryJob" dj
+         LEFT JOIN "Rider" rider ON rider.id = dj.partner_id
+        WHERE dj.partner_id = $1
+          AND dj.status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
+        ORDER BY dj.assigned_at DESC
+
         LIMIT 1`,
       [req.user.id]
     );
@@ -287,6 +289,12 @@ export const acceptRiderJob = async (req, res, next) => {
 
     await client.query(`UPDATE "Rider" SET status = 'busy' WHERE id = $1`, [req.user.id]);
     await client.query('COMMIT');
+    await recordRiderAvailability(
+      { query: riderQuery },
+      req.user.id,
+      'busy',
+      'delivery_accepted'
+    );
 
     return res.json({
       success: true,
@@ -336,6 +344,12 @@ export const rejectRiderAssignedJob = async (req, res, next) => {
 
     await client.query(`UPDATE "Rider" SET status = 'online' WHERE id = $1 AND status = 'busy'`, [req.user.id]);
     await client.query('COMMIT');
+    await recordRiderAvailability(
+      { query: riderQuery },
+      req.user.id,
+      'online',
+      'delivery_rejected'
+    );
     await dispatchAvailableJobs();
 
     return res.json({ success: true, message: 'Assigned delivery rejected successfully', data: result.rows[0] });
@@ -511,6 +525,14 @@ export const updateRiderJobStatus = async (req, res, next) => {
 
     await syncMarketplaceOrderStatus(client, jobId, status);
     await client.query('COMMIT');
+    if (status === 'delivered' || status === 'failed') {
+      await recordRiderAvailability(
+        { query: riderQuery },
+        req.user.id,
+        'online',
+        status === 'delivered' ? 'delivery_completed' : 'delivery_failed'
+      );
+    }
 
     if (status === 'failed') await dispatchAvailableJobs();
 
@@ -532,7 +554,13 @@ export const addRiderJobLocation = async (req, res, next) => {
       return validationError(res, 'Invalid location data');
     }
 
-    const jobCheck = await riderQuery('SELECT id FROM "DeliveryJob" WHERE id = $1 AND partner_id = $2', [jobId, req.user.id]);
+    const jobCheck = await riderQuery(
+      `SELECT id, marketplace_order_id, status
+         FROM "DeliveryJob"
+        WHERE id = $1
+          AND partner_id = $2`,
+      [jobId, req.user.id]
+    );
 
     if (jobCheck.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Job not found or not assigned to you' });
@@ -551,6 +579,35 @@ export const addRiderJobLocation = async (req, res, next) => {
         WHERE id = $3`,
       [latitude, longitude, req.user.id]
     );
+
+    const marketplaceOrderId = jobCheck.rows[0].marketplace_order_id;
+
+    if (marketplaceOrderId && global.io) {
+      const orderResult = await riderQuery(
+        `SELECT "customerId"
+           FROM "Order"
+          WHERE id = $1`,
+        [marketplaceOrderId]
+      );
+      const customerId = orderResult.rows[0]?.customerId;
+
+      if (customerId) {
+        global.io.to(`user:${customerId}`).emit('riderLocationUpdated', {
+          orderId: marketplaceOrderId,
+          deliveryId: jobId,
+          status: jobCheck.rows[0].status,
+          riderId: req.user.id,
+          location: {
+            latitude: Number(latitude),
+            longitude: Number(longitude),
+            accuracy: accuracy === undefined || accuracy === null ? null : Number(accuracy),
+            speed: speed === undefined || speed === null ? null : Number(speed),
+            heading: heading === undefined || heading === null ? null : Number(heading),
+            recordedAt: new Date().toISOString(),
+          },
+        });
+      }
+    }
 
     return res.json({ success: true, message: 'Location tracked successfully' });
   } catch (error) {
@@ -608,8 +665,11 @@ export const submitRiderProof = async (req, res, next) => {
     const longitude = body.longitude ?? body.deliveryLongitude ?? body.delivery_longitude ?? null;
     const proofNotes = notes || null;
 
-    if (!photoUrl) {
-      return res.status(400).json({ success: false, message: 'Delivery photo proof is required' });
+    if (!photoUrl && !signatureData) {
+      return res.status(400).json({
+        success: false,
+        message: 'A delivery photo or customer signature is required',
+      });
     }
 
     await client.query('BEGIN');
@@ -663,6 +723,14 @@ export const submitRiderProof = async (req, res, next) => {
     }
 
     await client.query('COMMIT');
+    if (job.status !== 'delivered') {
+      await recordRiderAvailability(
+        { query: riderQuery },
+        req.user.id,
+        'online',
+        'delivery_completed'
+      );
+    }
     dispatchAvailableJobs().catch((error) => {
       console.error('Failed to dispatch available jobs after proof submission:', error);
     });

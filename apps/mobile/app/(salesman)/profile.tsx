@@ -402,7 +402,7 @@ export default function SalesmanProfileScreen() {
             key={item.id}
             style={styles.menuItem}
             onPress={() => {
-              if ("route" in item && item.route) router.push(item.route);
+              if ("route" in item && item.route) router.push(item.route as any);
             }}
           >
             <View

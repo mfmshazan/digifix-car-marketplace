@@ -11,12 +11,12 @@ import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import HomeScreen from './screens/HomeScreen';
 import DeliveryDetailsScreen from './screens/DeliveryDetailsScreen';
-import AvailableJobsScreen from './screens/AvailableJobsScreen';
 import ActiveDeliveryScreen from './screens/ActiveDeliveryScreen';
 import AssignedDeliveriesScreen from './screens/AssignedDeliveriesScreen';
 import ProofOfDeliveryScreen from './screens/ProofOfDeliveryScreen';
 import JobHistoryScreen from './screens/JobHistoryScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import PerformanceDashboardScreen from './screens/PerformanceDashboardScreen';
 import RealtimeDispatchLayer from './components/RealtimeDispatchLayer';
 
 import { getAccessToken, getRefreshToken } from './services/storage';
@@ -48,6 +48,7 @@ function MainTabs() {
         <Tab.Navigator
             screenOptions={({ route }) => ({
                 headerShown: false,
+                tabBarHideOnKeyboard: true,
                 tabBarStyle: styles.tabBar,
                 tabBarActiveTintColor: colors.secondary,
                 tabBarInactiveTintColor: colors.textMuted,
@@ -61,10 +62,16 @@ function MainTabs() {
                         iconName = focused ? 'car' : 'car-outline';
                     } else if (route.name === 'JobHistory') {
                         iconName = focused ? 'receipt' : 'receipt-outline';
+                    } else if (route.name === 'Performance') {
+                        iconName = focused ? 'analytics' : 'analytics-outline';
                     } else if (route.name === 'Profile') {
                         iconName = focused ? 'person-circle' : 'person-circle-outline';
                     }
-                    return <Ionicons name={iconName} size={24} color={color} />;
+                    return (
+                        <View style={[styles.tabIconWrap, focused && styles.tabIconWrapActive]}>
+                            <Ionicons name={iconName} size={21} color={color} />
+                        </View>
+                    );
                 },
             })}
         >
@@ -82,6 +89,11 @@ function MainTabs() {
                 name="JobHistory"
                 component={JobHistoryScreen}
                 options={{ tabBarLabel: 'History' }}
+            />
+            <Tab.Screen
+                name="Performance"
+                component={PerformanceDashboardScreen}
+                options={{ tabBarLabel: 'Performance' }}
             />
             <Tab.Screen
                 name="Profile"
@@ -133,7 +145,7 @@ function AppContent() {
 
     return (
         <>
-            <StatusBar style="dark" />
+            <StatusBar style="dark" backgroundColor={colors.background} />
             <NavigationContainer
                 ref={navigationRef}
                 theme={navTheme}
@@ -159,11 +171,6 @@ function AppContent() {
                         name="DeliveryDetails"
                         component={DeliveryDetailsScreen}
                         options={{ title: 'Delivery Details' }}
-                    />
-                    <Stack.Screen
-                        name="AvailableJobs"
-                        component={AvailableJobsScreen}
-                        options={{ title: 'Available Jobs' }}
                     />
                     <Stack.Screen
                         name="ActiveDelivery"
@@ -209,7 +216,8 @@ const styles = StyleSheet.create({
     },
     headerStyle: {
         backgroundColor: colors.surface,
-        ...shadows.small,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.borderSubtle,
     },
     headerTitle: {
         fontSize: 17,
@@ -218,20 +226,33 @@ const styles = StyleSheet.create({
     },
     tabBar: {
         backgroundColor: colors.surface,
-        borderTopWidth: 1,
-        borderTopColor: colors.border,
-        height: Platform.OS === 'ios' ? 88 : 64,
-        paddingTop: 8,
-        paddingBottom: Platform.OS === 'ios' ? 28 : 10,
-        ...shadows.medium,
+        borderTopWidth: 0,
+        height: Platform.OS === 'ios' ? 92 : 72,
+        paddingTop: 9,
+        paddingBottom: Platform.OS === 'ios' ? 27 : 9,
+        marginHorizontal: 12,
+        marginBottom: Platform.OS === 'ios' ? 0 : 10,
+        borderRadius: 22,
+        position: 'absolute',
+        ...shadows.large,
     },
     tabLabel: {
-        fontSize: 11,
-        fontWeight: '600',
-        marginTop: 2,
+        fontSize: 10,
+        fontWeight: '700',
+        marginTop: 3,
     },
     tabItem: {
-        paddingVertical: 4,
+        paddingVertical: 2,
+    },
+    tabIconWrap: {
+        width: 34,
+        height: 28,
+        borderRadius: 11,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    tabIconWrapActive: {
+        backgroundColor: colors.secondarySoft,
     },
 });
 

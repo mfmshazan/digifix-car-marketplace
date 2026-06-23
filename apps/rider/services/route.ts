@@ -3,7 +3,6 @@ import {
     MAPBOX_ACCESS_TOKEN,
     ROUTE_PROVIDER,
 } from '../config';
-import { isMockSession } from './storage';
 
 export type RouteProvider = 'mapbox' | 'google';
 
@@ -48,8 +47,6 @@ const clampEtaMinutes = (durationSeconds: number) =>
     Math.max(1, Math.round(durationSeconds / 60));
 
 const toDistanceKm = (distanceMeters: number) => distanceMeters / 1000;
-
-const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
 
 const createRouteServiceError = (
     code: RouteServiceErrorCode,
@@ -97,76 +94,6 @@ const buildRouteResult = (
     durationSeconds,
     etaMinutes: clampEtaMinutes(durationSeconds),
 });
-
-const calculateDistanceMeters = (
-    origin: RouteCoordinate,
-    destination: RouteCoordinate
-) => {
-    const earthRadiusMeters = 6371000;
-    const latitudeDelta = toRadians(destination.latitude - origin.latitude);
-    const longitudeDelta = toRadians(destination.longitude - origin.longitude);
-    const originLatitude = toRadians(origin.latitude);
-    const destinationLatitude = toRadians(destination.latitude);
-    const haversine =
-        Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
-        Math.cos(originLatitude) *
-            Math.cos(destinationLatitude) *
-            Math.sin(longitudeDelta / 2) *
-            Math.sin(longitudeDelta / 2);
-
-    return (
-        2 *
-        earthRadiusMeters *
-        Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
-    );
-};
-
-const interpolateCoordinates = (
-    origin: RouteCoordinate,
-    destination: RouteCoordinate,
-    totalPoints = 6
-) => {
-    const coordinates: RouteCoordinate[] = [];
-
-    for (let index = 0; index < totalPoints; index += 1) {
-        const progress = index / (totalPoints - 1);
-        const bendOffset = progress > 0 && progress < 1 ? 0.004 * Math.sin(progress * Math.PI) : 0;
-
-        coordinates.push({
-            latitude:
-                origin.latitude + (destination.latitude - origin.latitude) * progress,
-            longitude:
-                origin.longitude +
-                (destination.longitude - origin.longitude) * progress +
-                bendOffset,
-        });
-    }
-
-    return coordinates;
-};
-
-const buildMockRoute = (
-    provider: RouteProvider,
-    origin: RouteCoordinate,
-    destination: RouteCoordinate
-) => {
-    const straightDistanceMeters = calculateDistanceMeters(origin, destination);
-    const roadDistanceMeters = Math.max(
-        900,
-        Math.round(straightDistanceMeters * 1.18)
-    );
-    const durationSeconds = Math.max(
-        7 * 60,
-        Math.round((roadDistanceMeters / 1000 / 24) * 3600)
-    );
-
-    return buildRouteResult(
-        provider,
-        interpolateCoordinates(origin, destination),
-        roadDistanceMeters,
-        durationSeconds
-    );
-};
 
 const decodeGoogleEncodedPolyline = (encoded: string): RouteCoordinate[] => {
     const coordinates: RouteCoordinate[] = [];
@@ -362,19 +289,38 @@ export const fetchRoute = async (
     }
 
     const provider = request.provider ?? getConfiguredRouteProvider();
-    const shouldUseMockFallback = await isMockSession();
+    const fallbackProvider: RouteProvider =
+        provider === 'google' ? 'mapbox' : 'google';
+    const providers = [provider, fallbackProvider].filter(
+        (candidate, index, values) =>
+            values.indexOf(candidate) === index &&
+            isRouteServiceConfigured(candidate)
+    );
+    const failures: string[] = [];
 
-    try {
-        if (provider === 'google') {
-            return await fetchGoogleRoute(request);
+    for (const candidate of providers) {
+        try {
+            if (candidate === 'google') {
+                return await fetchGoogleRoute(request);
+            }
+
+            return await fetchMapboxRoute(request);
+        } catch (error) {
+            failures.push(
+                `${candidate}: ${getRouteErrorMessage(error)}`
+            );
         }
-
-        return await fetchMapboxRoute(request);
-    } catch (error) {
-        if (shouldUseMockFallback) {
-            return buildMockRoute(provider, request.origin, request.destination);
-        }
-
-        throw error;
     }
+
+    if (!providers.length) {
+        throw createRouteServiceError(
+            'CONFIG_MISSING',
+            'No real road-routing provider is configured.'
+        );
+    }
+
+    throw createRouteServiceError(
+        'REQUEST_FAILED',
+        `Real road route unavailable. ${failures.join(' | ')}`
+    );
 };

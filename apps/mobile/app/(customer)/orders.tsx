@@ -66,6 +66,14 @@ const formatDate = (dateString: string) => {
 };
 
 type Coordinate = { latitude: number; longitude: number };
+type RoadRoute = {
+  provider: string;
+  coordinates: Coordinate[];
+  distanceMeters: number;
+  durationSeconds: number;
+  etaMinutes: number;
+  generatedAt: string;
+};
 const DELIVERY_STEPS = [
   { key: "pending", title: "Placed" },
   { key: "confirmed", title: "Confirmed" },
@@ -122,19 +130,6 @@ const riderStepToStepperKey = (status: string): string => {
 
 const normalizeDeliveryStatus = (status: string | null | undefined) =>
   String(status || "pending").trim().toLowerCase();
-
-const distanceKm = (from: Coordinate, to: Coordinate) => {
-  const toRadians = (value: number) => (value * Math.PI) / 180;
-  const earthRadiusKm = 6371;
-  const dLat = toRadians(to.latitude - from.latitude);
-  const dLon = toRadians(to.longitude - from.longitude);
-  const lat1 = toRadians(from.latitude);
-  const lat2 = toRadians(to.latitude);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
 
 const formatEta = (minutes: number | null) => {
   if (minutes === null) return "GPS pending";
@@ -249,6 +244,7 @@ const OrderStepper = ({ currentStatus, riderStep }: { currentStatus: string; rid
 export default function OrdersScreen() {
   const trackingMapRef = React.useRef<MapView | null>(null);
   const hasFitTrackingMap = React.useRef(false);
+  const trackingOrderRef = React.useRef<Order | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -274,22 +270,14 @@ export default function OrdersScreen() {
     pickup: { latitude: number; longitude: number; address?: string };
     dropoff: { latitude: number; longitude: number; address?: string };
   } | null>(null);
+  const [roadRoute, setRoadRoute] = useState<RoadRoute | null>(null);
+  const [roadRouteError, setRoadRouteError] = useState<string | null>(null);
   const [liveDeliveryStatus, setLiveDeliveryStatus] = useState<string | null>(null);
   const [liveRiderStep, setLiveRiderStep] = useState<string | null>(null); // Detailed rider step for the label
   const [lastTrackingUpdate, setLastTrackingUpdate] = useState<Date | null>(null);
 
   const activeDeliveryStatus = normalizeDeliveryStatus(liveDeliveryStatus || trackingOrder?.status);
-  const etaMinutes =
-    riderLocation && deliveryRoute
-      ? (() => {
-        const averageCitySpeedKmh = 24;
-        const remainingKm =
-          ["pending", "available", "assigned", "accepted", "arrived_at_pickup"].includes(activeDeliveryStatus)
-            ? distanceKm(riderLocation, deliveryRoute.pickup) + distanceKm(deliveryRoute.pickup, deliveryRoute.dropoff)
-            : distanceKm(riderLocation, deliveryRoute.dropoff);
-        return Math.max(1, Math.round((remainingKm / averageCitySpeedKmh) * 60));
-      })()
-      : null;
+  const etaMinutes = roadRoute?.etaMinutes ?? null;
   const etaLabel = formatEta(etaMinutes);
   // Show detailed rider step label if available, otherwise fall back to order status label
   const activeDeliveryLabel =
@@ -300,11 +288,17 @@ export default function OrdersScreen() {
     ? lastTrackingUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
     : "Waiting";
 
+  useEffect(() => {
+    trackingOrderRef.current = trackingOrder;
+  }, [trackingOrder]);
+
   // Poll rider's GPS every few seconds while the tracking modal is open.
   useEffect(() => {
     if (!trackingOrder) {
       setRiderLocation(null);
       setDeliveryRoute(null);
+      setRoadRoute(null);
+      setRoadRouteError(null);
       setLiveDeliveryStatus(null);
       setLiveRiderStep(null);
       setLastTrackingUpdate(null);
@@ -323,6 +317,16 @@ export default function OrdersScreen() {
         }
         if (res?.success && res.data?.route?.pickup && res.data?.route?.dropoff) {
           setDeliveryRoute(res.data.route);
+        }
+        if (res?.success && res.data?.roadRoute?.coordinates?.length >= 2) {
+          setRoadRoute(res.data.roadRoute);
+          setRoadRouteError(null);
+        } else if (res?.success) {
+          setRoadRoute(null);
+          setRoadRouteError(
+            res.data?.routeError ||
+            'A real road route is not available for these coordinates yet.'
+          );
         }
         if (res?.success && res.data?.status) {
           setLiveDeliveryStatus(res.data.status);
@@ -344,11 +348,13 @@ export default function OrdersScreen() {
   useEffect(() => {
     if (!trackingOrder || !deliveryRoute || !trackingMapRef.current || hasFitTrackingMap.current) return;
 
-    const coordinates = [
-      deliveryRoute.pickup,
-      ...(riderLocation ? [riderLocation] : []),
-      deliveryRoute.dropoff,
-    ];
+    const coordinates = roadRoute?.coordinates?.length
+      ? roadRoute.coordinates
+      : [
+        deliveryRoute.pickup,
+        ...(riderLocation ? [riderLocation] : []),
+        deliveryRoute.dropoff,
+      ];
 
     const timeoutId = setTimeout(() => {
       trackingMapRef.current?.fitToCoordinates(coordinates, {
@@ -359,7 +365,7 @@ export default function OrdersScreen() {
     }, 250);
 
     return () => clearTimeout(timeoutId);
-  }, [trackingOrder, deliveryRoute]);
+  }, [trackingOrder, deliveryRoute, roadRoute, riderLocation]);
 
   const fetchOrders = async (showRefresh = false) => {
     try {
@@ -435,6 +441,45 @@ export default function OrdersScreen() {
 
         socket.on('orderStatusUpdated', handleStatusUpdate);
 
+        const handleRiderLocation = (payload: {
+          orderId: string;
+          deliveryId: number;
+          status?: string;
+          location?: {
+            latitude: number;
+            longitude: number;
+            accuracy?: number | null;
+            recordedAt?: string;
+          };
+        }) => {
+          const currentTrackingOrder = trackingOrderRef.current;
+          if (!currentTrackingOrder || payload.orderId !== currentTrackingOrder.id) {
+            return;
+          }
+
+          if (
+            payload.location &&
+            Number.isFinite(Number(payload.location.latitude)) &&
+            Number.isFinite(Number(payload.location.longitude))
+          ) {
+            setRiderLocation({
+              latitude: Number(payload.location.latitude),
+              longitude: Number(payload.location.longitude),
+            });
+            setLastTrackingUpdate(
+              payload.location.recordedAt
+                ? new Date(payload.location.recordedAt)
+                : new Date()
+            );
+          }
+
+          if (payload.status) {
+            setLiveRiderStep(payload.status);
+          }
+        };
+
+        socket.on('riderLocationUpdated', handleRiderLocation);
+
         // Listen for cancellation approval/rejection so the UI updates without manual refresh
         const handleCancellationApproved = (payload: { orderId: string; status: string }) => {
           setOrders((prev) =>
@@ -458,6 +503,7 @@ export default function OrdersScreen() {
 
         return () => {
           socket.off('orderStatusUpdated', handleStatusUpdate);
+          socket.off('riderLocationUpdated', handleRiderLocation);
           socket.off('cancellationApproved', handleCancellationApproved);
           socket.off('cancellationRejected', handleCancellationRejected);
         };
@@ -754,21 +800,15 @@ export default function OrdersScreen() {
           >
             {deliveryRoute && (
               <>
-                <Polyline
-                  coordinates={[deliveryRoute.pickup, deliveryRoute.dropoff]}
-                  strokeColor="#94A3B8"
-                  strokeWidth={4}
-                  lineDashPattern={[8, 6]}
-                />
-                <Polyline
-                  coordinates={[
-                    deliveryRoute.pickup,
-                    ...(riderLocation ? [riderLocation] : []),
-                    deliveryRoute.dropoff,
-                  ]}
-                  strokeColor="#FF6B35"
-                  strokeWidth={5}
-                />
+                {roadRoute && roadRoute.coordinates.length >= 2 && (
+                  <Polyline
+                    coordinates={roadRoute.coordinates}
+                    strokeColor="#FF6B35"
+                    strokeWidth={5}
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                )}
                 <Marker
                   coordinate={deliveryRoute.pickup}
                   title="Pickup"
@@ -803,6 +843,13 @@ export default function OrdersScreen() {
             </View>
           )}
 
+          {roadRouteError && riderLocation && (
+            <View style={styles.routeErrorBanner} pointerEvents="none">
+              <Ionicons name="warning-outline" size={18} color="#B45309" />
+              <Text style={styles.routeErrorText}>{roadRouteError}</Text>
+            </View>
+          )}
+
           <View style={styles.trackingInfoCard}>
             <View style={styles.trackingInfoHeader}>
               <View style={{ flex: 1 }}>
@@ -816,7 +863,7 @@ export default function OrdersScreen() {
             </View>
             <View style={styles.liveMetaRow}>
               <View style={styles.liveDot} />
-              <Text style={styles.liveMetaText}>Live updates every 3s</Text>
+              <Text style={styles.liveMetaText}>Live GPS + road routing</Text>
               <Text style={styles.liveMetaText}>Updated {lastUpdatedLabel}</Text>
             </View>
             <OrderStepper currentStatus={activeDeliveryStatus} riderStep={liveRiderStep ?? undefined} />
@@ -1717,6 +1764,34 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: "#666",
+    fontWeight: "500",
+  },
+  routeErrorBanner: {
+    position: "absolute",
+    top: 112,
+    left: 16,
+    right: 16,
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+    backgroundColor: "#FFFBEB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  routeErrorText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#92400E",
     fontWeight: "500",
   },
   rateButton: {

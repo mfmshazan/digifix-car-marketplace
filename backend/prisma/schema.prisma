@@ -542,9 +542,22 @@ model Rider {
   jobs          DeliveryJob[]
   tracking      DeliveryTracking[]
   offers        DeliveryOffer[]
+  availabilitySessions RiderAvailabilitySession[]
 
   @@index([email], map: "idx_rider_partners_email")
   @@index([status], map: "idx_rider_partners_status")
+}
+
+model RiderAvailabilitySession {
+  id        Int       @id @default(autoincrement())
+  partnerId Int       @map("partner_id")
+  startedAt DateTime  @default(now()) @map("started_at") @db.Timestamptz(3)
+  endedAt   DateTime? @map("ended_at") @db.Timestamptz(3)
+  endReason String?   @map("end_reason") @db.VarChar(50)
+
+  partner Rider @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId, startedAt], map: "idx_rider_availability_partner_started")
 }
 
 model RiderToken {

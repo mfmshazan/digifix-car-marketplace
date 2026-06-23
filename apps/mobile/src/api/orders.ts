@@ -246,11 +246,11 @@ export const getCustomerOrders = async (
   }
 };
 
-// Create order (address is optional)
+// Create order using an address owned by the signed-in customer
 export const createOrder = async (
   items: { productId: string; quantity: number }[],
   paymentMethod: string,
-  addressId?: string,
+  addressId: string,
   notes?: string
 ) => {
   try {
@@ -263,16 +263,14 @@ export const createOrder = async (
     const orderData: {
       items: { productId: string; quantity: number }[];
       paymentMethod: string;
-      addressId?: string;
+      addressId: string;
       notes?: string;
     } = {
       items,
-      paymentMethod
+      paymentMethod,
+      addressId,
     };
 
-    if (addressId) {
-      orderData.addressId = addressId;
-    }
     if (notes) {
       orderData.notes = notes;
     }
@@ -289,7 +287,7 @@ export const createOrder = async (
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.message || 'Failed to create order');
+      throw new Error(result.error || result.message || 'Failed to create order');
     }
 
     return result;

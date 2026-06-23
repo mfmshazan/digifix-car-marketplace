@@ -142,13 +142,19 @@ export const partnerAPI = {
     updateLocation: (latitude, longitude) =>
         api.put('/partner/location', { latitude, longitude }),
 };
+
+export const performanceAPI = {
+    getDashboard: (period = 'week') =>
+        api.get(`/partner/performance?period=${encodeURIComponent(period)}`),
+    flagReview: (reviewId) => api.post(`/ratings/${reviewId}/flag`),
+};
+
 export const jobsAPI = {
     getAvailable: () => api.get('/jobs/available'),
     getActive: () => api.get('/jobs/active'),
     getAssigned: () => api.get('/jobs/assigned'),
     getHistory: (limit = 20, offset = 0) =>
         api.get(`/jobs/history?limit=${limit}&offset=${offset}`),
-    acceptJob: (jobId) => api.post(`/jobs/${jobId}/accept`),
     acceptAssigned: (jobId) => api.put(`/jobs/${jobId}/status`, { status: 'accepted' }),
     acceptIncomingRequest: (offerId) =>
         api.post(`/jobs/request-offers/${offerId}/accept`),
@@ -165,8 +171,8 @@ export const jobsAPI = {
         const formData = new FormData();
         formData.append('recipientName', proofData.recipientName || '');
         formData.append('notes', proofData.notes || '');
-        formData.append('latitude', proofData.latitude);
-        formData.append('longitude', proofData.longitude);
+        formData.append('latitude', String(proofData.latitude));
+        formData.append('longitude', String(proofData.longitude));
 
         // Append photo if available
         if (proofData.photoUri) {
@@ -184,11 +190,51 @@ export const jobsAPI = {
             formData.append('signature', proofData.signatureData);
         }
 
-        return api.post(`/jobs/${jobId}/proof`, formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data',
-            },
-        });
+        const token = await getAccessToken();
+        if (!token) {
+            throw new Error('Your rider session has expired. Please sign in again.');
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/proof`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    // Do not set Content-Type manually. React Native must add
+                    // the multipart boundary generated for this FormData body.
+                },
+                body: formData,
+                signal: controller.signal,
+            });
+
+            const responseText = await response.text();
+            let result = {};
+
+            try {
+                result = responseText ? JSON.parse(responseText) : {};
+            } catch {
+                result = {};
+            }
+
+            if (!response.ok) {
+                throw new Error(
+                    result.message ||
+                    `Proof upload failed with status ${response.status}`
+                );
+            }
+
+            return { data: result };
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                throw new Error('Proof upload timed out. Check your connection and try again.');
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
+        }
     },
 };
 

@@ -131,6 +131,10 @@ export const authAPI = {
     login: (data) => api.post('/auth/login', data),
     logout: (refreshToken) => api.post('/auth/logout', { refreshToken }),
     register: (data) => api.post('/auth/register', data),
+    // Forgot Password Flow
+    requestOtp: (email) => api.post('/auth/forgot-password', { email }),
+    verifyOtp: (email, otp) => api.post('/auth/verify-otp', { email, otp }),
+    resetPassword: (resetToken, newPassword) => api.post('/auth/reset-password', { resetToken, newPassword }),
 };
 
 export const partnerAPI = {

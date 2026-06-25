@@ -17,6 +17,16 @@ import { authAPI } from '../services/api';
 import { colors, spacing, typography, radii } from '../styles/theme';
 
 const { width } = Dimensions.get('window');
+const PASSWORD_REQUIREMENTS_ERROR = 'Password does not meet the minimum requirements.';
+const PASSWORD_REQUIREMENTS = [
+    { label: 'At least 8 characters', test: (value) => value.length >= 8 },
+    { label: 'One number', test: (value) => /\d/.test(value) },
+    { label: 'One uppercase letter', test: (value) => /[A-Z]/.test(value) },
+    { label: 'One lowercase letter', test: (value) => /[a-z]/.test(value) },
+    { label: 'One symbol', test: (value) => /[\W_]/.test(value) },
+];
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+const isStrongPassword = (value) => passwordRegex.test(value);
 
 export default function ForgotPasswordScreen({ navigation }) {
     const [step, setStep] = useState(1); // 1: Email, 2: OTP, 3: New Password
@@ -27,11 +37,17 @@ export default function ForgotPasswordScreen({ navigation }) {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
+    const [hasTouchedConfirmPassword, setHasTouchedConfirmPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const [isSuccess, setIsSuccess] = useState(false);
 
     const otpInputRefs = useRef([]);
+    const isConfirmPasswordEntered = confirmPassword.length > 0;
+    const isConfirmPasswordValid = isConfirmPasswordEntered && confirmPassword === password;
+    const shouldShowConfirmPasswordMismatch =
+        hasTouchedConfirmPassword && isConfirmPasswordEntered && !isConfirmPasswordValid;
 
     // Step 1: Request OTP
     const handleRequestOtp = async () => {
@@ -78,14 +94,13 @@ export default function ForgotPasswordScreen({ navigation }) {
     // Step 3: Reset Password
     const handleResetPassword = async () => {
         if (password !== confirmPassword) {
+            setHasTouchedConfirmPassword(true);
             setError('Passwords do not match');
             return;
         }
-        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-        if (!passwordRegex.test(password)) {
-            setError(
-                'Password must be at least 8 characters with uppercase, lowercase, number and symbol.'
-            );
+        if (!isStrongPassword(password)) {
+            setHasTouchedPassword(true);
+            setError(PASSWORD_REQUIREMENTS_ERROR);
             return;
         }
         try {
@@ -217,7 +232,7 @@ export default function ForgotPasswordScreen({ navigation }) {
                         <Text style={styles.cardSubtitle}>{stepSubtitles[step - 1]}</Text>
 
                         {/* Error */}
-                        {error ? (
+                        {error && error !== PASSWORD_REQUIREMENTS_ERROR ? (
                             <View style={styles.errorBox}>
                                 <Ionicons name="alert-circle" size={16} color="#EF4444" />
                                 <Text style={styles.errorText}>{error}</Text>
@@ -275,10 +290,11 @@ export default function ForgotPasswordScreen({ navigation }) {
                                     <Ionicons name="lock-closed-outline" size={18} color={colors.textSecondary} />
                                     <TextInput
                                         style={styles.input}
-                                        placeholder="Min 8 chars, upper, lower, number, symbol"
+                                        placeholder="Enter your password"
                                         placeholderTextColor={colors.textMuted}
                                         value={password}
                                         onChangeText={(t) => { setPassword(t); setError(null); }}
+                                        onFocus={() => setHasTouchedPassword(true)}
                                         secureTextEntry={!showPassword}
                                     />
                                     <TouchableOpacity onPress={() => setShowPassword(!showPassword)} activeOpacity={0.7}>
@@ -289,9 +305,33 @@ export default function ForgotPasswordScreen({ navigation }) {
                                         />
                                     </TouchableOpacity>
                                 </View>
+                                {hasTouchedPassword ? (
+                                    <View style={styles.passwordRequirementsList}>
+                                        {PASSWORD_REQUIREMENTS.map((requirement) => {
+                                            const passed = requirement.test(password);
+                                            return (
+                                                <View key={requirement.label} style={styles.passwordRequirementRow}>
+                                                    <Ionicons
+                                                        name={passed ? 'checkmark-circle-outline' : 'close-circle-outline'}
+                                                        size={18}
+                                                        color={passed ? colors.success : colors.danger}
+                                                    />
+                                                    <Text
+                                                        style={[
+                                                            styles.passwordRequirementText,
+                                                            passed ? styles.passwordRequirementValid : styles.passwordRequirementInvalid,
+                                                        ]}
+                                                    >
+                                                        {requirement.label}
+                                                    </Text>
+                                                </View>
+                                            );
+                                        })}
+                                    </View>
+                                ) : null}
 
                                 <Text style={styles.fieldLabel}>CONFIRM PASSWORD</Text>
-                                <View style={styles.inputWrapper}>
+                                <View style={[styles.inputWrapper, shouldShowConfirmPasswordMismatch && styles.inputInvalid]}>
                                     <Ionicons name="lock-closed-outline" size={18} color={colors.textSecondary} />
                                     <TextInput
                                         style={styles.input}
@@ -299,6 +339,7 @@ export default function ForgotPasswordScreen({ navigation }) {
                                         placeholderTextColor={colors.textMuted}
                                         value={confirmPassword}
                                         onChangeText={(t) => { setConfirmPassword(t); setError(null); }}
+                                        onFocus={() => setHasTouchedConfirmPassword(true)}
                                         secureTextEntry={!showConfirmPassword}
                                     />
                                     <TouchableOpacity
@@ -312,6 +353,23 @@ export default function ForgotPasswordScreen({ navigation }) {
                                         />
                                     </TouchableOpacity>
                                 </View>
+                                {hasTouchedConfirmPassword && isConfirmPasswordEntered ? (
+                                    <View style={styles.confirmFeedbackRow}>
+                                        <Ionicons
+                                            name={isConfirmPasswordValid ? 'checkmark-circle-outline' : 'close-circle-outline'}
+                                            size={17}
+                                            color={isConfirmPasswordValid ? colors.success : colors.danger}
+                                        />
+                                        <Text
+                                            style={[
+                                                styles.confirmFeedbackText,
+                                                isConfirmPasswordValid ? styles.confirmFeedbackValid : styles.confirmFeedbackInvalid,
+                                            ]}
+                                        >
+                                            {isConfirmPasswordValid ? 'Passwords match' : 'Passwords do not match'}
+                                        </Text>
+                                    </View>
+                                ) : null}
                             </View>
                         )}
 
@@ -467,8 +525,47 @@ const styles = StyleSheet.create({
         paddingVertical: spacing.sm,
         gap: spacing.sm,
     },
+    inputInvalid: {
+        borderColor: colors.danger,
+    },
     inputSpacing: {
         marginBottom: spacing.md,
+    },
+    passwordRequirementsList: {
+        gap: 8,
+        marginTop: -6,
+        marginBottom: spacing.md,
+    },
+    passwordRequirementRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+    },
+    passwordRequirementText: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    passwordRequirementValid: {
+        color: colors.success,
+    },
+    passwordRequirementInvalid: {
+        color: colors.danger,
+    },
+    confirmFeedbackRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: spacing.sm,
+    },
+    confirmFeedbackText: {
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    confirmFeedbackValid: {
+        color: colors.success,
+    },
+    confirmFeedbackInvalid: {
+        color: colors.danger,
     },
     input: {
         flex: 1,

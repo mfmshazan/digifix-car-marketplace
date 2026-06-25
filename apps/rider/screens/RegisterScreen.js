@@ -16,6 +16,17 @@ import { authAPI } from '../services/api';
 import { saveTokens, saveUserData } from '../services/storage';
 import { colors, spacing, typography, radii } from '../styles/theme';
 
+const PASSWORD_REQUIREMENTS_ERROR = 'Password does not meet the minimum requirements.';
+const PASSWORD_REQUIREMENTS = [
+    { label: 'At least 8 characters', test: (value) => value.length >= 8 },
+    { label: 'One number', test: (value) => /\d/.test(value) },
+    { label: 'One uppercase letter', test: (value) => /[A-Z]/.test(value) },
+    { label: 'One lowercase letter', test: (value) => /[a-z]/.test(value) },
+    { label: 'One symbol', test: (value) => /[\W_]/.test(value) },
+];
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+const isStrongPassword = (value) => passwordRegex.test(value);
+
 export default function RegisterScreen({ navigation }) {
     const [formData, setFormData] = useState({
         fullName: '',
@@ -30,6 +41,12 @@ export default function RegisterScreen({ navigation }) {
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
+    const [hasTouchedConfirmPassword, setHasTouchedConfirmPassword] = useState(false);
+    const isConfirmPasswordEntered = formData.confirmPassword.length > 0;
+    const isConfirmPasswordValid = isConfirmPasswordEntered && formData.confirmPassword === formData.password;
+    const shouldShowConfirmPasswordMismatch =
+        hasTouchedConfirmPassword && isConfirmPasswordEntered && !isConfirmPasswordValid;
 
     const handleRegister = async () => {
         setError('');
@@ -39,13 +56,14 @@ export default function RegisterScreen({ navigation }) {
         }
 
         if (formData.password !== formData.confirmPassword) {
+            setHasTouchedConfirmPassword(true);
             setError('Passwords do not match');
             return;
         }
 
-        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-        if (!passwordRegex.test(formData.password)) {
-            setError('Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.');
+        if (!isStrongPassword(formData.password)) {
+            setHasTouchedPassword(true);
+            setError(PASSWORD_REQUIREMENTS_ERROR);
             return;
         }
 
@@ -115,7 +133,7 @@ export default function RegisterScreen({ navigation }) {
                         <Text style={styles.formTitle}>Personal details</Text>
                         <Text style={styles.formSubtitle}>Use accurate information that suppliers can verify.</Text>
 
-                        {error ? (
+                        {error && error !== PASSWORD_REQUIREMENTS_ERROR ? (
                             <View style={styles.errorBanner}>
                                 <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
                                 <Text style={styles.errorText}>{error}</Text>
@@ -158,7 +176,8 @@ export default function RegisterScreen({ navigation }) {
                             label="Password"
                             placeholder="Create a password"
                             value={formData.password}
-                            onChangeText={(text) => setFormData({ ...formData, password: text })}
+                            onChangeText={(text) => { setFormData({ ...formData, password: text }); setError(''); }}
+                            onFocus={() => setHasTouchedPassword(true)}
                             secureTextEntry={!showPassword}
                             rightAccessory={
                                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)} activeOpacity={0.7} style={styles.eyeButton}>
@@ -166,18 +185,61 @@ export default function RegisterScreen({ navigation }) {
                                 </TouchableOpacity>
                             }
                         />
+                        {hasTouchedPassword ? (
+                            <View style={styles.passwordRequirementsList}>
+                                {PASSWORD_REQUIREMENTS.map((requirement) => {
+                                    const passed = requirement.test(formData.password);
+                                    return (
+                                        <View key={requirement.label} style={styles.passwordRequirementRow}>
+                                            <Ionicons
+                                                name={passed ? 'checkmark-circle-outline' : 'close-circle-outline'}
+                                                size={18}
+                                                color={passed ? colors.success : colors.danger}
+                                            />
+                                            <Text
+                                                style={[
+                                                    styles.passwordRequirementText,
+                                                    passed ? styles.passwordRequirementValid : styles.passwordRequirementInvalid,
+                                                ]}
+                                            >
+                                                {requirement.label}
+                                            </Text>
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        ) : null}
                         <Input
                             label="Confirm Password"
                             placeholder="Re-enter your password"
                             value={formData.confirmPassword}
-                            onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })}
+                            onChangeText={(text) => { setFormData({ ...formData, confirmPassword: text }); setError(''); }}
+                            onFocus={() => setHasTouchedConfirmPassword(true)}
                             secureTextEntry={!showConfirmPassword}
+                            inputStyle={shouldShowConfirmPasswordMismatch && styles.inputInvalid}
                             rightAccessory={
                                 <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} activeOpacity={0.7} style={styles.eyeButton}>
                                     <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={21} color={colors.textSecondary} />
                                 </TouchableOpacity>
                             }
                         />
+                        {hasTouchedConfirmPassword && isConfirmPasswordEntered ? (
+                            <View style={styles.confirmFeedbackRow}>
+                                <Ionicons
+                                    name={isConfirmPasswordValid ? 'checkmark-circle-outline' : 'close-circle-outline'}
+                                    size={17}
+                                    color={isConfirmPasswordValid ? colors.success : colors.danger}
+                                />
+                                <Text
+                                    style={[
+                                        styles.confirmFeedbackText,
+                                        isConfirmPasswordValid ? styles.confirmFeedbackValid : styles.confirmFeedbackInvalid,
+                                    ]}
+                                >
+                                    {isConfirmPasswordValid ? 'Passwords match' : 'Passwords do not match'}
+                                </Text>
+                            </View>
+                        ) : null}
 
                         <View style={styles.formDivider}>
                             <View style={styles.dividerIcon}>
@@ -362,6 +424,46 @@ const styles = StyleSheet.create({
     },
     eyeButton: {
         padding: 6,
+    },
+    passwordRequirementsList: {
+        gap: 8,
+        marginTop: -8,
+        marginBottom: spacing.md,
+    },
+    passwordRequirementRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+    },
+    passwordRequirementText: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    passwordRequirementValid: {
+        color: colors.success,
+    },
+    passwordRequirementInvalid: {
+        color: colors.danger,
+    },
+    inputInvalid: {
+        borderColor: colors.danger,
+    },
+    confirmFeedbackRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: -8,
+        marginBottom: spacing.md,
+    },
+    confirmFeedbackText: {
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    confirmFeedbackValid: {
+        color: colors.success,
+    },
+    confirmFeedbackInvalid: {
+        color: colors.danger,
     },
     primaryAction: {
         marginTop: spacing.sm,

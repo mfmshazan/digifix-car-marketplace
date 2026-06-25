@@ -2,10 +2,21 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Lock, Eye, EyeOff, Loader2, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Lock, Eye, EyeOff, Loader2, ArrowRight, CheckCircle2, XCircle } from 'lucide-react';
 import { authApi } from '@/lib/api';
 import { Suspense } from 'react';
 import Link from 'next/link';
+
+const PASSWORD_REQUIREMENTS_ERROR = 'Password does not meet the minimum requirements.';
+const PASSWORD_REQUIREMENTS = [
+  { label: 'At least 8 characters', test: (value: string) => value.length >= 8 },
+  { label: 'One number', test: (value: string) => /\d/.test(value) },
+  { label: 'One uppercase letter', test: (value: string) => /[A-Z]/.test(value) },
+  { label: 'One lowercase letter', test: (value: string) => /[a-z]/.test(value) },
+  { label: 'One symbol', test: (value: string) => /[\W_]/.test(value) },
+];
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+const isStrongPassword = (value: string) => passwordRegex.test(value);
 
 function ResetPasswordContent() {
   const router = useRouter();
@@ -17,9 +28,15 @@ function ResetPasswordContent() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
+  const [hasTouchedConfirmPassword, setHasTouchedConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const isConfirmPasswordEntered = confirmPassword.length > 0;
+  const isConfirmPasswordValid = isConfirmPasswordEntered && confirmPassword === password;
+  const shouldShowConfirmPasswordMismatch =
+    hasTouchedConfirmPassword && isConfirmPasswordEntered && !isConfirmPasswordValid;
 
   useEffect(() => {
     // Only run on client side
@@ -36,13 +53,14 @@ function ResetPasswordContent() {
     if (!resetToken) return;
 
     if (password !== confirmPassword) {
+      setHasTouchedConfirmPassword(true);
       setError('Passwords do not match');
       return;
     }
 
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-    if (!passwordRegex.test(password)) {
-      setError('Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.');
+    if (!isStrongPassword(password)) {
+      setHasTouchedPassword(true);
+      setError(PASSWORD_REQUIREMENTS_ERROR);
       return;
     }
 
@@ -99,7 +117,7 @@ function ResetPasswordContent() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-             {error && (
+             {error && error !== PASSWORD_REQUIREMENTS_ERROR && (
               <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
                 {error}
               </div>
@@ -112,7 +130,8 @@ function ResetPasswordContent() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                  onFocus={() => setHasTouchedPassword(true)}
                   placeholder="Create new password"
                   className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
                   required
@@ -125,6 +144,25 @@ function ResetPasswordContent() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
+              {hasTouchedPassword && (
+                <div className="mt-3 space-y-2">
+                  {PASSWORD_REQUIREMENTS.map((requirement) => {
+                    const passed = requirement.test(password);
+                    return (
+                      <div key={requirement.label} className="flex items-center gap-2 text-sm">
+                        {passed ? (
+                          <CheckCircle2 className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-red-500" />
+                        )}
+                        <span className={passed ? 'text-green-600' : 'text-red-600'}>
+                          {requirement.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div>
@@ -134,9 +172,14 @@ function ResetPasswordContent() {
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setError(null); }}
+                  onFocus={() => setHasTouchedConfirmPassword(true)}
                   placeholder="Confirm new password"
-                  className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
+                  className={`w-full pl-12 pr-12 py-3 border rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 transition-all ${
+                    shouldShowConfirmPasswordMismatch
+                      ? 'border-red-300 focus:ring-red-100 focus:border-red-400'
+                      : 'border-gray-200 focus:ring-[#00002E]/20 focus:border-[#00002E]'
+                  }`}
                   required
                 />
                 <button
@@ -147,6 +190,16 @@ function ResetPasswordContent() {
                   {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
+              {hasTouchedConfirmPassword && isConfirmPasswordEntered && (
+                <div className={`mt-2 flex items-center gap-2 text-sm font-medium ${isConfirmPasswordValid ? 'text-green-600' : 'text-red-600'}`}>
+                  {isConfirmPasswordValid ? (
+                    <CheckCircle2 className="w-4 h-4" />
+                  ) : (
+                    <XCircle className="w-4 h-4" />
+                  )}
+                  <span>{isConfirmPasswordValid ? 'Passwords match' : 'Passwords do not match'}</span>
+                </div>
+              )}
             </div>
 
             <button

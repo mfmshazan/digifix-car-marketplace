@@ -377,9 +377,19 @@ export default function RegisterScreen() {
               <Text style={styles.countryCode}>+94</Text>
               <TextInput
                 style={styles.input}
-                placeholder="771234567"
+                placeholder="7x xxx xxxx"
                 placeholderTextColor="#999"
-                value={phone}
+                value={(() => {
+                  let displayVal = phone;
+                  if (displayVal.startsWith('+94')) displayVal = displayVal.slice(3);
+                  else if (displayVal.startsWith('0')) displayVal = displayVal.slice(1);
+                  
+                  const cleaned = displayVal.replace(/\D/g, '').slice(0, 9);
+                  let formatted = cleaned;
+                  if (cleaned.length > 2) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2);
+                  if (cleaned.length > 5) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2, 5) + ' ' + cleaned.slice(5);
+                  return formatted;
+                })()}
                 onChangeText={(val) => {
                   const cleaned = val.replace(/\D/g, "");
                   if (cleaned.length <= 9) setPhone(cleaned);

@@ -184,12 +184,23 @@ export default function RegisterPage() {
                 </div>
                 <input
                   type="tel"
-                  value={phone.startsWith('+94') ? phone.slice(3) : (phone.startsWith('0') ? phone.slice(1) : phone)}
+                  value={(() => {
+                    // Display formatting: xx xxx xxxx
+                    let displayVal = phone;
+                    if (displayVal.startsWith('+94')) displayVal = displayVal.slice(3);
+                    else if (displayVal.startsWith('0')) displayVal = displayVal.slice(1);
+                    
+                    const cleaned = displayVal.replace(/\D/g, '').slice(0, 9);
+                    let formatted = cleaned;
+                    if (cleaned.length > 2) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2);
+                    if (cleaned.length > 5) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2, 5) + ' ' + cleaned.slice(5);
+                    return formatted;
+                  })()}
                   onChange={(e) => {
                     const val = e.target.value.replace(/\D/g, '');
                     if (val.length <= 9) setPhone(val);
                   }}
-                  placeholder="7xxxxxxxx"
+                  placeholder="7x xxx xxxx"
                   className="w-full pl-24 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
                   required
                 />

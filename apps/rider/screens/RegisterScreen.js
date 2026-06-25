@@ -156,9 +156,28 @@ export default function RegisterScreen({ navigation }) {
                         />
                         <Input
                             label="Phone"
-                            placeholder="Enter your phone number"
-                            value={formData.phone}
-                            onChangeText={(text) => setFormData({ ...formData, phone: text })}
+                            placeholder="7x xxx xxxx"
+                            value={(() => {
+                                let displayVal = formData.phone;
+                                if (displayVal.startsWith('+94')) displayVal = displayVal.slice(3);
+                                else if (displayVal.startsWith('0')) displayVal = displayVal.slice(1);
+                                
+                                const cleaned = displayVal.replace(/\D/g, '').slice(0, 9);
+                                let formatted = cleaned;
+                                if (cleaned.length > 2) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2);
+                                if (cleaned.length > 5) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2, 5) + ' ' + cleaned.slice(5);
+                                return formatted ? `+94 ${formatted}` : '';
+                            })()}
+                            onChangeText={(text) => {
+                                const cleaned = text.replace(/\D/g, '');
+                                // If they type +94 it might get stripped to 94. We just take the last 9 digits or up to 9 digits.
+                                // Actually, it's better to just strip 94 if it starts with 94 from the cleaned string.
+                                let actualNumber = cleaned;
+                                if (actualNumber.startsWith('94')) actualNumber = actualNumber.slice(2);
+                                if (actualNumber.length <= 9) {
+                                    setFormData({ ...formData, phone: actualNumber });
+                                }
+                            }}
                             keyboardType="phone-pad"
                         />
 

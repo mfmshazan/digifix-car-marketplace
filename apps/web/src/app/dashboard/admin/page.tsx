@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import { adminApi } from '@/lib/api';
 import {
     Bell,
+    MessageSquare,
     Users,
     DollarSign,
     LayoutDashboard,
@@ -172,33 +173,35 @@ export default function AdminDashboard() {
     return (
         <div className="min-h-screen bg-[#f4f6fb]">
             {/* ── Top Navigation Bar ── */}
-            <nav className="sticky top-0 z-30 bg-[#00002E] shadow-lg">
+            <nav className="sticky top-0 z-30 bg-[#060618] shadow-xl border-b border-white/5">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
 
                         {/* Brand / Admin Badge */}
                         <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 bg-red-500/20 rounded-xl flex items-center justify-center">
-                                <ShieldCheck className="w-5 h-5 text-red-400" />
+                            <div className="w-9 h-9 bg-[#2D1622] rounded-xl flex items-center justify-center">
+                                <ShieldCheck className="w-5 h-5 text-[#FF6B6B]" />
                             </div>
-                            <div>
-                                <p className="text-white font-bold leading-tight text-sm">System Admin</p>
-                                <p className="text-white/50 text-xs">Master Control Panel</p>
+                            <div className="flex flex-col justify-center">
+                                <p className="text-white font-bold leading-none text-[13px] tracking-wide">System Admin</p>
+                                <p className="text-[#8A8A9B] text-[11px] mt-1 font-medium">Master Control Panel</p>
                             </div>
                         </div>
 
                         {/* Tabs (Desktop) */}
-                        <div className="hidden sm:flex items-center bg-white/10 rounded-xl p-1 gap-1">
+                        <div className="hidden lg:flex items-center bg-[#15152E] rounded-[14px] p-1 gap-0.5">
                             {tabs.map(tab => {
                                 const Icon = tab.icon;
+                                const isActive = activeTab === tab.id;
                                 return (
                                     <button
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id)}
-                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === tab.id
-                                                ? 'bg-white text-[#00002E] shadow'
-                                                : 'text-white/70 hover:text-white hover:bg-white/10'
-                                            }`}
+                                        className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-[13px] font-semibold transition-all duration-200 ${
+                                            isActive
+                                                ? 'bg-white text-[#060618] shadow-sm'
+                                                : 'text-[#8A8A9B] hover:text-white hover:bg-white/5'
+                                        }`}
                                     >
                                         <Icon className="w-4 h-4" />
                                         {tab.label}
@@ -212,12 +215,12 @@ export default function AdminDashboard() {
                             <div className="relative">
                                 <button
                                     onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-                                    className="relative flex items-center justify-center w-9 h-9 rounded-xl hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+                                    className="relative flex items-center justify-center p-2 rounded-xl hover:bg-white/5 text-[#8A8A9B] hover:text-white transition-colors"
                                     title="Cancellation requests"
                                 >
-                                    <Bell className="w-5 h-5" />
+                                    <MessageSquare className="w-[18px] h-[18px]" />
                                     {unreadCancelCount > 0 && (
-                                        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border border-[#00002E]">
+                                        <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-[#FF6B6B] text-white text-[9px] font-bold flex items-center justify-center border-2 border-[#060618]">
                                             {unreadCancelCount}
                                         </span>
                                     )}
@@ -291,9 +294,9 @@ export default function AdminDashboard() {
 
                             <button
                                 onClick={handleLogout}
-                                className="flex items-center gap-1.5 px-3 py-2 text-white/70 hover:text-red-400 text-sm font-medium rounded-xl transition-all hover:bg-white/10"
+                                className="flex items-center gap-2 px-3 py-2 text-[#8A8A9B] hover:text-white text-[13px] font-semibold rounded-xl transition-all hover:bg-white/5"
                             >
-                                <LogOut className="w-4 h-4" />
+                                <LogOut className="w-[18px] h-[18px]" />
                                 <span className="hidden sm:inline">Logout</span>
                             </button>
                         </div>

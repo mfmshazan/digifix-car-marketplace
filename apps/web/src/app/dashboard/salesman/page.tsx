@@ -1891,35 +1891,36 @@ export default function SalesmanDashboard() {
 
   return (
     <div className="min-h-screen bg-[#f4f6fb]">
-      <nav className="sticky top-0 z-30 bg-[#00002E] shadow-lg">
+      <nav className="sticky top-0 z-30 bg-[#060618] shadow-xl border-b border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
-            {/* Brand */}
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
+          <div className="flex items-center justify-between h-16">
+            {/* Brand / Store Info */}
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-[#1A1A3A] rounded-xl flex items-center justify-center border border-white/10 overflow-hidden">
                 {avatarUrl ? (
                   <Image
                     src={avatarUrl}
                     alt={user.name || ''}
-                    width={48}
-                    height={48}
-                    className="rounded-xl object-cover"
+                    width={36}
+                    height={36}
+                    className="object-cover w-full h-full"
                     unoptimized
                   />
                 ) : (
-                  <Store className="w-6 h-6 text-white" />
+                  <Store className="w-5 h-5 text-blue-400" />
                 )}
               </div>
-              <div>
-                <p className="text-white font-bold leading-tight text-lg">{user.store?.name ?? `${user.name}'s Store`}</p>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-white/50 text-xs">
-                  <span>Salesman Dashboard</span>
+              <div className="flex flex-col justify-center">
+                <p className="text-white font-bold leading-none text-[13px] tracking-wide">
+                  {user.store?.name ?? `${user.name}'s Store`}
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[#8A8A9B] text-[11px] font-medium">
+                    Salesman Portal
+                  </span>
                   {user.phone && (
-                    <span className="hidden sm:inline">·</span>
-                  )}
-                  {user.phone && (
-                    <span className="flex items-center gap-1 text-white/70 font-medium">
-                      <Phone className="w-3 h-3" />
+                    <span className="flex items-center gap-1 text-[#8A8A9B] text-[11px] font-medium">
+                      <Phone className="w-2.5 h-2.5" />
                       {user.phone}
                     </span>
                   )}
@@ -1928,17 +1929,19 @@ export default function SalesmanDashboard() {
             </div>
 
             {/* Tabs (Desktop) */}
-            <div className="hidden sm:flex items-center bg-white/10 rounded-xl p-1 gap-1">
+            <div className="hidden lg:flex items-center bg-[#15152E] rounded-[14px] p-1 gap-0.5">
               {tabs.map(tab => {
                 const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as Tab)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === tab.id
-                      ? 'bg-white text-[#00002E] shadow'
-                      : 'text-white/70 hover:text-white hover:bg-white/10'
-                      }`}
+                    className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-[13px] font-semibold transition-all duration-200 ${
+                      isActive
+                        ? 'bg-white text-[#060618] shadow-sm'
+                        : 'text-[#8A8A9B] hover:text-white hover:bg-white/5'
+                    }`}
                   >
                     <Icon className="w-4 h-4" />
                     {tab.label}
@@ -1951,9 +1954,9 @@ export default function SalesmanDashboard() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowAddModal(true)}
-                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-semibold rounded-xl transition-all"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-[13px] font-semibold rounded-xl transition-all"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 Add Product
               </button>
 
@@ -1961,12 +1964,14 @@ export default function SalesmanDashboard() {
               <div className="relative">
                 <button
                   onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-                  className="relative flex items-center justify-center w-9 h-9 rounded-xl hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+                  className="relative flex items-center justify-center p-2 rounded-xl hover:bg-white/5 text-[#8A8A9B] hover:text-white transition-colors"
                   title="Messages"
                 >
-                  <MessageSquare className="w-5 h-5" />
+                  <MessageSquare className="w-[18px] h-[18px]" />
                   {appNotifs.filter(n => !n.read).length > 0 && (
-                    <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-[#00002E]" />
+                    <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-[#FF6B6B] text-white text-[9px] font-bold flex items-center justify-center border-2 border-[#060618]">
+                      {appNotifs.filter(n => !n.read).length}
+                    </span>
                   )}
                 </button>
 
@@ -2045,55 +2050,11 @@ export default function SalesmanDashboard() {
                 )}
               </div>
 
-              {/* Push Notification Toggle */}
-              <button
-                id="push-toggle-btn"
-                onClick={togglePush}
-                disabled={pushLoading}
-                title={
-                  !pushReady
-                    ? 'Push not configured — click for setup instructions'
-                    : pushPermission === 'denied'
-                    ? 'Notifications blocked — click the lock icon in URL bar to allow'
-                    : pushEnabled
-                    ? 'Click to disable order notifications'
-                    : 'Click to enable push notifications for new orders'
-                }
-                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl transition-all ${
-                  pushLoading
-                    ? 'opacity-60 cursor-wait text-white/40'
-                    : !pushReady
-                    ? 'text-yellow-400/70 hover:text-yellow-400 hover:bg-yellow-500/10 border border-yellow-500/20'
-                    : pushEnabled
-                    ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30'
-                    : pushPermission === 'denied'
-                    ? 'text-red-400/70 hover:text-red-400 hover:bg-red-500/10'
-                    : 'text-white/50 hover:text-white/80 hover:bg-white/10'
-                }`}
-              >
-                {pushLoading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : pushEnabled ? (
-                  <Bell className="w-4 h-4" />
-                ) : (
-                  <BellOff className="w-4 h-4" />
-                )}
-                <span className="hidden sm:inline">
-                  {pushLoading
-                    ? 'Enabling…'
-                    : !pushReady
-                    ? 'Setup Needed'
-                    : pushEnabled
-                    ? 'Notifs On'
-                    : 'Notifs Off'}
-                </span>
-              </button>
-
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-1.5 px-3 py-2 text-white/70 hover:text-red-400 text-sm font-medium rounded-xl transition-all hover:bg-white/10"
+                className="flex items-center gap-2 px-3 py-2 text-[#8A8A9B] hover:text-white text-[13px] font-semibold rounded-xl transition-all hover:bg-white/5"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-[18px] h-[18px]" />
                 <span className="hidden sm:inline">Logout</span>
               </button>
             </div>

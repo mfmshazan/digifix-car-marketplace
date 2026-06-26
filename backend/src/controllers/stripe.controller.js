@@ -58,6 +58,50 @@ class StripeController {
         }
     }
 
+    getOnboardingLink = async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            
+            if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+            
+            let accountId = user.stripeAccountId;
+            if (!accountId) {
+                const account = await stripe.accounts.create({ type: 'express' });
+                accountId = account.id;
+                await prisma.user.update({ where: { id: userId }, data: { stripeAccountId: accountId } });
+            }
+            
+            const { refreshUrl, returnUrl } = req.body || {};
+            const accountLink = await stripe.accountLinks.create({
+                account: accountId,
+                refresh_url: refreshUrl || 'http://localhost:8081',
+                return_url: returnUrl || 'http://localhost:8081',
+                type: 'account_onboarding',
+            });
+            
+            res.status(200).json({ success: true, onboardingUrl: accountLink.url });
+        } catch (error) {
+            console.error("Error creating onboarding link:", error.message);
+            res.status(500).json({ success: false, message: "Failed to create onboarding session.", error: error.message });
+        }
+    }
+
+    checkAccountStatus = async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            if (!user || !user.stripeAccountId) {
+                 return res.status(200).json({ success: true, isReady: false });
+            }
+            const account = await stripe.accounts.retrieve(user.stripeAccountId);
+            res.status(200).json({ success: true, isReady: account.charges_enabled });
+        } catch (error) {
+            console.error("Error checking account status:", error.message);
+            res.status(500).json({ success: false, message: "Failed to check account status.", error: error.message });
+        }
+    }
+
     createCheckoutSession = async (req, res) => {
         try {
             const { items, addressId, successUrl, cancelUrl } = req.body;

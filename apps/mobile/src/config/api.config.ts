@@ -80,7 +80,7 @@ export const LOCAL_IP: string =
   FALLBACK_LOCAL_IP;
 
 // Backend port (should match Docker/backend configuration)
-export const API_PORT = 3000;
+export const API_PORT = Number(process.env.EXPO_PUBLIC_API_PORT || 3000);
 
 // ============================================
 // AUTO-DETECT ENVIRONMENT

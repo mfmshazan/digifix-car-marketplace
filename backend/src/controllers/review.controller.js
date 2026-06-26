@@ -285,3 +285,46 @@ export const getTargetReviews = async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
+
+export const getAdminReviews = async (req, res) => {
+  try {
+    const { status, targetType, page = 1, limit = 20 } = req.query;
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
+
+    const where = {};
+    if (targetType) where.targetType = targetType;
+    if (status === 'PENDING') {
+      where.status = 'PUBLISHED';
+      where.rating = { lt: 3 };
+    } else if (status) {
+      where.status = status;
+    }
+
+    const reviews = await prisma.review.findMany({
+      where,
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: (pageNumber - 1) * limitNumber,
+      take: limitNumber
+    });
+
+    const total = await prisma.review.count({ where });
+
+    res.status(200).json({
+      success: true,
+      data: reviews,
+      meta: {
+        total,
+        page: pageNumber,
+        limit: limitNumber,
+        totalPages: Math.ceil(total / limitNumber)
+      }
+    });
+  } catch (error) {
+    console.error('Get Admin Reviews Error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};

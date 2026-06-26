@@ -103,6 +103,13 @@ export default function CustomerTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="addresses"
+        options={{
+          href: null,
+          title: "Saved Addresses",
+        }}
+      />
+      <Tabs.Screen
         name="checkout-success"
         options={{
           href: null,

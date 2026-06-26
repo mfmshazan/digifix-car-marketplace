@@ -9,11 +9,16 @@ export interface OrderItem {
   quantity: number;
   price: number;
   total: number;
+  productId?: string;
+  carPartId?: string;
+  product?: any;
+  carPart?: any;
 }
 
 export interface Order {
   id: string;
   orderNumber: string;
+  salesmanId?: string;
   customer: string;
   customerEmail?: string;
   items: OrderItem[];
@@ -24,6 +29,8 @@ export interface Order {
   status: string;
   paymentStatus: string;
   createdAt: string;
+  reviews?: any[];
+  riderDeliveryJobs?: any[];
 }
 
 export interface SalesmanSalesSummary {
@@ -239,11 +246,11 @@ export const getCustomerOrders = async (
   }
 };
 
-// Create order (address is optional)
+// Create order using an address owned by the signed-in customer
 export const createOrder = async (
   items: { productId: string; quantity: number }[],
   paymentMethod: string,
-  addressId?: string,
+  addressId: string,
   notes?: string
 ) => {
   try {
@@ -256,16 +263,14 @@ export const createOrder = async (
     const orderData: {
       items: { productId: string; quantity: number }[];
       paymentMethod: string;
-      addressId?: string;
+      addressId: string;
       notes?: string;
     } = {
       items,
-      paymentMethod
+      paymentMethod,
+      addressId,
     };
 
-    if (addressId) {
-      orderData.addressId = addressId;
-    }
     if (notes) {
       orderData.notes = notes;
     }
@@ -282,7 +287,7 @@ export const createOrder = async (
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.message || 'Failed to create order');
+      throw new Error(result.error || result.message || 'Failed to create order');
     }
 
     return result;

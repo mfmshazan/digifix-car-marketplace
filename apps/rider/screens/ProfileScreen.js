@@ -8,9 +8,10 @@ import {
     ActivityIndicator,
     Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Button, Input, Dropdown, SurfaceCard, SectionHeader, StatusBadge } from '../components/Common';
-import { partnerAPI, authAPI } from '../services/api';
+import { partnerAPI, authAPI, reviewsAPI } from '../services/api';
 import { clearTokens, getRefreshToken } from '../services/storage';
 import { colors, spacing, typography, radii } from '../styles/theme';
 
@@ -38,6 +39,7 @@ export default function ProfileScreen({ navigation }) {
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [formData, setFormData] = useState(createProfileForm());
+    const [feedbackSummary, setFeedbackSummary] = useState(null);
 
     useEffect(() => {
         loadProfile();
@@ -45,12 +47,19 @@ export default function ProfileScreen({ navigation }) {
 
     const loadProfile = async () => {
         try {
-            const response = await partnerAPI.getProfile();
-            const profile = response.data.data;
+            const profileRes = await partnerAPI.getProfile();
+            const profile = profileRes.data.data;
             setPartner(profile);
             setFormData(createProfileForm(profile));
         } catch (error) {
             Alert.alert('Error', 'Failed to load profile');
+        }
+        // Load feedback summary separately so it never blocks the profile page
+        try {
+            const feedbackRes = await reviewsAPI.getDriverSummary();
+            setFeedbackSummary(feedbackRes.data?.data || null);
+        } catch (_) {
+            // Silently ignore — feedback is optional
         }
     };
 
@@ -201,10 +210,15 @@ export default function ProfileScreen({ navigation }) {
             showsVerticalScrollIndicator={false}
         >
             <SurfaceCard style={styles.heroCard}>
-                <StatusBadge
-                    label={partner.status || 'online'}
-                    tone={partner.status === 'offline' ? 'danger' : 'success'}
-                />
+                <View style={styles.heroGlowLarge} />
+                <View style={styles.heroGlowSmall} />
+                <View style={styles.heroTopRow}>
+                    <Text style={styles.heroEyebrow}>RIDER PROFILE</Text>
+                    <StatusBadge
+                        label={partner.status || 'online'}
+                        tone={partner.status === 'offline' ? 'danger' : 'success'}
+                    />
+                </View>
 
                 <View style={styles.profileHeader}>
                     <View style={styles.avatarWrap}>
@@ -227,16 +241,40 @@ export default function ProfileScreen({ navigation }) {
                     </View>
                 </View>
 
+                <View style={styles.heroStats}>
+                    <View style={styles.heroStat}>
+                        <View style={styles.heroStatIcon}>
+                            <Ionicons name="checkmark-done-outline" size={17} color="#A7F3D0" />
+                        </View>
+                        <View>
+                            <Text style={styles.heroStatValue}>{partner.total_deliveries || 0}</Text>
+                            <Text style={styles.heroStatLabel}>Deliveries</Text>
+                        </View>
+                    </View>
+                    <View style={styles.heroStatDivider} />
+                    <View style={styles.heroStat}>
+                        <View style={styles.heroStatIcon}>
+                            <Ionicons name="star" size={17} color="#FDE68A" />
+                        </View>
+                        <View>
+                            <Text style={styles.heroStatValue}>{formatRating(partner.rating)}</Text>
+                            <Text style={styles.heroStatLabel}>Rating</Text>
+                        </View>
+                    </View>
+                </View>
+
                 {editing ? (
                     <View style={styles.photoActions}>
                         <Button
                             title="Change Photo"
+                            icon="camera-outline"
                             onPress={handlePhotoPick}
                             variant="outline"
                             style={styles.photoButton}
                         />
                         <Button
                             title="Remove Photo"
+                            icon="trash-outline"
                             onPress={handleRemovePhoto}
                             variant="ghost"
                             style={styles.photoButton}
@@ -246,12 +284,23 @@ export default function ProfileScreen({ navigation }) {
             </SurfaceCard>
 
             <SectionHeader
-                eyebrow="Profile"
+                eyebrow="Partner information"
                 title="Account Details"
-                subtitle="Create, read, update, and manage your delivery partner profile from one section."
+                subtitle="Keep your contact, vehicle, and emergency information accurate for delivery operations."
             />
 
             <SurfaceCard style={styles.formCard}>
+                <View style={styles.formSectionTitle}>
+                    <View style={styles.formSectionIcon}>
+                        <Ionicons name="person-outline" size={19} color={colors.secondary} />
+                    </View>
+                    <View style={styles.formSectionCopy}>
+                        <Text style={styles.formSectionHeading}>Personal & vehicle information</Text>
+                        <Text style={styles.formSectionCaption}>
+                            {editing ? 'Fields are unlocked for editing.' : 'Tap Edit Profile to update these details.'}
+                        </Text>
+                    </View>
+                </View>
                 <Input
                     label="Full Name"
                     value={formData.full_name}
@@ -309,6 +358,7 @@ export default function ProfileScreen({ navigation }) {
                 />
             </SurfaceCard>
 
+
             <View style={styles.statsRow}>
                 <SurfaceCard style={styles.statCard}>
                     <Text style={styles.statValue}>{partner.total_deliveries}</Text>
@@ -320,16 +370,52 @@ export default function ProfileScreen({ navigation }) {
                 </SurfaceCard>
             </View>
 
+            {/* Feedback Summary */}
+            {!editing && feedbackSummary && (
+                <View style={styles.feedbackSection}>
+                    <SectionHeader
+                        title="Customer Feedback"
+                        subtitle="Recent ratings and comments from your deliveries"
+                    />
+                    {feedbackSummary.recentFeedback?.length > 0 ? (
+                        feedbackSummary.recentFeedback.map((review, index) => (
+                            <SurfaceCard key={index} style={styles.feedbackCard}>
+                                <View style={styles.feedbackHeader}>
+                                    <View style={styles.starsRow}>
+                                        {[1, 2, 3, 4, 5].map((s) => (
+                                            <Text key={s} style={{ color: s <= review.rating ? '#FFB800' : '#E2E8F0', fontSize: 16 }}>★</Text>
+                                        ))}
+                                    </View>
+                                    <Text style={styles.feedbackDate}>
+                                        {new Date(review.createdAt).toLocaleDateString()}
+                                    </Text>
+                                </View>
+                                {review.comment ? (
+                                    <Text style={styles.feedbackComment}>"{review.comment}"</Text>
+                                ) : (
+                                    <Text style={styles.feedbackCommentEmpty}>No comment provided</Text>
+                                )}
+                            </SurfaceCard>
+                        ))
+                    ) : (
+                        <Text style={styles.noFeedbackText}>No recent feedback.</Text>
+                    )}
+                </View>
+            )}
+
+
             {editing ? (
                 <View style={styles.actions}>
                     <Button
                         title="Save Details"
+                        icon="checkmark-circle-outline"
                         onPress={handleSave}
                         loading={saving}
                         style={styles.actionButton}
                     />
                     <Button
                         title="Cancel"
+                        icon="close-outline"
                         onPress={() => {
                             setEditing(false);
                             setFormData(createProfileForm(partner));
@@ -341,12 +427,14 @@ export default function ProfileScreen({ navigation }) {
                 <View style={styles.actions}>
                     <Button
                         title="Edit Profile"
+                        icon="create-outline"
                         onPress={() => setEditing(true)}
                         style={styles.actionButton}
                     />
-                    <Button title="Logout" onPress={handleLogout} variant="outline" />
+                    <Button title="Logout" icon="log-out-outline" onPress={handleLogout} variant="outline" />
                     <Button
                         title="Delete Profile"
+                        icon="trash-outline"
                         onPress={handleDeleteProfile}
                         variant="danger"
                         loading={deleting}
@@ -370,12 +458,42 @@ const styles = StyleSheet.create({
     },
     content: {
         padding: spacing.lg,
-        paddingBottom: spacing.xl,
+        paddingBottom: 120,
     },
     heroCard: {
+        position: 'relative',
         backgroundColor: colors.primary,
         marginBottom: spacing.lg,
         overflow: 'hidden',
+        borderColor: colors.primary,
+        padding: spacing.lg,
+    },
+    heroGlowLarge: {
+        position: 'absolute',
+        width: 190,
+        height: 190,
+        borderRadius: 95,
+        backgroundColor: 'rgba(59,130,246,0.18)',
+        right: -70,
+        top: -100,
+    },
+    heroGlowSmall: {
+        position: 'absolute',
+        width: 110,
+        height: 110,
+        borderRadius: 55,
+        backgroundColor: 'rgba(139,92,246,0.14)',
+        right: 55,
+        bottom: -75,
+    },
+    heroTopRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    heroEyebrow: {
+        ...typography.overline,
+        color: '#93C5FD',
     },
     profileHeader: {
         flexDirection: 'row',
@@ -388,7 +506,9 @@ const styles = StyleSheet.create({
         height: 88,
         borderRadius: radii.pill,
         overflow: 'hidden',
-        backgroundColor: 'rgba(255,255,255,0.16)',
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        borderWidth: 3,
+        borderColor: 'rgba(255,255,255,0.22)',
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -424,6 +544,42 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.72)',
         marginTop: spacing.xs,
     },
+    heroStats: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: spacing.lg,
+        paddingTop: spacing.md,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.12)',
+    },
+    heroStat: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+    },
+    heroStatIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.09)',
+    },
+    heroStatValue: {
+        ...typography.h3,
+        color: colors.textOnDark,
+    },
+    heroStatLabel: {
+        ...typography.caption,
+        color: colors.textOnDarkMuted,
+    },
+    heroStatDivider: {
+        width: 1,
+        height: 34,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        marginHorizontal: spacing.md,
+    },
     photoActions: {
         flexDirection: 'row',
         gap: spacing.sm,
@@ -434,23 +590,37 @@ const styles = StyleSheet.create({
     },
     formCard: {
         marginBottom: spacing.lg,
+        padding: spacing.lg,
     },
-    statsRow: {
+    formSectionTitle: {
         flexDirection: 'row',
-        gap: spacing.md,
-        marginBottom: spacing.lg,
-    },
-    statCard: {
-        flex: 1,
         alignItems: 'center',
+        gap: spacing.md,
+        paddingBottom: spacing.md,
+        marginBottom: spacing.md,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.borderSubtle,
     },
-    statValue: {
-        ...typography.h2,
-        color: colors.secondary,
+    formSectionIcon: {
+        width: 42,
+        height: 42,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.secondarySoft,
     },
-    statLabel: {
-        ...typography.bodySmall,
-        marginTop: spacing.xs,
+    formSectionCopy: {
+        flex: 1,
+    },
+    formSectionHeading: {
+        ...typography.body,
+        color: colors.text,
+        fontWeight: '800',
+    },
+    formSectionCaption: {
+        ...typography.caption,
+        color: colors.textSecondary,
+        marginTop: 2,
     },
     actions: {
         gap: spacing.sm,
@@ -458,6 +628,41 @@ const styles = StyleSheet.create({
     actionButton: {
         marginBottom: 0,
     },
+    feedbackSection: {
+        marginBottom: spacing.xl,
+    },
+    feedbackCard: {
+        padding: spacing.md,
+        marginBottom: spacing.sm,
+    },
+    feedbackHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: spacing.xs,
+    },
+    starsRow: {
+        flexDirection: 'row',
+        gap: 2,
+    },
+    feedbackDate: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+    },
+    feedbackComment: {
+        ...typography.bodyMedium,
+        fontStyle: 'italic',
+        color: colors.text,
+    },
+    feedbackCommentEmpty: {
+        ...typography.bodyMedium,
+        fontStyle: 'italic',
+        color: colors.textLight,
+    },
+    noFeedbackText: {
+        ...typography.bodyMedium,
+        color: colors.textSecondary,
+        textAlign: 'center',
+        marginTop: spacing.md,
+    },
 });
-
-

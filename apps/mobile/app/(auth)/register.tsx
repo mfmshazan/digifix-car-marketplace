@@ -26,6 +26,17 @@ import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-sign
 // import { setOneSignalUserId, setUserRoleTag } from "../../src/config/onesignal.config";
 
 const useNativeDriverForAnim = Platform.OS !== "web";
+const PASSWORD_REQUIREMENTS_ERROR = "Password does not meet the minimum requirements.";
+const PASSWORD_REQUIREMENTS = [
+  "At least 8 characters",
+  "One uppercase letter",
+  "One lowercase letter",
+  "One number",
+  "One symbol",
+];
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+
+const isStrongPassword = (value: string) => passwordRegex.test(value);
 
 export default function RegisterScreen() {
   const [name, setName] = useState("");
@@ -38,6 +49,11 @@ export default function RegisterScreen() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
+  const [hasTouchedConfirmPassword, setHasTouchedConfirmPassword] = useState(false);
+  const isPasswordValid = isStrongPassword(password);
+  const isConfirmPasswordEntered = confirmPassword.length > 0;
+  const isConfirmPasswordValid = isConfirmPasswordEntered && confirmPassword === password;
 
   //Clerk Google auth setup
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -194,9 +210,8 @@ export default function RegisterScreen() {
       return;
     }
 
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-    if (!passwordRegex.test(password)) {
-      setError("Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.");
+    if (!isStrongPassword(password)) {
+      setError(PASSWORD_REQUIREMENTS_ERROR);
       return;
     }
 
@@ -318,7 +333,7 @@ export default function RegisterScreen() {
           >
             <Text style={styles.title}>Create Account</Text>
 
-            {error && !isLoading ? (
+            {error && error !== PASSWORD_REQUIREMENTS_ERROR && !isLoading ? (
               <Text style={styles.errorText}>{error}</Text>
             ) : null}
 
@@ -431,14 +446,31 @@ export default function RegisterScreen() {
               </View>
             </View>
 
-            <View style={styles.inputContainer}>
+            {hasTouchedPassword ? (
+              <View style={styles.passwordRequirementsBox}>
+                <Text style={styles.passwordRequirementsTitle}>Password must include:</Text>
+                {PASSWORD_REQUIREMENTS.map((requirement) => (
+                  <Text key={requirement} style={styles.passwordRequirementsItem}>
+                    - {requirement}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+
+            <View
+              style={[
+                styles.inputContainer,
+                hasTouchedPassword && password.length > 0 && (isPasswordValid ? styles.inputValid : styles.inputInvalid),
+              ]}
+            >
               <Ionicons name="lock-closed-outline" size={20} color="#999" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 placeholder="Password"
                 placeholderTextColor="#999"
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(text) => { setPassword(text); setError(""); }}
+                onFocus={() => setHasTouchedPassword(true)}
                 secureTextEntry={!showPassword}
               />
               <TouchableOpacity
@@ -453,7 +485,12 @@ export default function RegisterScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.inputContainer}>
+            <View
+              style={[
+                styles.inputContainer,
+                hasTouchedConfirmPassword && isConfirmPasswordEntered && (isConfirmPasswordValid ? styles.inputValid : styles.inputInvalid),
+              ]}
+            >
               <Ionicons
                 name="lock-closed-outline"
                 size={20}
@@ -465,7 +502,8 @@ export default function RegisterScreen() {
                 placeholder="Confirm Password"
                 placeholderTextColor="#999"
                 value={confirmPassword}
-                onChangeText={setConfirmPassword}
+                onChangeText={(text) => { setConfirmPassword(text); setError(""); }}
+                onFocus={() => setHasTouchedConfirmPassword(true)}
                 secureTextEntry={!showConfirmPassword}
               />
               <TouchableOpacity
@@ -594,14 +632,44 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: "center",
   },
+  passwordRequirementsBox: {
+    backgroundColor: "#FFF7ED",
+    borderColor: "#FED7AA",
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 16,
+    alignSelf: "stretch",
+  },
+  passwordRequirementsTitle: {
+    color: "#9A3412",
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 6,
+    textAlign: "left",
+  },
+  passwordRequirementsItem: {
+    color: "#9A3412",
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "left",
+  },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F5F5F5",
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "transparent",
     marginBottom: 16,
     paddingHorizontal: 16,
     height: 56,
+  },
+  inputInvalid: {
+    borderColor: "#EF4444",
+  },
+  inputValid: {
+    borderColor: "#10B981",
   },
   inputIcon: {
     marginRight: 12,

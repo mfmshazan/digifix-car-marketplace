@@ -12,6 +12,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import {
     selectStatus,
     selectIsOnline,
+    selectIsBusy,
     selectIsSyncing,
     selectSyncError,
     toggleAvailability,
@@ -28,6 +29,7 @@ export default function AvailabilityToggle() {
     const dispatch = useDispatch();
     const status = useSelector(selectStatus);
     const isOnline = useSelector(selectIsOnline);
+    const isBusy = useSelector(selectIsBusy);
     const isSyncing = useSelector(selectIsSyncing);
     const syncError = useSelector(selectSyncError);
 
@@ -72,12 +74,14 @@ export default function AvailabilityToggle() {
     });
 
     const handleToggle = () => {
-        if (isSyncing) return;
+        if (isSyncing || isBusy) return;
         const newStatus = isOnline ? 'offline' : 'online';
         dispatch(toggleAvailability({ newStatus, previousStatus: status }));
     };
 
-    const orderAvailabilityMessage = isSyncing
+    const orderAvailabilityMessage = isBusy
+        ? 'Busy with an active delivery. New requests are paused until it is completed.'
+        : isSyncing
         ? 'Updating availability. New orders can only be received when this switch is active.'
         : isOnline
             ? 'Active. You can receive new orders while this switch is on.'
@@ -89,17 +93,17 @@ export default function AvailabilityToggle() {
                 <View style={styles.labelRow}>
                     <View style={[styles.dot, isOnline ? styles.dotOnline : styles.dotOffline]} />
                     <Text style={[styles.label, isOnline ? styles.labelOnline : styles.labelOffline]}>
-                        {isSyncing ? 'Updating' : isOnline ? 'Online' : 'Offline'}
+                        {isSyncing ? 'Updating' : isBusy ? 'Busy' : isOnline ? 'Online' : 'Offline'}
                     </Text>
                 </View>
 
                 <TouchableOpacity
                     activeOpacity={0.85}
                     onPress={handleToggle}
-                    disabled={isSyncing}
+                    disabled={isSyncing || isBusy}
                     style={styles.touchTarget}
                     accessibilityRole="switch"
-                    accessibilityState={{ checked: isOnline, busy: isSyncing }}
+                    accessibilityState={{ checked: isOnline, busy: isSyncing || isBusy, disabled: isBusy }}
                     accessibilityLabel={`Driver status: ${status}. Orders can only be received when this switch is active. Tap to go ${isOnline ? 'offline' : 'online'}.`}
                     accessibilityHint="Switch on to receive new orders. Switch off to stop receiving them."
                 >
@@ -120,7 +124,7 @@ const styles = StyleSheet.create({
     wrapper: {
         alignItems: 'flex-end',
         gap: spacing.xs,
-        maxWidth: 220,
+        maxWidth: 190,
     },
     topRow: {
         flexDirection: 'row',
@@ -138,10 +142,10 @@ const styles = StyleSheet.create({
         borderRadius: radii.pill,
     },
     dotOnline: {
-        backgroundColor: '#7EF7C6',
+        backgroundColor: colors.success,
     },
     dotOffline: {
-        backgroundColor: 'rgba(255,255,255,0.6)',
+        backgroundColor: colors.textMuted,
     },
     label: {
         ...typography.bodySmall,
@@ -173,9 +177,10 @@ const styles = StyleSheet.create({
     },
     helperText: {
         ...typography.caption,
-        maxWidth: 220,
+        maxWidth: 190,
         color: colors.textSecondary,
         textAlign: 'right',
-        lineHeight: 18,
+        lineHeight: 16,
+        fontSize: 10,
     },
 });

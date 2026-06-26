@@ -37,7 +37,8 @@ import {
   Send,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
-import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi } from '@/lib/api';
+import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi } from '@/lib/api';
+import type { Review } from '@/lib/api';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
 import { initOneSignal, loginOneSignalUser, logoutOneSignalUser, requestNotificationPermission } from '@/lib/onesignal';
 
@@ -240,8 +241,11 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
                 onClick={async () => {
                   setOpen(false);
                   setLoading(true);
-                  await onUpdate(order.id, s);
-                  setLoading(false);
+                  try {
+                    await onUpdate(order.id, s);
+                  } finally {
+                    setLoading(false);
+                  }
                 }}
                 className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 ${meta.color}`}
               >
@@ -789,25 +793,60 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [deliveryStatus, setDeliveryStatus] = useState<string | null>(null);
   const [loadingDeliveryStatus, setLoadingDeliveryStatus] = useState(false);
+  const [retryingDelivery, setRetryingDelivery] = useState(false);
+  const [retryMessage, setRetryMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Load delivery status when the card mounts for PROCESSING / SHIPPED orders
   useEffect(() => {
     const eligible = ['PROCESSING', 'SHIPPED', 'CONFIRMED'];
     if (!eligible.includes(order.status)) return;
     let cancelled = false;
-    (async () => {
-      setLoadingDeliveryStatus(true);
+    const loadDeliveryStatus = async (showLoading = false) => {
+      if (showLoading) {
+        setLoadingDeliveryStatus(true);
+      }
       try {
         const res = await deliveryRequestsApi.getDeliveryStatus(order.id);
         if (!cancelled && res.success && res.data?.hasDelivery) {
           setDeliveryStatus(res.data.deliveryStatus);
         }
       } catch { /* silently ignore */ } finally {
-        if (!cancelled) setLoadingDeliveryStatus(false);
+        if (!cancelled && showLoading) {
+          setLoadingDeliveryStatus(false);
+        }
       }
-    })();
-    return () => { cancelled = true; };
+    };
+
+    void loadDeliveryStatus(true);
+    const intervalId = window.setInterval(() => {
+      void loadDeliveryStatus(false);
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [order.id, order.status]);
+
+  const retryDelivery = async () => {
+    setRetryingDelivery(true);
+    setRetryMessage(null);
+    try {
+      const response = await deliveryRequestsApi.retry(order.id);
+      setDeliveryStatus('available');
+      setRetryMessage({
+        type: 'success',
+        text: response?.message || 'Request sent to another connected rider.',
+      });
+    } catch (error: any) {
+      setRetryMessage({
+        type: 'error',
+        text: error?.response?.data?.message || error?.message || 'Failed to find another rider.',
+      });
+    } finally {
+      setRetryingDelivery(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
@@ -891,9 +930,32 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
       {['CONFIRMED', 'PROCESSING', 'SHIPPED'].includes(order.status) && (
         <div className="px-4 pb-4 border-t border-gray-50 pt-3">
           {deliveryStatus ? (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500 font-medium">Delivery Status</span>
-              <DeliveryStatusBadge status={deliveryStatus} />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500 font-medium">Delivery Status</span>
+                <DeliveryStatusBadge status={deliveryStatus} />
+              </div>
+              {['pending', 'available'].includes(deliveryStatus) && (
+                <>
+                  <button
+                    onClick={retryDelivery}
+                    disabled={retryingDelivery}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-xl text-sm font-semibold hover:bg-orange-700 disabled:opacity-60 transition-colors"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${retryingDelivery ? 'animate-spin' : ''}`} />
+                    {retryingDelivery ? 'Searching...' : 'Find Another Rider'}
+                  </button>
+                  {retryMessage && (
+                    <p className={`text-xs rounded-lg px-3 py-2 ${
+                      retryMessage.type === 'success'
+                        ? 'bg-green-50 text-green-700'
+                        : 'bg-red-50 text-red-700'
+                    }`}>
+                      {retryMessage.text}
+                    </p>
+                  )}
+                </>
+              )}
             </div>
           ) : (
             <button
@@ -951,6 +1013,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
+  const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -1015,9 +1078,19 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
   }, [userId, loadOrders]);
 
   const handleUpdateStatus = async (id: string, status: OrderStatus) => {
-    await ordersApi.updateOrderStatus(id, status);
-    // Optimistically update UI immediately — socket will confirm shortly too
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+    setStatusUpdateError(null);
+
+    try {
+      await ordersApi.updateOrderStatus(id, status);
+      setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to update order status. Please try again.';
+      setStatusUpdateError(message);
+      console.error('Failed to update order status', error);
+    }
   };
 
   const activeOrders = orders.filter(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED');
@@ -1039,6 +1112,20 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
         <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2 text-green-800 text-sm font-medium animate-pulse">
           <span className="text-lg">🔔</span>
           {newOrderAlert}
+        </div>
+      )}
+      {statusUpdateError && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2 text-red-800 text-sm font-medium">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{statusUpdateError}</span>
+          <button
+            type="button"
+            onClick={() => setStatusUpdateError(null)}
+            className="ml-auto text-red-600 hover:text-red-800"
+            aria-label="Dismiss error"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
       {/* Toolbar */}
@@ -1376,9 +1463,254 @@ function ProductsTab() {
 
 }
 
+// ─── Reviews Tab ─────────────────────────────────────────────────────────────
+
+function StarBar({ count, total }: { count: number; total: number }) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-full bg-[#FF6B35] rounded-full transition-all" style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-xs text-gray-500 w-8 text-right">{pct}%</span>
+    </div>
+  );
+}
+
+function ReviewCard({ review, onReplied }: { review: Review; onReplied: (reviewId: string, reply: any) => void }) {
+  const [showReply, setShowReply] = React.useState(false);
+  const [replyText, setReplyText] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const hasReply = review.replies && review.replies.length > 0;
+
+  const handleSubmitReply = async () => {
+    if (!replyText.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await reviewsApi.replyToReview(review.id, replyText.trim());
+      onReplied(review.id, res.data);
+      setShowReply(false);
+      setReplyText('');
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Failed to submit reply');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+      {/* Reviewer header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-[#00002E]/10 flex items-center justify-center shrink-0">
+            {review.user?.avatar ? (
+              <img src={review.user.avatar} alt={review.user.name} className="w-10 h-10 rounded-full object-cover" />
+            ) : (
+              <span className="text-sm font-bold text-[#00002E]">
+                {(review.user?.name || 'A').charAt(0).toUpperCase()}
+              </span>
+            )}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900">{review.user?.name || 'Anonymous'}</p>
+            <p className="text-xs text-gray-400">
+              {new Date(review.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+            </p>
+          </div>
+        </div>
+        {/* Stars */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          {[1, 2, 3, 4, 5].map(s => (
+            <Star
+              key={s}
+              className={`w-4 h-4 ${s <= review.rating ? 'text-[#FF6B35] fill-[#FF6B35]' : 'text-gray-200 fill-gray-200'}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Comment */}
+      {review.comment && (
+        <p className="text-sm text-gray-700 leading-relaxed">{review.comment}</p>
+      )}
+
+      {/* Existing Reply */}
+      {hasReply && (
+        <div className="bg-[#00002E]/5 border border-[#00002E]/10 rounded-xl p-4">
+          <p className="text-xs font-semibold text-[#00002E] mb-1">Your Reply</p>
+          <p className="text-sm text-gray-700 leading-relaxed">{review.replies[0].replyText}</p>
+          <p className="text-xs text-gray-400 mt-2">
+            {new Date(review.replies[0].createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </p>
+        </div>
+      )}
+
+      {/* Reply Form */}
+      {!hasReply && (
+        <div>
+          {!showReply ? (
+            <button
+              onClick={() => setShowReply(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-[#00002E] hover:text-[#FF6B35] transition-colors"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Write a Reply
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <textarea
+                rows={3}
+                value={replyText}
+                onChange={e => setReplyText(e.target.value)}
+                placeholder="Write a thoughtful response to this review..."
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+              />
+              {error && <p className="text-xs text-red-500">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSubmitReply}
+                  disabled={submitting || !replyText.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[#00002E] text-white text-xs font-semibold rounded-xl hover:bg-[#00002E]/90 disabled:opacity-50 transition-all"
+                >
+                  {submitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  {submitting ? 'Submitting…' : 'Submit Reply'}
+                </button>
+                <button
+                  onClick={() => { setShowReply(false); setReplyText(''); setError(null); }}
+                  className="px-4 py-2 border border-gray-200 text-gray-500 text-xs font-semibold rounded-xl hover:bg-gray-50 transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewsTab({ salesmanId }: { salesmanId: string }) {
+  const [reviews, setReviews] = React.useState<Review[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const fetchReviews = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await reviewsApi.getTargetReviews(salesmanId);
+      setReviews(res.data || []);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Failed to load reviews');
+    } finally {
+      setLoading(false);
+    }
+  }, [salesmanId]);
+
+  React.useEffect(() => { fetchReviews(); }, [fetchReviews]);
+
+  // Calculate aggregate stats
+  const total = reviews.length;
+  const avgRating = total > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / total : 0;
+  const starCounts = [5, 4, 3, 2, 1].map(star => ({
+    star,
+    count: reviews.filter(r => r.rating === star).length,
+  }));
+
+  const handleReplied = (reviewId: string, newReply: any) => {
+    setReviews(prev =>
+      prev.map(r =>
+        r.id === reviewId ? { ...r, replies: [newReply] } : r
+      )
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Stats Summary Card */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+          {/* Average Rating */}
+          <div className="flex flex-col items-center justify-center text-center min-w-[110px]">
+            <span className="text-5xl font-black text-[#00002E]">{total > 0 ? avgRating.toFixed(1) : '—'}</span>
+            <div className="flex items-center gap-0.5 mt-1">
+              {[1, 2, 3, 4, 5].map(s => (
+                <Star
+                  key={s}
+                  className={`w-4 h-4 ${s <= Math.round(avgRating) ? 'text-[#FF6B35] fill-[#FF6B35]' : 'text-gray-200 fill-gray-200'}`}
+                />
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">{total} review{total !== 1 ? 's' : ''}</p>
+          </div>
+
+          <div className="h-px sm:h-16 w-full sm:w-px bg-gray-100" />
+
+          {/* Star Breakdown */}
+          <div className="flex-1 space-y-1.5 w-full">
+            {starCounts.map(({ star, count }) => (
+              <div key={star} className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 w-6 text-right">{star}</span>
+                <Star className="w-3.5 h-3.5 text-[#FF6B35] fill-[#FF6B35] shrink-0" />
+                <StarBar count={count} total={total} />
+                <span className="text-xs text-gray-400 w-4">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Reviews Feed */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-700">
+            {total > 0 ? `All Reviews (${total})` : 'No reviews yet'}
+          </h3>
+          <button
+            onClick={fetchReviews}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </button>
+        </div>
+
+        {loading && (
+          <div className="flex justify-center py-16">
+            <RefreshCw className="w-6 h-6 text-[#00002E] animate-spin" />
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && total === 0 && (
+          <div className="text-center py-20 bg-white rounded-2xl border border-gray-100">
+            <Star className="w-12 h-12 text-gray-200 fill-gray-200 mx-auto mb-4" />
+            <p className="text-gray-600 font-semibold">No reviews yet</p>
+            <p className="text-gray-400 text-sm mt-1">Customer reviews will appear here after they rate their delivered orders.</p>
+          </div>
+        )}
+
+        {!loading && !error && reviews.map(review => (
+          <ReviewCard key={review.id} review={review} onReplied={handleReplied} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 
-type Tab = 'orders' | 'products' | 'history';
+type Tab = 'orders' | 'products' | 'history' | 'reviews';
 
 export default function SalesmanDashboard() {
   const router = useRouter();
@@ -1553,40 +1885,42 @@ export default function SalesmanDashboard() {
     { id: 'orders' as const, label: 'Current Orders', icon: ListOrdered },
     { id: 'products' as const, label: 'My Products', icon: Package },
     { id: 'history' as const, label: 'Sales History', icon: BarChart3 },
+    { id: 'reviews' as const, label: 'Store Reviews', icon: Star },
   ];
 
 
   return (
     <div className="min-h-screen bg-[#f4f6fb]">
-      <nav className="sticky top-0 z-30 bg-[#00002E] shadow-lg">
+      <nav className="sticky top-0 z-30 bg-[#060618] shadow-xl border-b border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
-            {/* Brand */}
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
+          <div className="flex items-center justify-between h-16">
+            {/* Brand / Store Info */}
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-[#1A1A3A] rounded-xl flex items-center justify-center border border-white/10 overflow-hidden">
                 {avatarUrl ? (
                   <Image
                     src={avatarUrl}
                     alt={user.name || ''}
-                    width={48}
-                    height={48}
-                    className="rounded-xl object-cover"
+                    width={36}
+                    height={36}
+                    className="object-cover w-full h-full"
                     unoptimized
                   />
                 ) : (
-                  <Store className="w-6 h-6 text-white" />
+                  <Store className="w-5 h-5 text-blue-400" />
                 )}
               </div>
-              <div>
-                <p className="text-white font-bold leading-tight text-lg">{user.store?.name ?? `${user.name}'s Store`}</p>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-white/50 text-xs">
-                  <span>Salesman Dashboard</span>
+              <div className="flex flex-col justify-center">
+                <p className="text-white font-bold leading-none text-[13px] tracking-wide">
+                  {user.store?.name ?? `${user.name}'s Store`}
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[#8A8A9B] text-[11px] font-medium">
+                    Salesman Portal
+                  </span>
                   {user.phone && (
-                    <span className="hidden sm:inline">·</span>
-                  )}
-                  {user.phone && (
-                    <span className="flex items-center gap-1 text-white/70 font-medium">
-                      <Phone className="w-3 h-3" />
+                    <span className="flex items-center gap-1 text-[#8A8A9B] text-[11px] font-medium">
+                      <Phone className="w-2.5 h-2.5" />
                       {user.phone}
                     </span>
                   )}
@@ -1595,17 +1929,19 @@ export default function SalesmanDashboard() {
             </div>
 
             {/* Tabs (Desktop) */}
-            <div className="hidden sm:flex items-center bg-white/10 rounded-xl p-1 gap-1">
+            <div className="hidden lg:flex items-center bg-[#15152E] rounded-[14px] p-1 gap-0.5">
               {tabs.map(tab => {
                 const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as Tab)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === tab.id
-                      ? 'bg-white text-[#00002E] shadow'
-                      : 'text-white/70 hover:text-white hover:bg-white/10'
-                      }`}
+                    className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-[13px] font-semibold transition-all duration-200 ${
+                      isActive
+                        ? 'bg-white text-[#060618] shadow-sm'
+                        : 'text-[#8A8A9B] hover:text-white hover:bg-white/5'
+                    }`}
                   >
                     <Icon className="w-4 h-4" />
                     {tab.label}
@@ -1618,9 +1954,9 @@ export default function SalesmanDashboard() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowAddModal(true)}
-                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-semibold rounded-xl transition-all"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-[13px] font-semibold rounded-xl transition-all"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 Add Product
               </button>
 
@@ -1628,12 +1964,14 @@ export default function SalesmanDashboard() {
               <div className="relative">
                 <button
                   onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-                  className="relative flex items-center justify-center w-9 h-9 rounded-xl hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+                  className="relative flex items-center justify-center p-2 rounded-xl hover:bg-white/5 text-[#8A8A9B] hover:text-white transition-colors"
                   title="Messages"
                 >
-                  <MessageSquare className="w-5 h-5" />
+                  <MessageSquare className="w-[18px] h-[18px]" />
                   {appNotifs.filter(n => !n.read).length > 0 && (
-                    <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-[#00002E]" />
+                    <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-[#FF6B6B] text-white text-[9px] font-bold flex items-center justify-center border-2 border-[#060618]">
+                      {appNotifs.filter(n => !n.read).length}
+                    </span>
                   )}
                 </button>
 
@@ -1712,55 +2050,11 @@ export default function SalesmanDashboard() {
                 )}
               </div>
 
-              {/* Push Notification Toggle */}
-              <button
-                id="push-toggle-btn"
-                onClick={togglePush}
-                disabled={pushLoading}
-                title={
-                  !pushReady
-                    ? 'Push not configured — click for setup instructions'
-                    : pushPermission === 'denied'
-                    ? 'Notifications blocked — click the lock icon in URL bar to allow'
-                    : pushEnabled
-                    ? 'Click to disable order notifications'
-                    : 'Click to enable push notifications for new orders'
-                }
-                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl transition-all ${
-                  pushLoading
-                    ? 'opacity-60 cursor-wait text-white/40'
-                    : !pushReady
-                    ? 'text-yellow-400/70 hover:text-yellow-400 hover:bg-yellow-500/10 border border-yellow-500/20'
-                    : pushEnabled
-                    ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30'
-                    : pushPermission === 'denied'
-                    ? 'text-red-400/70 hover:text-red-400 hover:bg-red-500/10'
-                    : 'text-white/50 hover:text-white/80 hover:bg-white/10'
-                }`}
-              >
-                {pushLoading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : pushEnabled ? (
-                  <Bell className="w-4 h-4" />
-                ) : (
-                  <BellOff className="w-4 h-4" />
-                )}
-                <span className="hidden sm:inline">
-                  {pushLoading
-                    ? 'Enabling…'
-                    : !pushReady
-                    ? 'Setup Needed'
-                    : pushEnabled
-                    ? 'Notifs On'
-                    : 'Notifs Off'}
-                </span>
-              </button>
-
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-1.5 px-3 py-2 text-white/70 hover:text-red-400 text-sm font-medium rounded-xl transition-all hover:bg-white/10"
+                className="flex items-center gap-2 px-3 py-2 text-[#8A8A9B] hover:text-white text-[13px] font-semibold rounded-xl transition-all hover:bg-white/5"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-[18px] h-[18px]" />
                 <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
@@ -1795,12 +2089,16 @@ export default function SalesmanDashboard() {
         {/* Greeting */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">
-            {activeTab === 'orders' ? '📦 Current Orders' : '📊 Sales History'}
+            {activeTab === 'orders' && '📦 Current Orders'}
+            {activeTab === 'products' && '🛒 My Products'}
+            {activeTab === 'history' && '📊 Sales History'}
+            {activeTab === 'reviews' && '⭐ Store Reviews'}
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">
-            {activeTab === 'orders'
-              ? 'Manage and update orders placed by your customers.'
-              : 'Track your revenue, completed orders, and top products.'}
+            {activeTab === 'orders' && 'Manage and update orders placed by your customers.'}
+            {activeTab === 'products' && 'View and manage your listed products.'}
+            {activeTab === 'history' && 'Track your revenue, completed orders, and top products.'}
+            {activeTab === 'reviews' && 'See what customers are saying and reply to their reviews.'}
           </p>
 
         </div>
@@ -1808,6 +2106,7 @@ export default function SalesmanDashboard() {
         {activeTab === 'orders' && <CurrentOrdersTab userId={user.id} />}
         {activeTab === 'products' && <ProductsTab />}
         {activeTab === 'history' && <SalesHistoryTab />}
+        {activeTab === 'reviews' && <ReviewsTab salesmanId={user.id} />}
 
       </main>
 

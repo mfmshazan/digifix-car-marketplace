@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, User, Store, Phone } from 'lucide-react';
-import { authApi } from '@/lib/api';
+import { authApi, commonApi } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import GoogleSignInButton from '@/components/google-signin-button';
 
@@ -21,6 +21,30 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState({
+    partsListed: 0,
+    happyCustomers: 0,
+    activeSellers: 0
+  });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await commonApi.getStats();
+        if (response.success) {
+          setStats(response.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch stats:', err);
+      }
+    };
+    fetchStats();
+  }, []);
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}K+`;
+    return num.toString();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,15 +294,15 @@ export default function RegisterPage() {
           </div>
           <div className="grid grid-cols-3 gap-6 text-white">
             <div>
-              <div className="text-3xl font-bold">10K+</div>
+              <div className="text-3xl font-bold">{formatNumber(stats.partsListed)}</div>
               <div className="text-gray-400 text-sm">Parts Listed</div>
             </div>
             <div>
-              <div className="text-3xl font-bold">5K+</div>
+              <div className="text-3xl font-bold">{formatNumber(stats.happyCustomers)}</div>
               <div className="text-gray-400 text-sm">Happy Customers</div>
             </div>
             <div>
-              <div className="text-3xl font-bold">500+</div>
+              <div className="text-3xl font-bold">{formatNumber(stats.activeSellers)}</div>
               <div className="text-gray-400 text-sm">Active Sellers</div>
             </div>
           </div>

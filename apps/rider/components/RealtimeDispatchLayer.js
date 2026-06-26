@@ -5,6 +5,7 @@ import {
     Text,
     View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { API_BASE_URL } from '../config';
 import {
@@ -32,7 +33,11 @@ const RECONNECT_DELAY_MS = 3000;
 const buildSocketUrl = (token) =>
     `${API_BASE_URL.replace(/^http/i, 'ws').replace(/\/api\/?$/, '/ws')}?token=${encodeURIComponent(token)}`;
 
-const formatCurrency = (value) => `$${Number(value || 0).toFixed(2)}`;
+const formatCurrency = (value) =>
+    `Rs. ${Number(value || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
 
 export default function RealtimeDispatchLayer({ isAuthenticated }) {
     const dispatch = useDispatch();
@@ -227,17 +232,24 @@ export default function RealtimeDispatchLayer({ isAuthenticated }) {
         >
             <View style={styles.backdrop}>
                 <SurfaceCard style={styles.overlayCard}>
-                    <Text style={styles.eyebrow}>Incoming Request</Text>
-                    <Text style={styles.title}>
-                        {incomingRequest?.orderNumber || 'New delivery request'}
-                    </Text>
-                    <Text style={styles.subtitle}>
-                        Accept within the response window to lock this order before it moves to the next closest rider.
-                    </Text>
-
-                    <View style={styles.countdownWrap}>
-                        <Text style={styles.countdownLabel}>Time Left</Text>
-                        <Text style={styles.countdownValue}>{countdownSeconds}s</Text>
+                    <View style={styles.offerHeader}>
+                        <View style={styles.offerGlow} />
+                        <View style={styles.offerHeaderTop}>
+                            <View style={styles.offerIcon}>
+                                <Ionicons name="notifications" size={22} color={colors.surface} />
+                            </View>
+                            <View style={styles.countdownCircle}>
+                                <Text style={styles.countdownValue}>{countdownSeconds}</Text>
+                                <Text style={styles.countdownUnit}>SEC</Text>
+                            </View>
+                        </View>
+                        <Text style={styles.eyebrow}>NEW DELIVERY OFFER</Text>
+                        <Text style={styles.title}>
+                            {incomingRequest?.orderNumber || 'New delivery request'}
+                        </Text>
+                        <Text style={styles.subtitle}>
+                            Review the route and accept before dispatch offers it to the next rider.
+                        </Text>
                         <View style={styles.progressTrack}>
                             <View
                                 style={[
@@ -248,52 +260,77 @@ export default function RealtimeDispatchLayer({ isAuthenticated }) {
                         </View>
                     </View>
 
-                    <View style={styles.detailBlock}>
-                        <Text style={styles.detailLabel}>Pickup</Text>
-                        <Text style={styles.detailText}>{incomingRequest?.pickupAddress}</Text>
-                    </View>
-
-                    <View style={styles.detailBlock}>
-                        <Text style={styles.detailLabel}>Drop-off</Text>
-                        <Text style={styles.detailText}>{incomingRequest?.dropoffAddress}</Text>
-                    </View>
-
-                    <View style={styles.summaryRow}>
-                        <View style={styles.summaryCard}>
-                            <Text style={styles.summaryLabel}>Fee</Text>
-                            <Text style={styles.summaryValue}>
-                                {formatCurrency(incomingRequest?.paymentAmount)}
-                            </Text>
+                    <View style={styles.offerBody}>
+                        <View style={styles.routeBlock}>
+                            <View style={styles.routeRow}>
+                                <View style={styles.routeRail}>
+                                    <View style={[styles.routeDot, styles.pickupDot]} />
+                                    <View style={styles.routeLine} />
+                                </View>
+                                <View style={styles.routeCopy}>
+                                    <Text style={styles.detailLabel}>PICKUP</Text>
+                                    <Text style={styles.detailText}>{incomingRequest?.pickupAddress}</Text>
+                                </View>
+                            </View>
+                            <View style={styles.routeRow}>
+                                <View style={styles.routeRail}>
+                                    <View style={[styles.routeDot, styles.dropoffDot]} />
+                                </View>
+                                <View style={styles.routeCopy}>
+                                    <Text style={styles.detailLabel}>DROPOFF</Text>
+                                    <Text style={styles.detailText}>{incomingRequest?.dropoffAddress}</Text>
+                                </View>
+                            </View>
                         </View>
-                        <View style={styles.summaryCard}>
-                            <Text style={styles.summaryLabel}>To Pickup</Text>
-                            <Text style={styles.summaryValue}>
-                                {incomingRequest?.distanceToPickupKm
-                                    ? `${Number(incomingRequest.distanceToPickupKm).toFixed(1)} km`
-                                    : 'Nearby'}
-                            </Text>
+
+                        <View style={styles.summaryRow}>
+                            <View style={styles.summaryCard}>
+                                <View style={styles.summaryIcon}>
+                                    <Ionicons name="wallet-outline" size={18} color={colors.secondary} />
+                                </View>
+                                <Text style={styles.summaryLabel}>RIDER FEE</Text>
+                                <Text style={styles.summaryValue}>
+                                    {formatCurrency(incomingRequest?.paymentAmount)}
+                                </Text>
+                            </View>
+                            <View style={styles.summaryCard}>
+                                <View style={[styles.summaryIcon, styles.distanceIcon]}>
+                                    <Ionicons name="navigate-outline" size={18} color={colors.accent} />
+                                </View>
+                                <Text style={styles.summaryLabel}>TO PICKUP</Text>
+                                <Text style={styles.summaryValue}>
+                                    {incomingRequest?.distanceToPickupKm
+                                        ? `${Number(incomingRequest.distanceToPickupKm).toFixed(1)} km`
+                                        : 'Nearby'}
+                                </Text>
+                            </View>
                         </View>
-                    </View>
 
-                    {requestError ? (
-                        <Text style={styles.errorText}>{requestError}</Text>
-                    ) : null}
+                        {requestError ? (
+                            <View style={styles.errorBanner}>
+                                <Ionicons name="alert-circle-outline" size={17} color={colors.danger} />
+                                <Text style={styles.errorText}>{requestError}</Text>
+                            </View>
+                        ) : null}
 
-                    <View style={styles.actionRow}>
-                        <Button
-                            title="Decline"
-                            variant="outline"
-                            onPress={handleDecline}
-                            disabled={isActing}
-                            style={styles.actionButton}
-                        />
-                        <Button
-                            title="Accept"
-                            onPress={handleAccept}
-                            loading={isActing}
-                            disabled={isActing}
-                            style={styles.actionButton}
-                        />
+                        <View style={styles.actionRow}>
+                            <Button
+                                title="Decline"
+                                icon="close-outline"
+                                variant="outline"
+                                onPress={handleDecline}
+                                disabled={isActing}
+                                style={styles.actionButton}
+                            />
+                            <Button
+                                title="Accept Delivery"
+                                icon="checkmark-outline"
+                                onPress={handleAccept}
+                                loading={isActing}
+                                disabled={isActing}
+                                style={[styles.actionButton, styles.acceptButton]}
+                            />
+                        </View>
                     </View>
                 </SurfaceCard>
             </View>
@@ -304,50 +341,88 @@ export default function RealtimeDispatchLayer({ isAuthenticated }) {
 const styles = StyleSheet.create({
     backdrop: {
         flex: 1,
-        justifyContent: 'center',
-        padding: spacing.lg,
+        justifyContent: 'flex-end',
+        paddingHorizontal: spacing.md,
+        paddingBottom: spacing.md,
         backgroundColor: colors.overlay,
     },
     overlayCard: {
+        padding: 0,
+        borderRadius: radii.xl,
+        overflow: 'hidden',
+        borderColor: 'rgba(255,255,255,0.12)',
+    },
+    offerHeader: {
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: colors.primary,
         padding: spacing.lg,
-        borderRadius: radii.lg,
+    },
+    offerGlow: {
+        position: 'absolute',
+        width: 190,
+        height: 190,
+        borderRadius: 95,
+        backgroundColor: 'rgba(59,130,246,0.2)',
+        right: -80,
+        top: -100,
+    },
+    offerHeaderTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: spacing.md,
+    },
+    offerIcon: {
+        width: 46,
+        height: 46,
+        borderRadius: 15,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.14)',
+    },
+    countdownCircle: {
+        width: 58,
+        height: 58,
+        borderRadius: 29,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.surface,
+        borderWidth: 3,
+        borderColor: colors.danger,
+    },
+    countdownUnit: {
+        ...typography.overline,
+        color: colors.textMuted,
+        fontSize: 8,
+        lineHeight: 9,
     },
     eyebrow: {
-        ...typography.caption,
-        color: colors.secondary,
-        fontWeight: '700',
-        marginBottom: spacing.xs,
-        textTransform: 'uppercase',
+        ...typography.overline,
+        color: '#93C5FD',
+        marginBottom: 6,
     },
     title: {
         ...typography.h1,
-        marginBottom: spacing.xs,
+        color: colors.textOnDark,
+        marginBottom: spacing.sm,
     },
     subtitle: {
         ...typography.bodySmall,
-        color: colors.textSecondary,
-        marginBottom: spacing.lg,
-    },
-    countdownWrap: {
-        padding: spacing.md,
-        borderRadius: radii.md,
-        backgroundColor: colors.surfaceMuted,
-        marginBottom: spacing.lg,
-    },
-    countdownLabel: {
-        ...typography.caption,
-        color: colors.textSecondary,
-        marginBottom: spacing.xs,
+        color: colors.textOnDarkMuted,
+        marginBottom: spacing.md,
+        maxWidth: 320,
     },
     countdownValue: {
-        ...typography.hero,
+        ...typography.h3,
         color: colors.danger,
-        marginBottom: spacing.sm,
     },
     progressTrack: {
         height: 8,
         borderRadius: radii.pill,
-        backgroundColor: colors.border,
+        backgroundColor: 'rgba(255,255,255,0.14)',
         overflow: 'hidden',
     },
     progressFill: {
@@ -355,15 +430,50 @@ const styles = StyleSheet.create({
         backgroundColor: colors.secondary,
         borderRadius: radii.pill,
     },
-    detailBlock: {
+    offerBody: {
+        padding: spacing.lg,
+    },
+    routeBlock: {
+        padding: spacing.md,
+        borderRadius: radii.md,
+        backgroundColor: colors.surfaceMuted,
         marginBottom: spacing.md,
     },
+    routeRow: {
+        flexDirection: 'row',
+        alignItems: 'stretch',
+    },
+    routeRail: {
+        width: 22,
+        alignItems: 'center',
+    },
+    routeDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        marginTop: 4,
+    },
+    pickupDot: {
+        backgroundColor: colors.secondary,
+    },
+    dropoffDot: {
+        backgroundColor: colors.danger,
+    },
+    routeLine: {
+        flex: 1,
+        width: 2,
+        minHeight: 32,
+        backgroundColor: colors.borderStrong,
+        marginVertical: 4,
+    },
+    routeCopy: {
+        flex: 1,
+        paddingBottom: spacing.md,
+    },
     detailLabel: {
-        ...typography.caption,
-        color: colors.textSecondary,
-        fontWeight: '700',
-        marginBottom: spacing.xs,
-        textTransform: 'uppercase',
+        ...typography.overline,
+        color: colors.textMuted,
+        marginBottom: 4,
     },
     detailText: {
         ...typography.body,
@@ -378,6 +488,20 @@ const styles = StyleSheet.create({
         padding: spacing.md,
         borderRadius: radii.md,
         backgroundColor: colors.backgroundAccent,
+        borderWidth: 1,
+        borderColor: colors.borderSubtle,
+    },
+    summaryIcon: {
+        width: 34,
+        height: 34,
+        borderRadius: 11,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.secondarySoft,
+        marginBottom: spacing.sm,
+    },
+    distanceIcon: {
+        backgroundColor: colors.accentSoft,
     },
     summaryLabel: {
         ...typography.caption,
@@ -390,7 +514,16 @@ const styles = StyleSheet.create({
     },
     errorText: {
         ...typography.bodySmall,
-        color: colors.danger,
+        color: colors.dangerDark,
+        flex: 1,
+    },
+    errorBanner: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: spacing.sm,
+        padding: spacing.sm,
+        borderRadius: radii.sm,
+        backgroundColor: colors.dangerSoft,
         marginBottom: spacing.md,
     },
     actionRow: {
@@ -400,6 +533,9 @@ const styles = StyleSheet.create({
     },
     actionButton: {
         flex: 1,
+    },
+    acceptButton: {
+        flex: 1.35,
     },
 });
 

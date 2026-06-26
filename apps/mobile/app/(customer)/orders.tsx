@@ -1144,15 +1144,24 @@ export default function OrdersScreen() {
                       });
                     }
 
-                    // 2. Submit product items reviews (each product inside the order)
+                    // 2. Submit product/car-part items reviews (each item inside the order)
                     if (ratingOrder.items && ratingOrder.items.length > 0) {
                       for (const orderItem of ratingOrder.items) {
-                        const productId = orderItem.productId || orderItem.carPartId;
-                        if (productId) {
+                        // Determine whether this item is a car part or a regular product
+                        if (orderItem.carPartId) {
+                          // Car part — use CAR_PART targetType so reviewWorker updates CarPart.averageRating
                           reviewsToSubmit.push({
-                            targetId: productId,
+                            targetId: orderItem.carPartId,
+                            targetType: 'CAR_PART' as const,
+                            rating: productRating,
+                            comment: productComment.trim() || undefined
+                          });
+                        } else if (orderItem.productId) {
+                          // Regular product — keep as PRODUCT
+                          reviewsToSubmit.push({
+                            targetId: orderItem.productId,
                             targetType: 'PRODUCT' as const,
-                            rating: productRating, // share the star rating for now
+                            rating: productRating,
                             comment: productComment.trim() || undefined
                           });
                         }

@@ -63,6 +63,15 @@ export const updateReviewAggregates = async (targetId, targetType) => {
           });
         }
         break;
+      case 'CAR_PART':
+        await prisma.carPart.update({
+          where: { id: targetId },
+          data: {
+            averageRating,
+            totalReviews,
+          },
+        });
+        break;
       default:
         console.warn(`Unknown review targetType: ${targetType}`);
     }

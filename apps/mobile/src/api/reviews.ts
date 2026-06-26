@@ -3,7 +3,7 @@ import { getToken } from './storage';
 
 export interface ReviewPayload {
   targetId: string;
-  targetType: 'PRODUCT' | 'SELLER' | 'DELIVERY_PARTNER';
+  targetType: 'PRODUCT' | 'SELLER' | 'DELIVERY_PARTNER' | 'CAR_PART';
   rating: number;
   comment?: string;
   title?: string;

@@ -50,7 +50,7 @@ export const updateReviewAggregates = async (targetId, targetType) => {
             total_reviews: totalReviews,
           },
         });
-        
+
         // Next try Rider model if ID is an integer
         const parsedId = parseInt(targetId, 10);
         if (!isNaN(parsedId)) {

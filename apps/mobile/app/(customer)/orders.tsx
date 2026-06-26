@@ -256,7 +256,7 @@ export default function OrdersScreen() {
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
   const [actionMenuOrderId, setActionMenuOrderId] = useState<string | null>(null);
-  
+
   // Rating modal state
   const [ratingOrder, setRatingOrder] = useState<Order | null>(null);
   const [productRating, setProductRating] = useState<number>(0);
@@ -616,7 +616,7 @@ export default function OrdersScreen() {
             {item.reviews?.[0]?.comment ? (
               <Text style={styles.reviewComment}>"{item.reviews?.[0]?.comment}"</Text>
             ) : null}
-            
+
             {item.reviews?.[0]?.replies && item.reviews?.[0].replies.length > 0 && (
               <View style={styles.sellerReplyBox}>
                 <Text style={styles.sellerReplyTitle}>Seller Reply</Text>
@@ -958,8 +958,8 @@ export default function OrdersScreen() {
         animationType="slide"
         onRequestClose={() => setRatingOrder(null)}
       >
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.ratingModalOverlay}
         >
           <View style={[styles.ratingModalContent, { flexShrink: 1, maxHeight: '90%' }]}>
@@ -974,7 +974,7 @@ export default function OrdersScreen() {
               Order: {ratingOrder?.orderNumber}
             </Text>
 
-            <ScrollView 
+            <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
             >
@@ -982,7 +982,7 @@ export default function OrdersScreen() {
               <View style={styles.ratingSectionCard}>
                 <Text style={styles.ratingSectionTitle}>Rate the Items & Shop</Text>
                 <Text style={styles.ratingSectionDesc}>How satisfied are you with the purchased item(s)?</Text>
-                
+
                 {/* Render order items preview */}
                 <View style={styles.itemsPreviewRow}>
                   {ratingOrder?.items?.slice(0, 3).map((orderItem: any, idx: number) => {
@@ -1132,7 +1132,7 @@ export default function OrdersScreen() {
                   setIsSubmittingReview(true);
                   try {
                     const reviewsToSubmit: import('../../src/api/reviews').ReviewPayload[] = [];
-                    
+
                     // 1. Submit product review (always required if modal opens)
                     const storeOwnerId = ratingOrder.salesmanId;
                     if (storeOwnerId) {
@@ -1189,7 +1189,7 @@ export default function OrdersScreen() {
 
                     Alert.alert('Thank You', 'Your feedback was submitted successfully!');
                     setRatingOrder(null);
-                    
+
                     // Reset rating states
                     setProductRating(0);
                     setProductComment("");

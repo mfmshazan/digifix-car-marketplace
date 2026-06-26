@@ -7,11 +7,11 @@ import { requestOtp, verifyOtp, resetPassword } from '../../src/api/auth';
 const { width } = Dimensions.get('window');
 const PASSWORD_REQUIREMENTS_ERROR = 'Password does not meet the minimum requirements.';
 const PASSWORD_REQUIREMENTS = [
-  'At least 8 characters',
-  'One uppercase letter',
-  'One lowercase letter',
-  'One number',
-  'One symbol',
+  { label: 'At least 8 characters', test: (value: string) => value.length >= 8 },
+  { label: 'One number', test: (value: string) => /\d/.test(value) },
+  { label: 'One uppercase letter', test: (value: string) => /[A-Z]/.test(value) },
+  { label: 'One lowercase letter', test: (value: string) => /[a-z]/.test(value) },
+  { label: 'One symbol', test: (value: string) => /[\W_]/.test(value) },
 ];
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
 
@@ -37,9 +37,10 @@ export default function ForgotPassword() {
   const [isSuccess, setIsSuccess] = useState(false);
 
   const otpInputRefs = useRef<(TextInput | null)[]>([]);
-  const isPasswordValid = isStrongPassword(password);
   const isConfirmPasswordEntered = confirmPassword.length > 0;
   const isConfirmPasswordValid = isConfirmPasswordEntered && confirmPassword === password;
+  const shouldShowConfirmPasswordMismatch =
+    hasTouchedConfirmPassword && isConfirmPasswordEntered && !isConfirmPasswordValid;
 
   //Request OTP
 
@@ -88,11 +89,13 @@ export default function ForgotPassword() {
   //reset password
   const handleResetPassword = async () => {
     if (password !== confirmPassword) {
+      setHasTouchedConfirmPassword(true);
       setError('Passwords do not match');
       return;
     }
 
     if (!isStrongPassword(password)) {
+      setHasTouchedPassword(true);
       setError(PASSWORD_REQUIREMENTS_ERROR);
       return;
     }
@@ -224,25 +227,9 @@ export default function ForgotPassword() {
 
             {step === 3 && (
               <View>
-                {hasTouchedPassword ? (
-                  <View style={styles.passwordRequirementsBox}>
-                    <Text style={styles.passwordRequirementsTitle}>Password must include:</Text>
-                    {PASSWORD_REQUIREMENTS.map((requirement) => (
-                      <Text key={requirement} style={styles.passwordRequirementsItem}>
-                        - {requirement}
-                      </Text>
-                    ))}
-                  </View>
-                ) : null}
-
                 <View style={styles.inputSpacing}>
                   <Text style={styles.inputLabel}>New Password</Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      hasTouchedPassword && password.length > 0 && (isPasswordValid ? styles.inputValid : styles.inputInvalid),
-                    ]}
-                  >
+                  <View style={styles.inputWrapper}>
                     <TextInput
                       style={styles.input}
                       placeholder="Enter your password"
@@ -256,6 +243,27 @@ export default function ForgotPassword() {
                       <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#9CA3AF" />
                     </TouchableOpacity>
                   </View>
+                  {hasTouchedPassword ? (
+                    <View style={styles.passwordRequirementsList}>
+                      {PASSWORD_REQUIREMENTS.map((requirement) => (
+                        <View key={requirement.label} style={styles.passwordRequirementRow}>
+                          <Ionicons
+                            name={requirement.test(password) ? "checkmark-circle-outline" : "close-circle-outline"}
+                            size={18}
+                            color={requirement.test(password) ? "#10B981" : "#EF4444"}
+                          />
+                          <Text
+                            style={[
+                              styles.passwordRequirementText,
+                              requirement.test(password) ? styles.passwordRequirementValid : styles.passwordRequirementInvalid,
+                            ]}
+                          >
+                            {requirement.label}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
 
                 <View>
@@ -263,7 +271,7 @@ export default function ForgotPassword() {
                   <View
                     style={[
                       styles.inputWrapper,
-                      hasTouchedConfirmPassword && isConfirmPasswordEntered && (isConfirmPasswordValid ? styles.inputValid : styles.inputInvalid),
+                      shouldShowConfirmPasswordMismatch && styles.inputInvalid,
                     ]}
                   >
                     <TextInput
@@ -279,6 +287,23 @@ export default function ForgotPassword() {
                       <Ionicons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#9CA3AF" />
                     </TouchableOpacity>
                   </View>
+                  {hasTouchedConfirmPassword && isConfirmPasswordEntered ? (
+                    <View style={styles.confirmFeedbackRow}>
+                      <Ionicons
+                        name={isConfirmPasswordValid ? "checkmark-circle-outline" : "close-circle-outline"}
+                        size={17}
+                        color={isConfirmPasswordValid ? "#10B981" : "#EF4444"}
+                      />
+                      <Text
+                        style={[
+                          styles.confirmFeedbackText,
+                          isConfirmPasswordValid ? styles.confirmFeedbackValid : styles.confirmFeedbackInvalid,
+                        ]}
+                      >
+                        {isConfirmPasswordValid ? "Passwords match" : "Passwords do not match"}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </View>
             )}
@@ -415,25 +440,24 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
-  passwordRequirementsBox: {
-    backgroundColor: '#FFF7ED',
-    borderColor: '#FED7AA',
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 16,
+  passwordRequirementsList: {
+    gap: 8,
+    marginTop: 10,
   },
-  passwordRequirementsTitle: {
-    color: '#9A3412',
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 4,
+  passwordRequirementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  passwordRequirementsItem: {
-    color: '#9A3412',
+  passwordRequirementText: {
     fontSize: 13,
-    lineHeight: 19,
     fontWeight: '500',
+  },
+  passwordRequirementValid: {
+    color: '#10B981',
+  },
+  passwordRequirementInvalid: {
+    color: '#EF4444',
   },
   inputArea: {
     width: '100%',
@@ -457,8 +481,21 @@ const styles = StyleSheet.create({
   inputInvalid: {
     borderColor: '#EF4444',
   },
-  inputValid: {
-    borderColor: '#10B981',
+  confirmFeedbackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  confirmFeedbackText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  confirmFeedbackValid: {
+    color: '#10B981',
+  },
+  confirmFeedbackInvalid: {
+    color: '#EF4444',
   },
   input: {
     flex: 1,

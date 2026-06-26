@@ -310,9 +310,28 @@ export default function ProfileScreen({ navigation }) {
                 <Input label="Email" value={formData.email} editable={false} />
                 <Input
                     label="Phone"
-                    value={formData.phone}
-                    onChangeText={(text) => handleChange('phone', text)}
+                    placeholder="7x xxx xxxx"
+                    value={(() => {
+                        let displayVal = formData.phone || '';
+                        if (displayVal.startsWith('+94')) displayVal = displayVal.slice(3);
+                        else if (displayVal.startsWith('0')) displayVal = displayVal.slice(1);
+                        
+                        const cleaned = displayVal.replace(/\D/g, '').slice(0, 9);
+                        let formatted = cleaned;
+                        if (cleaned.length > 2) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2);
+                        if (cleaned.length > 5) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2, 5) + ' ' + cleaned.slice(5);
+                        return formatted ? `+94 ${formatted}` : '';
+                    })()}
+                    onChangeText={(text) => {
+                        const cleaned = text.replace(/\D/g, '');
+                        let actualNumber = cleaned;
+                        if (actualNumber.startsWith('94')) actualNumber = actualNumber.slice(2);
+                        if (actualNumber.length <= 9) {
+                            handleChange('phone', actualNumber);
+                        }
+                    }}
                     editable={editing}
+                    keyboardType="phone-pad"
                 />
                 <Dropdown
                     label="Vehicle Type"

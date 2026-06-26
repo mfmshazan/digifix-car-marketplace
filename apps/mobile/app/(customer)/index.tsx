@@ -222,7 +222,14 @@ export default function CustomerHomeScreen() {
         </View>
       </View>
       <View style={styles.productInfo}>
-        <Text style={styles.productCategory}>{item.seller.name}</Text>
+        <View style={styles.productHeader}>
+          <Text style={styles.productCategory} numberOfLines={1}>{item.seller.name}</Text>
+          <View style={styles.ratingContainer}>
+            <Text style={styles.ratingText}>{item.averageRating ? item.averageRating.toFixed(1) : "0.0"}</Text>
+            <Ionicons name="star" size={10} color="#00002E" style={styles.starIcon} />
+            <Text style={styles.reviewCountText}>({item.totalReviews > 99 ? '99+' : item.totalReviews})</Text>
+          </View>
+        </View>
         <Text style={styles.productName} numberOfLines={2}>
           {item.name}
         </Text>
@@ -900,11 +907,38 @@ const styles = StyleSheet.create({
   productInfo: {
     padding: 12,
   },
+  productHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
   productCategory: {
     fontSize: 10,
     color: "#00002E",
     fontWeight: "500",
-    marginBottom: 4,
+    flex: 1,
+    marginRight: 4,
+  },
+  ratingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  ratingText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#1A1A2E",
+  },
+  starIcon: {
+    marginHorizontal: 2,
+  },
+  reviewCountText: {
+    fontSize: 9,
+    color: "#666",
   },
   productName: {
     fontSize: 14,

@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import { getMyWallet, triggerSalesmanPayout, WalletTransaction, WalletData } from '../../src/api/wallet';
+import { getMyWallet, triggerSalesmanPayout, WalletTransaction, WalletData, checkStripeAccountStatus, getStripeOnboardingLink } from '../../src/api/wallet';
+import * as WebBrowser from 'expo-web-browser';
 
 const TRANSACTION_LABELS: Record<string, string> = {
   DEPOSIT: 'Deposit',
@@ -33,11 +34,20 @@ export default function SalesmanWalletScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [payingOut, setPayingOut] = useState(false);
 
+  const [stripeReady, setStripeReady] = useState(true);
+
   const fetchWallet = useCallback(async () => {
     try {
-      const result = await getMyWallet();
-      if (result.success && result.data) {
-        setWallet(result.data);
+      const [walletResult, stripeResult] = await Promise.all([
+        getMyWallet(),
+        checkStripeAccountStatus()
+      ]);
+      
+      if (walletResult.success && walletResult.data) {
+        setWallet(walletResult.data);
+      }
+      if (stripeResult.success) {
+        setStripeReady(stripeResult.isReady);
       }
     } catch (err) {
       console.error('Failed to fetch wallet:', err);
@@ -88,6 +98,23 @@ export default function SalesmanWalletScreen() {
     );
   };
 
+  const handleOnboardStripe = async () => {
+    try {
+      setPayingOut(true);
+      const res = await getStripeOnboardingLink();
+      if (res.success && res.onboardingUrl) {
+         await WebBrowser.openBrowserAsync(res.onboardingUrl);
+         fetchWallet();
+      } else {
+         Alert.alert('Error', 'Failed to get Stripe setup link');
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Network error.');
+    } finally {
+      setPayingOut(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -107,20 +134,37 @@ export default function SalesmanWalletScreen() {
         <Text style={styles.balanceAmount}>
           Rs. {wallet ? wallet.balance.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}
         </Text>
-        <TouchableOpacity
-          style={[styles.payoutButton, (payingOut || !wallet || wallet.balance <= 0) && styles.payoutButtonDisabled]}
-          onPress={handlePayout}
-          disabled={payingOut || !wallet || wallet.balance <= 0}
-        >
-          {payingOut ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <Ionicons name="arrow-up-circle-outline" size={18} color="#fff" />
-              <Text style={styles.payoutButtonText}>Withdraw to Bank</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {!stripeReady ? (
+          <TouchableOpacity
+            style={[styles.payoutButton, { backgroundColor: '#6366F1' }, payingOut && styles.payoutButtonDisabled]}
+            onPress={handleOnboardStripe}
+            disabled={payingOut}
+          >
+            {payingOut ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="card-outline" size={18} color="#fff" />
+                <Text style={styles.payoutButtonText}>Complete Stripe Setup</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.payoutButton, (payingOut || !wallet || wallet.balance <= 0) && styles.payoutButtonDisabled]}
+            onPress={handlePayout}
+            disabled={payingOut || !wallet || wallet.balance <= 0}
+          >
+            {payingOut ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="arrow-up-circle-outline" size={18} color="#fff" />
+                <Text style={styles.payoutButtonText}>Withdraw to Bank</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
         <Text style={styles.payoutNote}>
           Funds are released after order delivery is confirmed.
         </Text>

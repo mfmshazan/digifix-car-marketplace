@@ -21,7 +21,10 @@ router.post('/payout/delivery', authorize('ADMIN'), walletController.substractDe
 router.post('/earnings/salesman', authorize('ADMIN'), walletController.addPurchaseAmountToSalesman);
 router.post('/refund/salesman-settlement', authorize('ADMIN'), walletController.addRefundSatlmentsToSalesman);
 
-// Salesman triggers their own payout
-router.post('/payout/salesman', authorize('SALESMAN'), walletController.substractSaleRevenueFromSalesman);
+// Users trigger their own payout
+router.post('/payout', walletController.triggerPayout);
+
+// Store owner triggers their own payout (manager owns the wallet; salesman kept for legacy accounts)
+router.post('/payout/salesman', authorize('SHOP_MANAGER', 'SALESMAN'), walletController.triggerPayout);
 
 export default router;

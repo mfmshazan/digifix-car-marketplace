@@ -58,6 +58,50 @@ class StripeController {
         }
     }
 
+    getOnboardingLink = async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            
+            if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+            
+            let accountId = user.stripeAccountId;
+            if (!accountId) {
+                const account = await stripe.accounts.create({ type: 'express' });
+                accountId = account.id;
+                await prisma.user.update({ where: { id: userId }, data: { stripeAccountId: accountId } });
+            }
+            
+            const { refreshUrl, returnUrl } = req.body || {};
+            const accountLink = await stripe.accountLinks.create({
+                account: accountId,
+                refresh_url: refreshUrl || 'http://localhost:8081',
+                return_url: returnUrl || 'http://localhost:8081',
+                type: 'account_onboarding',
+            });
+            
+            res.status(200).json({ success: true, onboardingUrl: accountLink.url });
+        } catch (error) {
+            console.error("Error creating onboarding link:", error.message);
+            res.status(500).json({ success: false, message: "Failed to create onboarding session.", error: error.message });
+        }
+    }
+
+    checkAccountStatus = async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            if (!user || !user.stripeAccountId) {
+                 return res.status(200).json({ success: true, isReady: false });
+            }
+            const account = await stripe.accounts.retrieve(user.stripeAccountId);
+            res.status(200).json({ success: true, isReady: account.charges_enabled });
+        } catch (error) {
+            console.error("Error checking account status:", error.message);
+            res.status(500).json({ success: false, message: "Failed to check account status.", error: error.message });
+        }
+    }
+
     createCheckoutSession = async (req, res) => {
         try {
             const { items, addressId, successUrl, cancelUrl } = req.body;
@@ -221,12 +265,25 @@ class StripeController {
                 });
             }
 
+            // Generate order number prefix
+            const timestamp = Date.now().toString(36).toUpperCase();
+            const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+            const orderPrefix = `ORD-${timestamp}-${randomPart}`;
+
             // Create one order per seller
             const createdOrders = [];
-            for (const sellerGroup of Object.values(groupedBySeller)) {
+            let orderIndex = 1;
+            const sellerGroups = Object.values(groupedBySeller);
+            
+            for (const sellerGroup of sellerGroups) {
                 const subtotal = sellerGroup.items.reduce((sum, i) => sum + i.total, 0);
+                const orderNumber = sellerGroups.length > 1 
+                    ? `${orderPrefix}-${orderIndex}` 
+                    : orderPrefix;
+
                 const order = await prisma.order.create({
                     data: {
+                        orderNumber,
                         customerId,
                         salesmanId: sellerGroup.sellerId,
                         addressId: address.id,
@@ -250,6 +307,7 @@ class StripeController {
                     },
                 });
                 createdOrders.push({ order, subtotal });
+                orderIndex++;
             }
 
             // ============================================================

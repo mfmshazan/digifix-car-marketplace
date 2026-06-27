@@ -27,10 +27,10 @@ router.post('/:id/cancel', requestCancellation);
 router.post('/:id/approve-cancel', authorize('ADMIN'), approveCancellation);
 router.post('/:id/reject-cancel', authorize('ADMIN'), rejectCancellation);
 
-// Salesman routes — scoped to their own orders only
-router.get('/salesman/summary', authorize('SALESMAN'), getSalesmanSalesSummary);
-router.get('/salesman/pending-count', authorize('SALESMAN'), getSalesmanPendingCount);
-router.get('/salesman/orders', authorize('SALESMAN'), getSalesmanOrders);
-router.put('/:id/status', authorize('SALESMAN'), updateOrderStatus);
+// Store routes — manager (store owner) and salesman (operates under the manager)
+router.get('/salesman/summary', authorize('SHOP_MANAGER', 'SALESMAN'), getSalesmanSalesSummary);
+router.get('/salesman/pending-count', authorize('SHOP_MANAGER', 'SALESMAN'), getSalesmanPendingCount);
+router.get('/salesman/orders', authorize('SHOP_MANAGER', 'SALESMAN'), getSalesmanOrders);
+router.put('/:id/status', authorize('SHOP_MANAGER', 'SALESMAN'), updateOrderStatus);
 
 export default router;

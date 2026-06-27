@@ -29,6 +29,14 @@ model User {
   vehicleNumber    String?
   vehicleType      String?
   total_reviews    Int            @default(0)
+
+  // Manager / Salesman hierarchy.
+  // A SALESMAN belongs to a SHOP_MANAGER (managerId set). A SHOP_MANAGER has
+  // managerId = null and is the store/catalog/wallet owner salesmen operate under.
+  managerId        String?
+  manager          User?          @relation("ManagerSalesmen", fields: [managerId], references: [id], onDelete: SetNull)
+  salesmen         User[]         @relation("ManagerSalesmen")
+
   addresses        Address[]
   carParts         CarPart[]      @relation("SellerCarParts")
   cart             CartItem[]
@@ -40,6 +48,8 @@ model User {
   store            Store?
   wallet           Wallet?
   wishlist         WishlistItem[]
+
+  @@index([managerId])
 }
 
 model Wallet {
@@ -523,6 +533,8 @@ enum UserRole {
   DELIVERY_PARTNER
   DELIVERY_PERSON
   SHOP_MANAGER
+  // Legacy value kept only so the enum matches the database; new code uses SHOP_MANAGER.
+  MANAGER
 }
 
 enum UserStatus {

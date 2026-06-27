@@ -87,7 +87,7 @@ export default function ProductsScreen() {
   });
 
   const renderProduct = ({ item }: { item: (typeof sampleProducts)[0] }) => (
-    <TouchableOpacity style={styles.productCard}>
+    <View style={styles.productCard}>
       <View style={styles.productImage}>
         <Ionicons name="cube" size={32} color="#00002E" />
       </View>
@@ -127,15 +127,7 @@ export default function ProductsScreen() {
           </View>
         </View>
       </View>
-      <View style={styles.productActions}>
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="create-outline" size={20} color="#666" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="trash-outline" size={20} color="#FF4444" />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+    </View>
   );
 
   return (

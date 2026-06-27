@@ -294,9 +294,11 @@ export const getAdminReviews = async (req, res) => {
 
     const where = {};
     if (targetType) where.targetType = targetType;
-    if (status === 'PENDING') {
-      where.status = 'PUBLISHED';
-      where.rating = { lt: 3 };
+    if (status === 'FLAGGED') {
+      where.OR = [
+        { status: 'FLAGGED' },
+        { status: 'PUBLISHED', rating: { lt: 3 } }
+      ];
     } else if (status) {
       where.status = status;
     }

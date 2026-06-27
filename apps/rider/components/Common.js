@@ -95,6 +95,7 @@ export const Input = ({
     onChangeText,
     secureTextEntry,
     style,
+    inputStyle,
     error,
     multiline = false,
     numberOfLines,
@@ -110,6 +111,7 @@ export const Input = ({
                         styles.input,
                         multiline && styles.inputMultiline,
                         error && styles.inputError,
+                        inputStyle,
                         rightAccessory && { paddingRight: 48 }
                     ]}
                 placeholder={placeholder}

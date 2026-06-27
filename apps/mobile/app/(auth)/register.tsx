@@ -28,11 +28,11 @@ import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-sign
 const useNativeDriverForAnim = Platform.OS !== "web";
 const PASSWORD_REQUIREMENTS_ERROR = "Password does not meet the minimum requirements.";
 const PASSWORD_REQUIREMENTS = [
-  "At least 8 characters",
-  "One uppercase letter",
-  "One lowercase letter",
-  "One number",
-  "One symbol",
+  { label: "At least 8 characters", test: (value: string) => value.length >= 8 },
+  { label: "One number", test: (value: string) => /\d/.test(value) },
+  { label: "One uppercase letter", test: (value: string) => /[A-Z]/.test(value) },
+  { label: "One lowercase letter", test: (value: string) => /[a-z]/.test(value) },
+  { label: "One symbol", test: (value: string) => /[\W_]/.test(value) },
 ];
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
 
@@ -51,9 +51,10 @@ export default function RegisterScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
   const [hasTouchedConfirmPassword, setHasTouchedConfirmPassword] = useState(false);
-  const isPasswordValid = isStrongPassword(password);
   const isConfirmPasswordEntered = confirmPassword.length > 0;
   const isConfirmPasswordValid = isConfirmPasswordEntered && confirmPassword === password;
+  const shouldShowConfirmPasswordMismatch =
+    hasTouchedConfirmPassword && isConfirmPasswordEntered && !isConfirmPasswordValid;
 
   //Clerk Google auth setup
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -206,11 +207,13 @@ export default function RegisterScreen() {
     }
 
     if (password !== confirmPassword) {
+      setHasTouchedConfirmPassword(true);
       setError("Passwords do not match");
       return;
     }
 
     if (!isStrongPassword(password)) {
+      setHasTouchedPassword(true);
       setError(PASSWORD_REQUIREMENTS_ERROR);
       return;
     }
@@ -374,9 +377,19 @@ export default function RegisterScreen() {
               <Text style={styles.countryCode}>+94</Text>
               <TextInput
                 style={styles.input}
-                placeholder="771234567"
+                placeholder="7x xxx xxxx"
                 placeholderTextColor="#999"
-                value={phone}
+                value={(() => {
+                  let displayVal = phone;
+                  if (displayVal.startsWith('+94')) displayVal = displayVal.slice(3);
+                  else if (displayVal.startsWith('0')) displayVal = displayVal.slice(1);
+                  
+                  const cleaned = displayVal.replace(/\D/g, '').slice(0, 9);
+                  let formatted = cleaned;
+                  if (cleaned.length > 2) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2);
+                  if (cleaned.length > 5) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2, 5) + ' ' + cleaned.slice(5);
+                  return formatted;
+                })()}
                 onChangeText={(val) => {
                   const cleaned = val.replace(/\D/g, "");
                   if (cleaned.length <= 9) setPhone(cleaned);
@@ -446,23 +459,7 @@ export default function RegisterScreen() {
               </View>
             </View>
 
-            {hasTouchedPassword ? (
-              <View style={styles.passwordRequirementsBox}>
-                <Text style={styles.passwordRequirementsTitle}>Password must include:</Text>
-                {PASSWORD_REQUIREMENTS.map((requirement) => (
-                  <Text key={requirement} style={styles.passwordRequirementsItem}>
-                    - {requirement}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
-
-            <View
-              style={[
-                styles.inputContainer,
-                hasTouchedPassword && password.length > 0 && (isPasswordValid ? styles.inputValid : styles.inputInvalid),
-              ]}
-            >
+            <View style={styles.inputContainer}>
               <Ionicons name="lock-closed-outline" size={20} color="#999" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
@@ -485,10 +482,32 @@ export default function RegisterScreen() {
               </TouchableOpacity>
             </View>
 
+            {hasTouchedPassword ? (
+              <View style={styles.passwordRequirementsList}>
+                {PASSWORD_REQUIREMENTS.map((requirement) => (
+                  <View key={requirement.label} style={styles.passwordRequirementRow}>
+                    <Ionicons
+                      name={requirement.test(password) ? "checkmark-circle-outline" : "close-circle-outline"}
+                      size={18}
+                      color={requirement.test(password) ? "#10B981" : "#EF4444"}
+                    />
+                    <Text
+                      style={[
+                        styles.passwordRequirementText,
+                        requirement.test(password) ? styles.passwordRequirementValid : styles.passwordRequirementInvalid,
+                      ]}
+                    >
+                      {requirement.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
             <View
               style={[
                 styles.inputContainer,
-                hasTouchedConfirmPassword && isConfirmPasswordEntered && (isConfirmPasswordValid ? styles.inputValid : styles.inputInvalid),
+                shouldShowConfirmPasswordMismatch && styles.inputInvalid,
               ]}
             >
               <Ionicons
@@ -517,6 +536,23 @@ export default function RegisterScreen() {
                 />
               </TouchableOpacity>
             </View>
+            {hasTouchedConfirmPassword && isConfirmPasswordEntered ? (
+              <View style={styles.confirmFeedbackRow}>
+                <Ionicons
+                  name={isConfirmPasswordValid ? "checkmark-circle-outline" : "close-circle-outline"}
+                  size={17}
+                  color={isConfirmPasswordValid ? "#10B981" : "#EF4444"}
+                />
+                <Text
+                  style={[
+                    styles.confirmFeedbackText,
+                    isConfirmPasswordValid ? styles.confirmFeedbackValid : styles.confirmFeedbackInvalid,
+                  ]}
+                >
+                  {isConfirmPasswordValid ? "Passwords match" : "Passwords do not match"}
+                </Text>
+              </View>
+            ) : null}
 
             <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
               <Pressable
@@ -632,27 +668,25 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: "center",
   },
-  passwordRequirementsBox: {
-    backgroundColor: "#FFF7ED",
-    borderColor: "#FED7AA",
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 12,
+  passwordRequirementsList: {
+    gap: 8,
+    marginTop: -6,
     marginBottom: 16,
-    alignSelf: "stretch",
   },
-  passwordRequirementsTitle: {
-    color: "#9A3412",
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 6,
-    textAlign: "left",
+  passwordRequirementRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  passwordRequirementsItem: {
-    color: "#9A3412",
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: "left",
+  passwordRequirementText: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  passwordRequirementValid: {
+    color: "#10B981",
+  },
+  passwordRequirementInvalid: {
+    color: "#EF4444",
   },
   inputContainer: {
     flexDirection: "row",
@@ -668,8 +702,22 @@ const styles = StyleSheet.create({
   inputInvalid: {
     borderColor: "#EF4444",
   },
-  inputValid: {
-    borderColor: "#10B981",
+  confirmFeedbackRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: -8,
+    marginBottom: 16,
+  },
+  confirmFeedbackText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  confirmFeedbackValid: {
+    color: "#10B981",
+  },
+  confirmFeedbackInvalid: {
+    color: "#EF4444",
   },
   inputIcon: {
     marginRight: 12,

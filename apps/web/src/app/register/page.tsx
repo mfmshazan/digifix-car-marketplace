@@ -3,10 +3,21 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, User, Store, Phone } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, User, Store, Phone, CheckCircle2, XCircle } from 'lucide-react';
 import { authApi, commonApi } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import GoogleSignInButton from '@/components/google-signin-button';
+
+const PASSWORD_REQUIREMENTS_ERROR = 'Password does not meet the minimum requirements.';
+const PASSWORD_REQUIREMENTS = [
+  { label: 'At least 8 characters', test: (value: string) => value.length >= 8 },
+  { label: 'One number', test: (value: string) => /\d/.test(value) },
+  { label: 'One uppercase letter', test: (value: string) => /[A-Z]/.test(value) },
+  { label: 'One lowercase letter', test: (value: string) => /[a-z]/.test(value) },
+  { label: 'One symbol', test: (value: string) => /[\W_]/.test(value) },
+];
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+const isStrongPassword = (value: string) => passwordRegex.test(value);
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -19,6 +30,8 @@ export default function RegisterPage() {
   const [role, setRole] = useState('SALESMAN');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
+  const [hasTouchedConfirmPassword, setHasTouchedConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState({
@@ -26,6 +39,10 @@ export default function RegisterPage() {
     happyCustomers: 0,
     activeSellers: 0
   });
+  const isConfirmPasswordEntered = confirmPassword.length > 0;
+  const isConfirmPasswordValid = isConfirmPasswordEntered && confirmPassword === password;
+  const shouldShowConfirmPasswordMismatch =
+    hasTouchedConfirmPassword && isConfirmPasswordEntered && !isConfirmPasswordValid;
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -68,12 +85,13 @@ export default function RegisterPage() {
     }
 
     if (password !== confirmPassword) {
+      setHasTouchedConfirmPassword(true);
       setError('Passwords do not match');
       return;
     }
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-    if (!passwordRegex.test(password)) {
-      setError('Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.');
+    if (!isStrongPassword(password)) {
+      setHasTouchedPassword(true);
+      setError(PASSWORD_REQUIREMENTS_ERROR);
       return;
     }
 
@@ -124,7 +142,7 @@ export default function RegisterPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            {error && (
+            {error && error !== PASSWORD_REQUIREMENTS_ERROR && (
               <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
                 {error}
               </div>
@@ -169,12 +187,23 @@ export default function RegisterPage() {
                 </div>
                 <input
                   type="tel"
-                  value={phone.startsWith('+94') ? phone.slice(3) : (phone.startsWith('0') ? phone.slice(1) : phone)}
+                  value={(() => {
+                    // Display formatting: xx xxx xxxx
+                    let displayVal = phone;
+                    if (displayVal.startsWith('+94')) displayVal = displayVal.slice(3);
+                    else if (displayVal.startsWith('0')) displayVal = displayVal.slice(1);
+                    
+                    const cleaned = displayVal.replace(/\D/g, '').slice(0, 9);
+                    let formatted = cleaned;
+                    if (cleaned.length > 2) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2);
+                    if (cleaned.length > 5) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2, 5) + ' ' + cleaned.slice(5);
+                    return formatted;
+                  })()}
                   onChange={(e) => {
                     const val = e.target.value.replace(/\D/g, '');
                     if (val.length <= 9) setPhone(val);
                   }}
-                  placeholder="7xxxxxxxx"
+                  placeholder="7x xxx xxxx"
                   className="w-full pl-24 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
                   required
                 />
@@ -208,7 +237,8 @@ export default function RegisterPage() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                  onFocus={() => setHasTouchedPassword(true)}
                   placeholder="Create a password"
                   className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
                   required
@@ -221,6 +251,25 @@ export default function RegisterPage() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
+              {hasTouchedPassword && (
+                <div className="mt-3 space-y-2">
+                  {PASSWORD_REQUIREMENTS.map((requirement) => {
+                    const passed = requirement.test(password);
+                    return (
+                      <div key={requirement.label} className="flex items-center gap-2 text-sm">
+                        {passed ? (
+                          <CheckCircle2 className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-red-500" />
+                        )}
+                        <span className={passed ? 'text-green-600' : 'text-red-600'}>
+                          {requirement.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div>
@@ -230,9 +279,14 @@ export default function RegisterPage() {
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setError(null); }}
+                  onFocus={() => setHasTouchedConfirmPassword(true)}
                   placeholder="Confirm your password"
-                  className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
+                  className={`w-full pl-12 pr-12 py-3 border rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 transition-all ${
+                    shouldShowConfirmPasswordMismatch
+                      ? 'border-red-300 focus:ring-red-100 focus:border-red-400'
+                      : 'border-gray-200 focus:ring-[#00002E]/20 focus:border-[#00002E]'
+                  }`}
                   required
                 />
                 <button
@@ -243,6 +297,16 @@ export default function RegisterPage() {
                   {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
+              {hasTouchedConfirmPassword && isConfirmPasswordEntered && (
+                <div className={`mt-2 flex items-center gap-2 text-sm font-medium ${isConfirmPasswordValid ? 'text-green-600' : 'text-red-600'}`}>
+                  {isConfirmPasswordValid ? (
+                    <CheckCircle2 className="w-4 h-4" />
+                  ) : (
+                    <XCircle className="w-4 h-4" />
+                  )}
+                  <span>{isConfirmPasswordValid ? 'Passwords match' : 'Passwords do not match'}</span>
+                </div>
+              )}
             </div>
 
             <button

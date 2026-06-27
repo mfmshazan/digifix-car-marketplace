@@ -50,7 +50,7 @@ export const updateReviewAggregates = async (targetId, targetType) => {
             total_reviews: totalReviews,
           },
         });
-        
+
         // Next try Rider model if ID is an integer
         const parsedId = parseInt(targetId, 10);
         if (!isNaN(parsedId)) {
@@ -62,6 +62,15 @@ export const updateReviewAggregates = async (targetId, targetType) => {
             },
           });
         }
+        break;
+      case 'CAR_PART':
+        await prisma.carPart.update({
+          where: { id: targetId },
+          data: {
+            averageRating,
+            totalReviews,
+          },
+        });
         break;
       default:
         console.warn(`Unknown review targetType: ${targetType}`);

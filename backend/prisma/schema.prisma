@@ -9,190 +9,73 @@ datasource db {
 }
 
 model User {
-  id              String       @id @default(cuid())
-  email           String       @unique
-  password        String?
-  name            String?
-  phone           String?
-  avatar          String?
-  role            UserRole     @default(CUSTOMER)
-  authProvider    AuthProvider @default(EMAIL)
-  googleId        String?      @unique
-  isVerified      Boolean      @default(false)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  status          UserStatus   @default(ACTIVE)
-  stripeAccountId String?      @unique
+  id               String         @id @default(cuid())
+  email            String         @unique
+  password         String?
+  name             String?
+  phone            String?
+  avatar           String?
+  role             UserRole       @default(CUSTOMER)
+  authProvider     AuthProvider   @default(EMAIL)
+  googleId         String?        @unique
+  isVerified       Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  status           UserStatus     @default(ACTIVE)
+  stripeAccountId  String?        @unique
+  deliveryStatus   String?        @default("offline")
+  rating           Float          @default(5.0)
+  total_deliveries Int            @default(0)
+  vehicleNumber    String?
+  vehicleType      String?
+  total_reviews    Int            @default(0)
 
   // Manager / Salesman hierarchy.
   // A SALESMAN belongs to a SHOP_MANAGER (managerId set). A SHOP_MANAGER has
   // managerId = null and is the store/catalog/wallet owner salesmen operate under.
-  managerId String?
-  manager   User?   @relation("ManagerSalesmen", fields: [managerId], references: [id], onDelete: SetNull)
-  salesmen  User[]  @relation("ManagerSalesmen")
+  managerId        String?
+  manager          User?          @relation("ManagerSalesmen", fields: [managerId], references: [id], onDelete: SetNull)
+  salesmen         User[]         @relation("ManagerSalesmen")
 
-  // Delivery Partner specific fields
-  vehicleType      String?
-  vehicleNumber    String?
-  deliveryStatus   String? @default("offline")
-  total_deliveries Int     @default(0)
-  rating           Float   @default(5.0)
-  total_reviews    Int     @default(0)
-
-  wallet        Wallet?
-  addresses     Address[]
-  carParts      CarPart[]      @relation("SellerCarParts")
-  cart          CartItem[]
-  orders        Order[]        @relation("CustomerOrders")
-  salesOrders   Order[]        @relation("SalesmanOrders")
-  products      Product[]      @relation("SalesmanProducts")
-  reviews       Review[]
-  reviewReplies ReviewReply[]
-  store         Store?
-  wishlist      WishlistItem[]
+  addresses        Address[]
+  carParts         CarPart[]      @relation("SellerCarParts")
+  cart             CartItem[]
+  orders           Order[]        @relation("CustomerOrders")
+  salesOrders      Order[]        @relation("SalesmanOrders")
+  products         Product[]      @relation("SalesmanProducts")
+  reviews          Review[]
+  reviewReplies    ReviewReply[]
+  store            Store?
+  wallet           Wallet?
+  wishlist         WishlistItem[]
 
   @@index([managerId])
 }
 
-// ================================
-// Enums
-// ================================
-
-// Enum for user roles.
-// SHOP_MANAGER is the active store/catalog/wallet owner role. MANAGER is a legacy
-// value kept only so the enum matches the database; new code uses SHOP_MANAGER.
-enum UserRole {
-  CUSTOMER
-  SALESMAN
-  SHOP_MANAGER
-  MANAGER
-  DELIVERY_PERSON
-  ADMIN
-  RIDER
-  DELIVERY_PARTNER
-}
-
-// Enum for user account status
-enum UserStatus {
-  ACTIVE
-  DEACTIVATED
-  INACTIVE
-  SUSPENDED
-}
-
-// Enum for authentication provider
-enum AuthProvider {
-  EMAIL
-  GOOGLE
-}
-
-// Wallet & Transaction Enums
-enum TransactionType {
-  DEPOSIT // External money enters app (Sender is null, Receiver is Admin)
-  PURCHASE // Customer uses wallet balance (Sender = Customer, Receiver = Admin)
-  SALE_EARNING // Admin releases sale funds to Salesman (Sender = Admin, Receiver = Salesman)
-  PLATFORM_FEE // App deducts profit (Sender = Salesman, Receiver = Admin)
-  DELIVERY_FEE // Admin pays delivery person (Sender = Admin, Receiver = DeliveryPerson)
-  EARNING // Delivery person earns for a delivery (Sender = Admin, Receiver = DeliveryPerson)
-  PAYOUT // Salesman withdraws to bank via Stripe (Sender = Salesman, Receiver = null)
-  REFUND // Customer gets money back (Sender = Admin, Receiver = Customer)
-  COD_PAYMENT // Delivery person records cash collected from customer (Sender = null, Receiver = DeliveryPerson)
-  COD_REMITTANCE // Delivery person hands cash to admin (Sender = DeliveryPerson, Receiver = Admin)
-  REFUND_SETTLEMENT // Salesman compensates admin for a refund (Sender = Salesman, Receiver = Admin)
-}
-
-enum CodSettlementStatus {
-  PENDING // Driver has the cash, hasn't paid the platform yet
-  PAID // Driver paid the platform
-  NOT_APPLICABLE // Used for non-COD digital transactions
-}
-
-// Order status enum
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PROCESSING
-  SHIPPED
-  DELIVERED
-  CANCELLED
-  REFUNDED
-  REFUND_REQUESTED
-  AVAILABLE
-  ASSIGNED
-  ACCEPTED
-  ARRIVED_AT_PICKUP
-  PICKED_UP
-  IN_TRANSIT
-  ARRIVED_AT_DROPOFF
-  FAILED
-}
-
-// Payment status enum
-enum PaymentStatus {
-  PENDING
-  PAID
-  FAILED
-  REFUNDED
-}
-
-// Review Target Type Enum
-enum ReviewTargetType {
-  PRODUCT
-  SELLER
-  DELIVERY_PARTNER
-}
-
-// Review Status Enum
-enum ReviewStatus {
-  PUBLISHED
-  FLAGGED
-  HIDDEN
-}
-
-// ================================
-// Core Models
-// ================================
-
-// ================================
-// Financial & Wallet Models
-// ================================
-
 model Wallet {
-  id        String   @id @default(cuid())
-  balance   Float    @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // A wallet can both send and receive money
-  sentTransactions     WalletTransaction[] @relation("SentTransactions")
+  id                   String              @id @default(cuid())
+  balance              Float               @default(0)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  userId               String              @unique
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   receivedTransactions WalletTransaction[] @relation("ReceivedTransactions")
+  sentTransactions     WalletTransaction[] @relation("SentTransactions")
 }
 
 model WalletTransaction {
-  id     String          @id @default(cuid())
-  amount Float // Always positive. Flow is defined by Sender -> Receiver
-  type   TransactionType
-
-  // Double-Entry P2P Logic
-  senderWalletId String? // Nullable if money comes from outside (e.g., Stripe card deposit)
-  senderWallet   Wallet? @relation("SentTransactions", fields: [senderWalletId], references: [id])
-
-  receiverWalletId String? // Nullable if money goes outside (e.g., Payout to Bank)
-  receiverWallet   Wallet? @relation("ReceivedTransactions", fields: [receiverWalletId], references: [id])
-
-  // COD Tracking
+  id                  String              @id @default(cuid())
+  amount              Float
+  type                TransactionType
+  senderWalletId      String?
+  receiverWalletId    String?
   codSettlementStatus CodSettlementStatus @default(NOT_APPLICABLE)
-
-  description String?
-  createdAt   DateTime @default(now())
-
-  // Relations
-  orderId String?
-  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  description         String?
+  createdAt           DateTime            @default(now())
+  orderId             String?
+  order               Order?              @relation(fields: [orderId], references: [id])
+  receiverWallet      Wallet?             @relation("ReceivedTransactions", fields: [receiverWalletId], references: [id])
+  senderWallet        Wallet?             @relation("SentTransactions", fields: [senderWalletId], references: [id])
 
   @@index([senderWalletId])
   @@index([receiverWalletId])
@@ -200,11 +83,6 @@ model WalletTransaction {
   @@index([orderId])
 }
 
-// ================================
-// E-commerce & Catalog Models
-// ================================
-
-// Store model for salesmen
 model Store {
   id           String    @id @default(cuid())
   name         String
@@ -214,11 +92,11 @@ model Store {
   address      String?
   phone        String?
   rating       Float     @default(0)
-  totalReviews Int       @default(0)
   isVerified   Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   ownerId      String    @unique
+  totalReviews Int       @default(0)
   products     Product[]
   owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
@@ -226,34 +104,30 @@ model Store {
 }
 
 model Product {
-  id            String   @id @default(cuid())
-  name          String
-  description   String?
-  price         Float
-  discountPrice Float?
-  sku           String?  @unique
-  stock         Int      @default(0)
-  images        String[]
-  isActive      Boolean  @default(true)
-  averageRating Float    @default(0)
-  totalReviews  Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  categoryId String?
-  category   Category? @relation(fields: [categoryId], references: [id])
-
-  salesmanId String
-  salesman   User   @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
-
-  storeId String?
-  store   Store?  @relation(fields: [storeId], references: [id])
-
-  cartItems     CartItem[]
-  wishlistItems WishlistItem[]
-  orderItems    OrderItem[]
-
+  id                 String                 @id @default(cuid())
+  name               String
+  description        String?
+  price              Float
+  discountPrice      Float?
+  sku                String?                @unique
+  stock              Int                    @default(0)
+  images             String[]
+  isActive           Boolean                @default(true)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  categoryId         String?
+  salesmanId         String
+  storeId            String?
+  averageRating      Float                  @default(0)
+  totalReviews       Int                    @default(0)
+  approvalStatus     ItemApprovalStatus     @default(PENDING)
+  cartItems          CartItem[]
+  orderItems         OrderItem[]
+  category           Category?              @relation(fields: [categoryId], references: [id])
+  salesman           User                   @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
+  store              Store?                 @relation(fields: [storeId], references: [id])
   compatibleVehicles VehicleCompatibility[]
+  wishlistItems      WishlistItem[]
 
   @@index([categoryId])
   @@index([salesmanId])
@@ -332,15 +206,12 @@ model WishlistItem {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  itemType String @default("PRODUCT") // PRODUCT or CAR_PART
-
   productId String?
-  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
-
   carPartId String?
+  itemType  String   @default("PRODUCT")
   carPart   CarPart? @relation(fields: [carPartId], references: [id], onDelete: Cascade)
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
   @@unique([userId, carPartId])
@@ -348,43 +219,37 @@ model WishlistItem {
 }
 
 model Order {
-  id                 String        @id @default(cuid())
-  orderNumber        String        @unique @default(cuid())
-  status             OrderStatus   @default(PENDING)
-  paymentStatus      PaymentStatus @default(PENDING)
+  id                 String              @id @default(cuid())
+  orderNumber        String              @unique @default(cuid())
+  status             OrderStatus         @default(PENDING)
+  paymentStatus      PaymentStatus       @default(PENDING)
   paymentMethod      String?
   subtotal           Float
-  serviceCharge      Float         @default(0) // 10% platform fee charged to customer
-  deliveryFee        Float         @default(0) // Calculated as distance_km * 250 once distance is available
-  discount           Float         @default(0)
+  deliveryFee        Float               @default(0)
+  discount           Float               @default(0)
   total              Float
   notes              String?
-  cancellationReason String? // Customer must provide a reason so admin can make an informed decision
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-
-  // Relations
-  customerId String
-  customer   User   @relation("CustomerOrders", fields: [customerId], references: [id])
-
-  salesmanId String
-  salesman   User   @relation("SalesmanOrders", fields: [salesmanId], references: [id])
-
-  addressId String?
-  address   Address? @relation(fields: [addressId], references: [id])
-
-  items    OrderItem[]
-  tracking OrderTracking[]
-  walletTransactions  WalletTransaction[]
-  riderDeliveryJobs DeliveryJob[]
-  reviews           Review[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  customerId         String
+  salesmanId         String
+  addressId          String?
+  cancellationReason String?
+  serviceCharge      Float               @default(0)
+  riderDeliveryJobs  DeliveryJob[]
+  address            Address?            @relation(fields: [addressId], references: [id])
+  customer           User                @relation("CustomerOrders", fields: [customerId], references: [id])
+  salesman           User                @relation("SalesmanOrders", fields: [salesmanId], references: [id])
+  items              OrderItem[]
+  tracking           OrderTracking[]
+  reviews            Review[]
+  walletTransactions WalletTransaction[]
 
   @@index([customerId])
   @@index([salesmanId])
   @@index([status])
   @@index([orderNumber])
 }
-
 
 model OrderItem {
   id        String   @id @default(cuid())
@@ -419,28 +284,22 @@ model OrderTracking {
 }
 
 model Review {
-  id      String   @id @default(cuid())
-  rating  Int
-  title   String?
-  comment String?
-  images  String[]
-
-  orderId String
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  targetId   String // Can be Product ID, Store ID, or Delivery Partner ID
-  targetType ReviewTargetType
+  id         String           @id @default(cuid())
+  rating     Int
+  title      String?
+  comment    String?
+  images     String[]
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  userId     String
+  orderId    String
   status     ReviewStatus     @default(PUBLISHED)
+  targetId   String
+  targetType ReviewTargetType
+  order      Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replies    ReviewReply[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  replies ReviewReply[]
-
-  // A user can only review a specific target once per order
   @@unique([orderId, targetId, targetType])
   @@index([targetId])
   @@index([rating])
@@ -452,9 +311,8 @@ model ReviewReply {
   sellerId  String
   replyText String
   createdAt DateTime @default(now())
-
-  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-  seller User   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  seller    User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   @@index([reviewId])
   @@index([sellerId])
@@ -480,29 +338,31 @@ model Car {
   @@index([year])
 }
 
-// Car Part model
 model CarPart {
-  id            String         @id @default(cuid())
-  name          String
-  description   String?
-  partNumber    String?
-  price         Float
-  discountPrice Float?
-  stock         Int            @default(0)
-  condition     String         @default("NEW")
-  images        String[]
-  isActive      Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  carId         String
-  categoryId    String
-  sellerId      String
-  car           Car            @relation(fields: [carId], references: [id], onDelete: Cascade)
-  category      Category       @relation(fields: [categoryId], references: [id])
-  seller        User           @relation("SellerCarParts", fields: [sellerId], references: [id], onDelete: Cascade)
-  cartItems     CartItem[]
-  orderItems    OrderItem[]
-  wishlistItems WishlistItem[]
+  id             String             @id @default(cuid())
+  name           String
+  description    String?
+  partNumber     String?
+  price          Float
+  discountPrice  Float?
+  stock          Int                @default(0)
+  condition      String             @default("NEW")
+  images         String[]
+  isActive       Boolean            @default(true)
+  averageRating  Float              @default(0)
+  totalReviews   Int                @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  carId          String
+  categoryId     String
+  sellerId       String
+  approvalStatus ItemApprovalStatus @default(PENDING)
+  car            Car                @relation(fields: [carId], references: [id], onDelete: Cascade)
+  category       Category           @relation(fields: [categoryId], references: [id])
+  seller         User               @relation("SellerCarParts", fields: [sellerId], references: [id], onDelete: Cascade)
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+  wishlistItems  WishlistItem[]
 
   @@index([carId])
   @@index([categoryId])
@@ -522,40 +382,35 @@ model PasswordResetOtp {
   @@index([email])
 }
 
-// ================================
-// Rider Delivery Models
-// ================================
-
 model Rider {
-  id                    Int       @id @default(autoincrement())
-  email                 String    @unique @db.VarChar(255)
-  passwordHash          String    @map("password_hash") @db.VarChar(255)
-  fullName              String    @map("full_name") @db.VarChar(255)
-  phone                 String    @db.VarChar(20)
-  vehicleType           String?   @map("vehicle_type") @db.VarChar(50)
-  vehicleNumber         String?   @map("vehicle_number") @db.VarChar(50)
-  profilePhotoUrl       String?   @map("profile_photo_url")
+  id                    Int                        @id @default(autoincrement())
+  email                 String                     @unique @db.VarChar(255)
+  passwordHash          String                     @map("password_hash") @db.VarChar(255)
+  fullName              String                     @map("full_name") @db.VarChar(255)
+  phone                 String                     @db.VarChar(20)
+  vehicleType           String?                    @map("vehicle_type") @db.VarChar(50)
+  vehicleNumber         String?                    @map("vehicle_number") @db.VarChar(50)
+  profilePhotoUrl       String?                    @map("profile_photo_url")
   bio                   String?
   address               String?
-  emergencyContactName  String?   @map("emergency_contact_name") @db.VarChar(255)
-  emergencyContactPhone String?   @map("emergency_contact_phone") @db.VarChar(20)
-  pushToken             String?   @map("push_token")
-  pushPlatform          String?   @map("push_platform") @db.VarChar(20)
-  pushTokenUpdatedAt    DateTime? @map("push_token_updated_at")
-  status                String    @default("offline") @db.VarChar(20)
-  currentLatitude       Decimal?  @map("current_latitude") @db.Decimal(10, 8)
-  currentLongitude      Decimal?  @map("current_longitude") @db.Decimal(11, 8)
-  rating                Decimal   @default(0.00) @db.Decimal(3, 2)
-  totalReviews          Int       @default(0) @map("total_reviews")
-  totalDeliveries       Int       @default(0) @map("total_deliveries")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @default(now()) @map("updated_at")
-
-  refreshTokens RiderToken[]
-  jobs          DeliveryJob[]
-  tracking      DeliveryTracking[]
-  offers        DeliveryOffer[]
-  availabilitySessions RiderAvailabilitySession[]
+  emergencyContactName  String?                    @map("emergency_contact_name") @db.VarChar(255)
+  emergencyContactPhone String?                    @map("emergency_contact_phone") @db.VarChar(20)
+  pushToken             String?                    @map("push_token")
+  pushPlatform          String?                    @map("push_platform") @db.VarChar(20)
+  pushTokenUpdatedAt    DateTime?                  @map("push_token_updated_at")
+  status                String                     @default("offline") @db.VarChar(20)
+  currentLatitude       Decimal?                   @map("current_latitude") @db.Decimal(10, 8)
+  currentLongitude      Decimal?                   @map("current_longitude") @db.Decimal(11, 8)
+  rating                Decimal                    @default(0.00) @db.Decimal(3, 2)
+  totalDeliveries       Int                        @default(0) @map("total_deliveries")
+  createdAt             DateTime                   @default(now()) @map("created_at")
+  updatedAt             DateTime                   @default(now()) @map("updated_at")
+  totalReviews          Int                        @default(0) @map("total_reviews")
+  jobs                  DeliveryJob[]
+  offers                DeliveryOffer[]
+  tracking              DeliveryTracking[]
+  availabilitySessions  RiderAvailabilitySession[]
+  refreshTokens         RiderToken[]
 
   @@index([email], map: "idx_rider_partners_email")
   @@index([status], map: "idx_rider_partners_status")
@@ -567,8 +422,7 @@ model RiderAvailabilitySession {
   startedAt DateTime  @default(now()) @map("started_at") @db.Timestamptz(3)
   endedAt   DateTime? @map("ended_at") @db.Timestamptz(3)
   endReason String?   @map("end_reason") @db.VarChar(50)
-
-  partner Rider @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner   Rider     @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@index([partnerId, startedAt], map: "idx_rider_availability_partner_started")
 }
@@ -579,60 +433,56 @@ model RiderToken {
   token     String   @unique @db.VarChar(500)
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
-
-  partner Rider @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner   Rider    @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@index([token], map: "idx_rider_refresh_tokens_token")
   @@index([partnerId], map: "idx_rider_refresh_tokens_partner")
 }
 
 model DeliveryJob {
-  id                    Int       @id @default(autoincrement())
-  partnerId             Int?      @map("partner_id")
-  marketplaceOrderId    String?   @map("marketplace_order_id")
-  orderNumber           String    @unique @map("order_number") @db.VarChar(100)
-  customerName          String    @map("customer_name") @db.VarChar(255)
-  customerPhone         String    @map("customer_phone") @db.VarChar(20)
-  pickupAddress         String    @map("pickup_address")
-  pickupLatitude        Decimal   @map("pickup_latitude") @db.Decimal(10, 8)
-  pickupLongitude       Decimal   @map("pickup_longitude") @db.Decimal(11, 8)
-  pickupContactName     String?   @map("pickup_contact_name") @db.VarChar(255)
-  pickupContactPhone    String?   @map("pickup_contact_phone") @db.VarChar(20)
-  dropoffAddress        String    @map("dropoff_address")
-  dropoffLatitude       Decimal   @map("dropoff_latitude") @db.Decimal(10, 8)
-  dropoffLongitude      Decimal   @map("dropoff_longitude") @db.Decimal(11, 8)
-  distanceKm            Decimal?  @map("distance_km") @db.Decimal(6, 2)
-  paymentAmount         Decimal   @map("payment_amount") @db.Decimal(10, 2)
-  packageWeight         Decimal?  @map("package_weight") @db.Decimal(8, 2)
-  packageType           String?   @map("package_type") @db.VarChar(80)
-  packageNotes          String?   @map("package_notes")
-  paymentType           String    @default("PREPAID") @map("payment_type") @db.VarChar(30)
-  itemsDescription      String?   @map("items_description")
-  specialInstructions   String?   @map("special_instructions")
-  status                String    @default("pending") @db.VarChar(30)
-  createdAt             DateTime  @default(now()) @map("created_at")
-  assignedAt            DateTime? @map("assigned_at")
-  acceptedAt            DateTime? @map("accepted_at")
-  arrivedAtPickupAt     DateTime? @map("arrived_at_pickup_at")
-  pickedUpAt            DateTime? @map("picked_up_at")
-  arrivedAtDropoffAt    DateTime? @map("arrived_at_dropoff_at")
-  deliveredAt           DateTime? @map("delivered_at")
-  failedAt              DateTime? @map("failed_at")
-  updatedAt             DateTime  @default(now()) @map("updated_at")
-
-  // Merged Proof of Delivery fields
-  proofPhotoUrl          String?  @map("proof_photo_url")
-  proofSignatureData     String?  @map("proof_signature_data")
-  proofRecipientName     String?  @map("proof_recipient_name") @db.VarChar(255)
-  proofNotes             String?  @map("proof_notes")
-  proofDeliveryLatitude  Decimal? @map("proof_delivery_latitude") @db.Decimal(10, 8)
-  proofDeliveryLongitude Decimal? @map("proof_delivery_longitude") @db.Decimal(11, 8)
-  proofCreatedAt         DateTime? @map("proof_created_at")
-
-  partner         Rider?                @relation(fields: [partnerId], references: [id], onDelete: SetNull)
-  marketplaceOrder Order?               @relation(fields: [marketplaceOrderId], references: [id], onDelete: SetNull)
-  tracking        DeliveryTracking[]
-  offers          DeliveryOffer[]
+  id                     Int                @id @default(autoincrement())
+  partnerId              Int?               @map("partner_id")
+  marketplaceOrderId     String?            @map("marketplace_order_id")
+  orderNumber            String             @unique @map("order_number") @db.VarChar(100)
+  customerName           String             @map("customer_name") @db.VarChar(255)
+  customerPhone          String             @map("customer_phone") @db.VarChar(20)
+  pickupAddress          String             @map("pickup_address")
+  pickupLatitude         Decimal            @map("pickup_latitude") @db.Decimal(10, 8)
+  pickupLongitude        Decimal            @map("pickup_longitude") @db.Decimal(11, 8)
+  pickupContactName      String?            @map("pickup_contact_name") @db.VarChar(255)
+  pickupContactPhone     String?            @map("pickup_contact_phone") @db.VarChar(20)
+  dropoffAddress         String             @map("dropoff_address")
+  dropoffLatitude        Decimal            @map("dropoff_latitude") @db.Decimal(10, 8)
+  dropoffLongitude       Decimal            @map("dropoff_longitude") @db.Decimal(11, 8)
+  distanceKm             Decimal?           @map("distance_km") @db.Decimal(6, 2)
+  paymentAmount          Decimal            @map("payment_amount") @db.Decimal(10, 2)
+  itemsDescription       String?            @map("items_description")
+  specialInstructions    String?            @map("special_instructions")
+  status                 String             @default("pending") @db.VarChar(30)
+  createdAt              DateTime           @default(now()) @map("created_at")
+  assignedAt             DateTime?          @map("assigned_at")
+  acceptedAt             DateTime?          @map("accepted_at")
+  arrivedAtPickupAt      DateTime?          @map("arrived_at_pickup_at")
+  pickedUpAt             DateTime?          @map("picked_up_at")
+  arrivedAtDropoffAt     DateTime?          @map("arrived_at_dropoff_at")
+  deliveredAt            DateTime?          @map("delivered_at")
+  failedAt               DateTime?          @map("failed_at")
+  updatedAt              DateTime           @default(now()) @map("updated_at")
+  packageNotes           String?            @map("package_notes")
+  packageType            String?            @map("package_type") @db.VarChar(80)
+  packageWeight          Decimal?           @map("package_weight") @db.Decimal(8, 2)
+  paymentType            String             @default("PREPAID") @map("payment_type") @db.VarChar(30)
+  proofPhotoUrl          String?            @map("proof_photo_url")
+  proofSignatureData     String?            @map("proof_signature_data")
+  proofRecipientName     String?            @map("proof_recipient_name") @db.VarChar(255)
+  proofNotes             String?            @map("proof_notes")
+  proofDeliveryLatitude  Decimal?           @map("proof_delivery_latitude") @db.Decimal(10, 8)
+  proofDeliveryLongitude Decimal?           @map("proof_delivery_longitude") @db.Decimal(11, 8)
+  proofCreatedAt         DateTime?          @map("proof_created_at")
+  marketplaceOrder       Order?             @relation(fields: [marketplaceOrderId], references: [id])
+  partner                Rider?             @relation(fields: [partnerId], references: [id])
+  offers                 DeliveryOffer[]
+  tracking               DeliveryTracking[]
 
   @@index([status], map: "idx_rider_jobs_status")
   @@index([partnerId], map: "idx_rider_jobs_partner")
@@ -641,38 +491,125 @@ model DeliveryJob {
 }
 
 model DeliveryTracking {
-  id         Int      @id @default(autoincrement())
-  jobId      Int      @map("job_id")
-  partnerId  Int      @map("partner_id")
-  latitude   Decimal  @db.Decimal(10, 8)
-  longitude  Decimal  @db.Decimal(11, 8)
-  accuracy   Decimal? @db.Decimal(6, 2)
-  speed      Decimal? @db.Decimal(6, 2)
-  heading    Decimal? @db.Decimal(5, 2)
-  recordedAt DateTime @default(now()) @map("recorded_at")
-
-  job     DeliveryJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  partner Rider       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  id         Int         @id @default(autoincrement())
+  jobId      Int         @map("job_id")
+  partnerId  Int         @map("partner_id")
+  latitude   Decimal     @db.Decimal(10, 8)
+  longitude  Decimal     @db.Decimal(11, 8)
+  accuracy   Decimal?    @db.Decimal(6, 2)
+  speed      Decimal?    @db.Decimal(6, 2)
+  heading    Decimal?    @db.Decimal(5, 2)
+  recordedAt DateTime    @default(now()) @map("recorded_at")
+  job        DeliveryJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  partner    Rider       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@index([jobId], map: "idx_rider_tracking_job")
   @@index([recordedAt], map: "idx_rider_tracking_recorded_at")
 }
 
 model DeliveryOffer {
-  id                 Int       @id @default(autoincrement())
-  jobId              Int       @map("job_id")
-  partnerId          Int       @map("partner_id")
-  offerStatus        String    @map("offer_status") @db.VarChar(20)
-  distanceToPickupKm Decimal?  @map("distance_to_pickup_km") @db.Decimal(8, 3)
-  offeredAt          DateTime  @default(now()) @map("offered_at")
-  expiresAt          DateTime  @map("expires_at")
-  respondedAt        DateTime? @map("responded_at")
-  responseReason     String?   @map("response_reason")
-
-  job     DeliveryJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  partner Rider       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  id                 Int         @id @default(autoincrement())
+  jobId              Int         @map("job_id")
+  partnerId          Int         @map("partner_id")
+  offerStatus        String      @map("offer_status") @db.VarChar(20)
+  distanceToPickupKm Decimal?    @map("distance_to_pickup_km") @db.Decimal(8, 3)
+  offeredAt          DateTime    @default(now()) @map("offered_at")
+  expiresAt          DateTime    @map("expires_at")
+  respondedAt        DateTime?   @map("responded_at")
+  responseReason     String?     @map("response_reason")
+  job                DeliveryJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  partner            Rider       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@index([jobId], map: "idx_rider_dispatch_offers_job_id")
   @@index([partnerId], map: "idx_rider_dispatch_offers_partner_id")
   @@index([offerStatus, expiresAt], map: "idx_rider_dispatch_offers_status")
+}
+
+enum UserRole {
+  CUSTOMER
+  SALESMAN
+  ADMIN
+  RIDER
+  DELIVERY_PARTNER
+  DELIVERY_PERSON
+  SHOP_MANAGER
+  // Legacy value kept only so the enum matches the database; new code uses SHOP_MANAGER.
+  MANAGER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+}
+
+enum TransactionType {
+  DEPOSIT
+  PURCHASE
+  SALE_EARNING
+  PLATFORM_FEE
+  DELIVERY_FEE
+  EARNING
+  PAYOUT
+  REFUND
+  COD_PAYMENT
+  COD_REMITTANCE
+  REFUND_SETTLEMENT
+}
+
+enum CodSettlementStatus {
+  PENDING
+  PAID
+  NOT_APPLICABLE
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+  REFUND_REQUESTED
+  AVAILABLE
+  ASSIGNED
+  ACCEPTED
+  ARRIVED_AT_PICKUP
+  PICKED_UP
+  IN_TRANSIT
+  ARRIVED_AT_DROPOFF
+  FAILED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum ReviewTargetType {
+  PRODUCT
+  SELLER
+  DELIVERY_PARTNER
+  CAR_PART
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  FLAGGED
+  HIDDEN
+}
+
+enum ItemApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

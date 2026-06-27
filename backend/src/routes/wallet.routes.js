@@ -24,7 +24,7 @@ router.post('/refund/salesman-settlement', authorize('ADMIN'), walletController.
 // Users trigger their own payout
 router.post('/payout', walletController.triggerPayout);
 
-// Salesman triggers their own payout (legacy route)
-router.post('/payout/salesman', authorize('SALESMAN'), walletController.triggerPayout);
+// Store owner triggers their own payout (manager owns the wallet; salesman kept for legacy accounts)
+router.post('/payout/salesman', authorize('SHOP_MANAGER', 'SALESMAN'), walletController.triggerPayout);
 
 export default router;

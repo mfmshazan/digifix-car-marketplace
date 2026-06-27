@@ -447,14 +447,14 @@ function UsersTab() {
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
                 <h2 className="text-lg font-bold text-gray-900">Platform Users</h2>
                 <div className="flex gap-2 bg-gray-50 p-1 rounded-xl border border-gray-200">
-                    {['', 'CUSTOMER', 'SALESMAN', 'RIDER'].map((role) => (
+                    {['', 'CUSTOMER', 'SHOP_MANAGER', 'SALESMAN', 'RIDER'].map((role) => (
                         <button
                             key={role}
                             onClick={() => setRoleFilter(role)}
                             className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${roleFilter === role ? 'bg-white shadow-sm text-[#00002E]' : 'text-gray-500 hover:text-gray-900'
                                 }`}
                         >
-                            {role === '' ? 'All' : role === 'SALESMAN' ? 'Sellers' : role === 'RIDER' ? 'Riders' : 'Customers'}
+                            {role === '' ? 'All' : role === 'SHOP_MANAGER' ? 'Managers' : role === 'SALESMAN' ? 'Sellers' : role === 'RIDER' ? 'Riders' : 'Customers'}
                         </button>
                     ))}
                 </div>

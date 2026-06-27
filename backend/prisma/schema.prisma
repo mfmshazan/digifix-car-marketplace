@@ -24,6 +24,13 @@ model User {
   status          UserStatus   @default(ACTIVE)
   stripeAccountId String?      @unique
 
+  // Manager / Salesman hierarchy.
+  // A SALESMAN belongs to a SHOP_MANAGER (managerId set). A SHOP_MANAGER has
+  // managerId = null and is the store/catalog/wallet owner salesmen operate under.
+  managerId String?
+  manager   User?   @relation("ManagerSalesmen", fields: [managerId], references: [id], onDelete: SetNull)
+  salesmen  User[]  @relation("ManagerSalesmen")
+
   // Delivery Partner specific fields
   vehicleType      String?
   vehicleNumber    String?
@@ -43,16 +50,22 @@ model User {
   reviewReplies ReviewReply[]
   store         Store?
   wishlist      WishlistItem[]
+
+  @@index([managerId])
 }
 
 // ================================
 // Enums
 // ================================
 
-// Enum for user roles
+// Enum for user roles.
+// SHOP_MANAGER is the active store/catalog/wallet owner role. MANAGER is a legacy
+// value kept only so the enum matches the database; new code uses SHOP_MANAGER.
 enum UserRole {
   CUSTOMER
   SALESMAN
+  SHOP_MANAGER
+  MANAGER
   DELIVERY_PERSON
   ADMIN
   RIDER

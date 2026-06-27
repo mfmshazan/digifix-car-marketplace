@@ -85,7 +85,10 @@ export default function RegisterPage() {
       if (response.success) {
         const { user, token } = response.data;
         login(user, token);
-        window.location.href = role === 'ADMIN' ? '/dashboard/admin' : '/dashboard/salesman';
+        window.location.href =
+          role === 'ADMIN' ? '/dashboard/admin'
+          : role === 'SHOP_MANAGER' ? '/dashboard/manager'
+          : '/dashboard/salesman';
       } else {
         setError(response.message || 'Registration failed');
       }
@@ -188,6 +191,7 @@ export default function RegisterPage() {
                   onChange={(e) => setRole(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all appearance-none"
                 >
+                  <option value="SHOP_MANAGER">Manager</option>
                   <option value="SALESMAN">Salesman</option>
                   <option value="ADMIN">Admin</option>
                 </select>

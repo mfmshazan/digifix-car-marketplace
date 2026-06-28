@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { resolveShopOwnerId } from '../lib/shopAccess.js';
 
 // Get all products (with filters)
 const getProducts = async (req, res) => {
@@ -298,7 +299,8 @@ const deleteProduct = async (req, res) => {
 // Get salesman's products
 const getSalesmanProducts = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // A salesman views the shop catalog, which is owned by their manager.
+    const userId = await resolveShopOwnerId(req.user);
     const { page = '1', limit = '20' } = req.query;
 
     const pageNum = parseInt(page);

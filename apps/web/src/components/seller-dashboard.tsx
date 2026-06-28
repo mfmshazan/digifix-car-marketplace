@@ -2121,7 +2121,8 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
         {activeTab === 'orders' && <CurrentOrdersTab userId={user.id} />}
         {activeTab === 'products' && <ProductsTab />}
         {activeTab === 'history' && <SalesHistoryTab />}
-        {activeTab === 'reviews' && <ReviewsTab salesmanId={user.id} />}
+        {/* Reviews target the shop owner (manager); a salesman scopes to their manager. */}
+        {activeTab === 'reviews' && <ReviewsTab salesmanId={user.managerId || user.id} />}
 
       </main>
 

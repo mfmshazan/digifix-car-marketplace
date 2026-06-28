@@ -2,6 +2,7 @@ import prisma from '../lib/prisma.js';
 import { sendNewOrderNotificationToSalesman } from '../lib/onesignal.js';
 import { createRiderJobsForMarketplaceOrders } from '../services/riderDeliveryJobFactory.js';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
+import { resolveShopOwnerId, getShopMemberIds } from '../lib/shopAccess.js';
 
 /**
  * Get salesman's sales summary
@@ -9,7 +10,8 @@ import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
  */
 export const getSalesmanSalesSummary = async (req, res) => {
   try {
-    const salesmanId = req.user.id;
+    // Salesmen share the shop's sales figures — scope to the manager (shop owner).
+    const salesmanId = await resolveShopOwnerId(req.user);
     const { date } = req.query;
     
     // Default to today if no date provided
@@ -298,7 +300,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
  */
 export const getSalesmanPendingCount = async (req, res) => {
   try {
-    const salesmanId = req.user.id;
+    const salesmanId = await resolveShopOwnerId(req.user);
     const count = await prisma.order.count({
       where: { salesmanId, status: 'PENDING' }
     });
@@ -314,7 +316,8 @@ export const getSalesmanPendingCount = async (req, res) => {
  */
 export const getSalesmanOrders = async (req, res) => {
   try {
-    const salesmanId = req.user.id;
+    // A salesman sees the shop's orders, which are recorded against the manager.
+    const salesmanId = await resolveShopOwnerId(req.user);
     const { status, page = 1, limit = 20 } = req.query;
 
     const where = {
@@ -411,9 +414,10 @@ export const updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    const salesmanId = req.user.id;
+    // Salesmen act on behalf of their manager, so scope to the shop owner's id.
+    const salesmanId = await resolveShopOwnerId(req.user);
 
-    // Verify the order belongs to this salesman
+    // Verify the order belongs to this shop
     const order = await prisma.order.findFirst({
       where: {
         id,
@@ -524,14 +528,17 @@ export const updateOrderStatus = async (req, res) => {
         status,
         updatedAt: updatedOrder.updatedAt,
       });
-      // Also broadcast to salesmen watching this order
-      io.to(`user:${salesmanId}`).emit('orderStatusUpdated', {
-        orderId: id,
-        orderNumber: updatedOrder.orderNumber,
-        status,
-        updatedAt: updatedOrder.updatedAt,
-      });
-      console.log(`📡 Emitted orderStatusUpdated for order ${id} → customer ${updatedOrder.customerId}`);
+      // Also broadcast to the manager and every salesman in the shop
+      const shopMemberIds = await getShopMemberIds(salesmanId);
+      for (const memberId of shopMemberIds) {
+        io.to(`user:${memberId}`).emit('orderStatusUpdated', {
+          orderId: id,
+          orderNumber: updatedOrder.orderNumber,
+          status,
+          updatedAt: updatedOrder.updatedAt,
+        });
+      }
+      console.log(`📡 Emitted orderStatusUpdated for order ${id} → customer ${updatedOrder.customerId} + ${shopMemberIds.length} shop member(s)`);
     }
 
     res.json({
@@ -981,10 +988,16 @@ export const createOrder = async (req, res) => {
       }))
     };
 
-    // 🔌 Emit real-time event to each salesman so their dashboard shows the new order instantly
+    // Resolve every shop member (manager + their salesmen) per order so both the
+    // manager AND the salesmen get the realtime event and the push notification.
+    const orderShopMembers = await Promise.all(
+      createdOrders.map(order => getShopMemberIds(order.salesmanId))
+    );
+
+    // 🔌 Emit real-time event to each shop member so their dashboard shows the new order instantly
     const io = req.app.get('io');
     if (io) {
-      for (const order of createdOrders) {
+      createdOrders.forEach((order, idx) => {
         const orderPayload = {
           orderId: order.id,
           orderNumber: order.orderNumber,
@@ -994,21 +1007,25 @@ export const createOrder = async (req, res) => {
           status: order.status,
           createdAt: order.createdAt,
         };
-        // Notify the specific salesman's room
-        io.to(`user:${order.salesmanId}`).emit('newOrder', orderPayload);
-        console.log(`📡 Emitted newOrder ${order.orderNumber} → salesman ${order.salesmanId}`);
-      }
+        const memberIds = orderShopMembers[idx];
+        for (const memberId of memberIds) {
+          io.to(`user:${memberId}`).emit('newOrder', orderPayload);
+        }
+        console.log(`📡 Emitted newOrder ${order.orderNumber} → ${memberIds.length} shop member(s)`);
+      });
     }
 
     // 🔔 OneSignal push notifications (non-blocking — won't delay the response)
     Promise.all(
-      createdOrders.map(order =>
-        sendNewOrderNotificationToSalesman({
-          salesmanId: order.salesmanId,
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          total: order.total,
-        }).catch(err => console.error('OneSignal error:', err.message))
+      createdOrders.flatMap((order, idx) =>
+        orderShopMembers[idx].map(memberId =>
+          sendNewOrderNotificationToSalesman({
+            salesmanId: memberId,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            total: order.total,
+          }).catch(err => console.error('OneSignal error:', err.message))
+        )
       )
     );
 
@@ -1311,17 +1328,25 @@ export const approveCancellation = async (req, res) => {
         status: 'CANCELLED',
         message: `Refund approved for Order ${order.orderNumber}. Please refund customer ${order.customer?.name || ''}.`.trim(),
       };
-      io.to(`user:${order.salesmanId}`).emit('cancellationApproved', payload);
+      const shopMemberIds = await getShopMemberIds(order.salesmanId);
+      for (const memberId of shopMemberIds) {
+        io.to(`user:${memberId}`).emit('cancellationApproved', payload);
+      }
       io.to(`user:${order.customerId}`).emit('cancellationApproved', payload);
-      console.log(`📡 Emitted cancellationApproved for order ${order.orderNumber}`);
+      console.log(`📡 Emitted cancellationApproved for order ${order.orderNumber} → ${shopMemberIds.length} shop member(s)`);
     }
 
-    // Push notification to salesman — they need to know to stop processing this order
+    // Push notification to the manager + every salesman — they need to know to stop processing this order
     const { sendRefundApprovedToSalesman } = await import('../lib/onesignal.js');
-    sendRefundApprovedToSalesman({
-      salesmanId: order.salesmanId,
-      orderNumber: order.orderNumber,
-    }).catch(err => console.error('OneSignal salesman notification error:', err.message));
+    const refundMemberIds = await getShopMemberIds(order.salesmanId);
+    Promise.all(
+      refundMemberIds.map(memberId =>
+        sendRefundApprovedToSalesman({
+          salesmanId: memberId,
+          orderNumber: order.orderNumber,
+        }).catch(err => console.error('OneSignal salesman notification error:', err.message))
+      )
+    );
 
     res.json({
       success: true,

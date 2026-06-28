@@ -72,7 +72,7 @@ Content-Type: application/json
 
 **Request:**
 ```
-POST http://localhost:3000/api/auth/login
+POST -=7y
 ```
 
 **Body (raw JSON):**

@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { riderQuery } from '../lib/riderDb.js';
+import { resolveShopOwnerId } from '../lib/shopAccess.js';
 import {
   dispatchJobToNextEligibleDriver,
   dispatchJobToSelectedDriver,
@@ -87,11 +88,16 @@ export const createDeliveryRequest = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    if (req.user.role === 'SALESMAN' && order.salesmanId !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only create delivery requests for your own orders',
-      });
+    // Shop staff (salesman/manager) may only dispatch their own shop's orders.
+    // Orders are recorded against the manager, so compare to the shop owner id.
+    if (req.user.role === 'SALESMAN' || req.user.role === 'SHOP_MANAGER') {
+      const shopOwnerId = await resolveShopOwnerId(req.user);
+      if (order.salesmanId !== shopOwnerId) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only create delivery requests for your own orders',
+        });
+      }
     }
 
     const existing = await riderQuery(
@@ -245,11 +251,14 @@ export const retryDeliveryRequest = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    if (req.user.role === 'SALESMAN' && order.salesmanId !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only retry delivery requests for your own orders',
-      });
+    if (req.user.role === 'SALESMAN' || req.user.role === 'SHOP_MANAGER') {
+      const shopOwnerId = await resolveShopOwnerId(req.user);
+      if (order.salesmanId !== shopOwnerId) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only retry delivery requests for your own orders',
+        });
+      }
     }
 
     const jobResult = await riderQuery(

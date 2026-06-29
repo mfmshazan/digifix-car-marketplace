@@ -265,12 +265,25 @@ class StripeController {
                 });
             }
 
+            // Generate order number prefix
+            const timestamp = Date.now().toString(36).toUpperCase();
+            const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+            const orderPrefix = `ORD-${timestamp}-${randomPart}`;
+
             // Create one order per seller
             const createdOrders = [];
-            for (const sellerGroup of Object.values(groupedBySeller)) {
+            let orderIndex = 1;
+            const sellerGroups = Object.values(groupedBySeller);
+            
+            for (const sellerGroup of sellerGroups) {
                 const subtotal = sellerGroup.items.reduce((sum, i) => sum + i.total, 0);
+                const orderNumber = sellerGroups.length > 1 
+                    ? `${orderPrefix}-${orderIndex}` 
+                    : orderPrefix;
+
                 const order = await prisma.order.create({
                     data: {
+                        orderNumber,
                         customerId,
                         salesmanId: sellerGroup.sellerId,
                         addressId: address.id,
@@ -294,6 +307,7 @@ class StripeController {
                     },
                 });
                 createdOrders.push({ order, subtotal });
+                orderIndex++;
             }
 
             // ============================================================

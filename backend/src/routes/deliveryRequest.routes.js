@@ -11,9 +11,9 @@ const router = Router();
 
 router.use(authenticate);
 
-router.post('/', authorize('SALESMAN', 'ADMIN'), createDeliveryRequest);
-router.get('/available-riders', authorize('SALESMAN', 'ADMIN'), getAvailableDeliveryPartners);
-router.post('/:id/retry', authorize('SALESMAN', 'ADMIN'), retryDeliveryRequest);
-router.get('/:id', authorize('SALESMAN', 'ADMIN'), getDeliveryRequest);
+router.post('/', authorize('SALESMAN', 'SHOP_MANAGER', 'ADMIN'), createDeliveryRequest);
+router.get('/available-riders', authorize('SALESMAN', 'SHOP_MANAGER', 'ADMIN'), getAvailableDeliveryPartners);
+router.post('/:id/retry', authorize('SALESMAN', 'SHOP_MANAGER', 'ADMIN'), retryDeliveryRequest);
+router.get('/:id', authorize('SALESMAN', 'SHOP_MANAGER', 'ADMIN'), getDeliveryRequest);
 
 export default router;

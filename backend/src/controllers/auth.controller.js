@@ -100,8 +100,10 @@ const register = async (req, res) => {
     });
     console.log(`[Registration] User ${user.id} created successfully.`);
 
-    // If salesman, create a store + Stripe connected account
-    if (role === 'SALESMAN') {
+    // Store + Stripe connected account setup for a store-owning seller.
+    // The MANAGER owns the catalog and the wallet; a legacy self-registered SALESMAN
+    // (one created without a managerId) is also treated as its own store owner.
+    const setupStoreOwner = async () => {
       await prisma.store.create({
         data: {
           name: name ? `${name}'s Store` : 'My Store',
@@ -109,7 +111,6 @@ const register = async (req, res) => {
         },
       });
 
-      // Create Stripe Express connected account and save to user
       try {
         const { accountId } = await createStripeAccountForSalesman();
         await prisma.user.update({
@@ -117,10 +118,33 @@ const register = async (req, res) => {
           data: { stripeAccountId: accountId },
         });
         user.stripeAccountId = accountId;
-        console.log(`Stripe connected account created for salesman ${user.email}: ${accountId}`);
+        console.log(`Stripe connected account created for ${user.role} ${user.email}: ${accountId}`);
       } catch (stripeErr) {
         // Non-fatal: user is created, they can connect Stripe later from profile
         console.warn(`Stripe account creation failed for ${user.email}:`, stripeErr.message);
+      }
+    };
+
+    if (role === 'SHOP_MANAGER') {
+      // Manager is the store/catalog/wallet owner
+      await setupStoreOwner();
+      await prisma.wallet.upsert({
+        where: { userId: user.id },
+        update: {},
+        create: { userId: user.id },
+      });
+    } else if (role === 'SALESMAN') {
+      // A salesman created under a manager is operational staff — no store, no wallet, no Stripe.
+      const managerId = req.body.managerId || null;
+      if (managerId) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { managerId },
+        });
+        user.managerId = managerId;
+      } else {
+        // Legacy self-registered salesman keeps its own store (backward compatibility)
+        await setupStoreOwner();
       }
     }
 
@@ -231,6 +255,14 @@ const login = async (req, res) => {
       }
     }
 
+    // Manager web-only restriction (manager role is currently web-only)
+    if (user.role === 'SHOP_MANAGER' && !isWeb) {
+      return res.status(403).json({
+        success: false,
+        message: 'Manager login is only allowed from the web application',
+      });
+    }
+
     // Customer mobile-only restriction
     if (user.role === 'CUSTOMER' && isWeb) {
       return res.status(403).json({
@@ -271,6 +303,7 @@ const login = async (req, res) => {
           role: user.role,
           avatar: user.avatar,
           store: user.store,
+          managerId: user.managerId,
         },
         token,
       },
@@ -302,6 +335,7 @@ const getProfile = async (req, res) => {
           phone: true,
           avatar: true,
           role: true,
+          managerId: true,
           isVerified: true,
           createdAt: true,
           store: true,
@@ -326,6 +360,7 @@ const getProfile = async (req, res) => {
           phone: true,
           avatar: true,
           role: true,
+          managerId: true,
           isVerified: true,
           createdAt: true,
           store: true,

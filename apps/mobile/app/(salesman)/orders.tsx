@@ -34,6 +34,10 @@ const DELIVERY_LABEL: Record<string, string> = {
   failed: "Delivery Failed",
 };
 
+// Rider delivery statuses meaning the package has physically left the shop —
+// only then can the seller/manager mark the order SHIPPED.
+const PICKED_UP_DELIVERY_STATES = ["picked_up", "in_transit", "arrived_at_dropoff", "delivered"];
+
 interface AvailableRider {
   id: number;
   fullName: string;
@@ -479,15 +483,42 @@ export default function SalesmanOrdersScreen() {
     fetchOrders();
   }, [fetchOrders]);
 
-  // Listen for real-time new orders and refresh the list automatically
+  // Listen for real-time new orders + order/delivery status updates.
   useEffect(() => {
     const socket = getSocket();
     const handleNewOrder = () => {
       fetchOrders();
     };
+    // Backend emits orderStatusUpdated with the order status AND the detailed
+    // rider step (riderStep) to every shop member — use it to update the order
+    // status and the per-order delivery status live (e.g. rider picked up).
+    const handleStatusUpdate = (payload: { orderId: string; status?: string; riderStep?: string }) => {
+      if (!payload?.orderId) return;
+      if (payload.status) {
+        setOrders((prev) => prev.map((o) => (o.id === payload.orderId ? { ...o, status: payload.status as string } : o)));
+      }
+      if (payload.riderStep) {
+        setDeliveryStatuses((prev) => ({ ...prev, [payload.orderId]: payload.riderStep as string }));
+      }
+    };
     socket.on('newOrder', handleNewOrder);
-    return () => { socket.off('newOrder', handleNewOrder); };
+    socket.on('orderStatusUpdated', handleStatusUpdate);
+    return () => {
+      socket.off('newOrder', handleNewOrder);
+      socket.off('orderStatusUpdated', handleStatusUpdate);
+    };
   }, [fetchOrders]);
+
+  // Load delivery status for orders that already have a rider in play, so the
+  // dispatch button, pickup cue and ship-gating reflect reality on first render.
+  useEffect(() => {
+    orders.forEach((o) => {
+      if (["PROCESSING", "SHIPPED"].includes(o.status) && deliveryStatuses[o.id] === undefined) {
+        loadDeliveryStatus(o.id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, loadDeliveryStatus]);
 
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {
     try {
@@ -548,6 +579,10 @@ export default function SalesmanOrdersScreen() {
     const canProgress = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED"].includes(item.status);
     const isPending = item.status === "PENDING";
     const canCancel = ["PENDING", "CONFIRMED"].includes(item.status);
+    const deliveryStatus = deliveryStatuses[item.id];
+    // SHIPPED is only allowed once a rider has picked the order up.
+    const canShip = deliveryStatus ? PICKED_UP_DELIVERY_STATES.includes(deliveryStatus) : false;
+    const shipBlocked = getNextStatus(item.status) === "SHIPPED" && !canShip;
 
     return (
       <TouchableOpacity style={[styles.orderCard, isPending && styles.pendingOrderCard]}>
@@ -598,9 +633,18 @@ export default function SalesmanOrdersScreen() {
               </TouchableOpacity>
             )}
             {canProgress && !isPending && (
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.progressButton]}
-                onPress={() => confirmStatusChange(item.id, item.status)}
+              <TouchableOpacity
+                style={[styles.actionButton, styles.progressButton, shipBlocked && { opacity: 0.4 }]}
+                onPress={() => {
+                  if (shipBlocked) {
+                    Alert.alert(
+                      "Rider hasn't picked up yet",
+                      "You can mark this order as Shipped only after a rider has been assigned and has collected the package."
+                    );
+                    return;
+                  }
+                  confirmStatusChange(item.id, item.status);
+                }}
               >
                 <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
               </TouchableOpacity>
@@ -619,17 +663,28 @@ export default function SalesmanOrdersScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Dispatch Rider button for CONFIRMED / PROCESSING orders */}
-        {["CONFIRMED", "PROCESSING"].includes(item.status) && (
+        {/* Dispatch Rider appears only once the order is PROCESSING; delivery
+            status keeps showing through SHIPPED. */}
+        {["PROCESSING", "SHIPPED"].includes(item.status) && (
           <View style={styles.dispatchSection}>
-            {deliveryStatuses[item.id] ? (
-              <View style={styles.deliveryStatusRow}>
-                <Ionicons name="bicycle" size={14} color="#00002E" />
-                <Text style={styles.deliveryStatusText}>
-                  {DELIVERY_LABEL[deliveryStatuses[item.id]] ?? deliveryStatuses[item.id]}
-                </Text>
-              </View>
-            ) : (
+            {deliveryStatus ? (
+              <>
+                <View style={styles.deliveryStatusRow}>
+                  <Ionicons name="bicycle" size={14} color="#00002E" />
+                  <Text style={styles.deliveryStatusText}>
+                    {DELIVERY_LABEL[deliveryStatus] ?? deliveryStatus}
+                  </Text>
+                </View>
+                {canShip && item.status !== "SHIPPED" && (
+                  <View style={styles.readyToShipBox}>
+                    <Ionicons name="cube" size={14} color="#15803D" />
+                    <Text style={styles.readyToShipText}>
+                      Rider picked up the package — tap the → button above to mark this order Shipped.
+                    </Text>
+                  </View>
+                )}
+              </>
+            ) : item.status === "PROCESSING" ? (
               <TouchableOpacity
                 style={styles.dispatchButton}
                 onPress={() => {
@@ -640,7 +695,7 @@ export default function SalesmanOrdersScreen() {
                 <Ionicons name="send" size={16} color="#FFFFFF" />
                 <Text style={styles.dispatchButtonText}>Dispatch Rider</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
         )}
       </TouchableOpacity>
@@ -970,6 +1025,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: "#00002E",
+  },
+  readyToShipBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 8,
+  },
+  readyToShipText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#15803D",
+    fontWeight: "600",
   },
 });
 

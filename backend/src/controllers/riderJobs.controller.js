@@ -2,6 +2,7 @@ import { getRiderClient, riderQuery } from '../lib/riderDb.js';
 import { dispatchAvailableJobs, resolveOffer } from '../services/riderRealtimeDispatch.js';
 import { isFloatInRange, validationError } from '../utils/riderValidation.js';
 import { recordRiderAvailability } from '../services/riderAvailability.js';
+import { getShopMemberIds } from '../lib/shopAccess.js';
 
 const ACTIVE_JOB_STATUSES = ['assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff'];
 
@@ -369,15 +370,16 @@ export const rejectRiderAssignedJob = async (req, res, next) => {
 // appear as SHIPPED to the customer and salesman so the UI is clean and simple.
 // The exact rider step is still stored in OrderTracking for full audit history.
 const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
-  // Rider status → user-facing order status mapping
-  // PROCESSING = rider is at the shop collecting the item
-  // SHIPPED    = item is physically on its way to the customer
+  // Rider step → user-facing order status mapping.
+  //
+  // IMPORTANT: pickup and the steps after it (picked_up, in_transit,
+  // arrived_at_dropoff) deliberately do NOT auto-advance the order. After the
+  // rider collects the package the order stays PROCESSING and the seller/manager
+  // manually marks it SHIPPED (gated on pickup in updateOrderStatus). Only the
+  // terminal steps move the order on their own.
   const userFacingStatusMap = {
     accepted:           'PROCESSING', // Rider accepted & heading to shop → still being prepared
     arrived_at_pickup:  'PROCESSING', // Rider at shop collecting → PROCESSING
-    picked_up:          'SHIPPED',    // Package collected, leaving shop → SHIPPED
-    in_transit:         'SHIPPED',    // En route → SHIPPED
-    arrived_at_dropoff: 'SHIPPED',    // Rider near customer → still SHIPPED
     delivered:          'DELIVERED',  // Final step
     failed:             'FAILED',
   };
@@ -393,9 +395,6 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
     failed:             'Delivery attempt failed',
   };
 
-  const marketplaceStatus = userFacingStatusMap[riderStatus];
-  if (!marketplaceStatus) return;
-
   const jobResult = await client.query(
     'SELECT marketplace_order_id FROM "DeliveryJob" WHERE id = $1 AND marketplace_order_id IS NOT NULL',
     [jobId]
@@ -404,37 +403,56 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   const marketplaceOrderId = jobResult.rows[0]?.marketplace_order_id;
   if (!marketplaceOrderId) return;
 
-  // Fetch customer + salesman IDs so we can target socket rooms
+  // Fetch customer + salesman IDs and the current status so we can target socket
+  // rooms and avoid downgrading a status the seller already advanced.
   const orderResult = await client.query(
-    'SELECT "customerId", "salesmanId" FROM "Order" WHERE id = $1',
+    'SELECT "customerId", "salesmanId", status FROM "Order" WHERE id = $1',
     [marketplaceOrderId]
   );
   const orderRow = orderResult.rows[0];
+  if (!orderRow) return;
 
-  // Update the order's user-facing status
-  await client.query(
-    'UPDATE "Order" SET status = $1, "updatedAt" = NOW() WHERE id = $2',
-    [marketplaceStatus, marketplaceOrderId]
-  );
+  const mappedStatus = userFacingStatusMap[riderStatus];
+  let effectiveStatus = orderRow.status;
 
-  // Log detailed rider step in the tracking timeline
+  // Move the order only when there is a mapped status, and never downgrade a
+  // manual SHIPPED back to PROCESSING (the seller already shipped it).
+  if (mappedStatus && mappedStatus !== orderRow.status) {
+    const isDowngrade = mappedStatus === 'PROCESSING' && orderRow.status === 'SHIPPED';
+    if (!isDowngrade) {
+      await client.query(
+        'UPDATE "Order" SET status = $1, "updatedAt" = NOW() WHERE id = $2',
+        [mappedStatus, marketplaceOrderId]
+      );
+      effectiveStatus = mappedStatus;
+    }
+  }
+
+  // Always log the detailed rider step in the tracking timeline.
   const description = riderStatusDescriptions[riderStatus] || `Delivery update: ${riderStatus}`;
   await client.query(
     'INSERT INTO "OrderTracking" (id, status, description, "orderId", "createdAt") VALUES (gen_random_uuid()::text, $1, $2, $3, NOW())',
-    [marketplaceStatus, description, marketplaceOrderId]
+    [effectiveStatus, description, marketplaceOrderId]
   );
 
-  // 🔌 Emit real-time socket update so customer & salesman UIs update instantly
-  if (global.io && orderRow) {
+  // 🔌 Emit real-time socket update so the customer + the whole shop (manager &
+  // salesmen) update instantly. `readyToShip` tells the seller/manager dashboard
+  // that the rider has the package and the order can now be marked SHIPPED.
+  if (global.io) {
     const payload = {
       orderId: marketplaceOrderId,
-      status: marketplaceStatus,
-      riderStep: riderStatus,     // Detailed rider step (for tracking panel label)
+      status: effectiveStatus,
+      riderStep: riderStatus,            // Detailed rider step (for tracking + ship gating)
+      readyToShip: riderStatus === 'picked_up',
       description,
       updatedAt: new Date().toISOString(),
     };
     global.io.to(`user:${orderRow.customerId}`).emit('orderStatusUpdated', payload);
-    global.io.to(`user:${orderRow.salesmanId}`).emit('orderStatusUpdated', payload);
+
+    const shopMemberIds = await getShopMemberIds(orderRow.salesmanId);
+    for (const memberId of shopMemberIds) {
+      global.io.to(`user:${memberId}`).emit('orderStatusUpdated', payload);
+    }
   }
 };
 

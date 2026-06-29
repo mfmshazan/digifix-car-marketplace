@@ -39,7 +39,7 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi } from '@/lib/api';
 import type { Review } from '@/lib/api';
-import { connectSocket, disconnectSocket } from '@/lib/socket';
+import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket';
 import { initOneSignal, loginOneSignalUser, logoutOneSignalUser, requestNotificationPermission } from '@/lib/onesignal';
 
 // ─── Push Notification Hook ───────────────────────────────────────────────────
@@ -201,12 +201,19 @@ function timeAgo(dateStr: string) {
 
 // ─── Status Update Dropdown ──────────────────────────────────────────────────
 
-function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void> }) {
+// Rider delivery statuses that mean the package has physically left the shop —
+// only then can the seller/manager mark the order SHIPPED.
+const PICKED_UP_DELIVERY_STATES = ['picked_up', 'in_transit', 'arrived_at_dropoff', 'delivered'];
+
+function StatusDropdown({ order, onUpdate, deliveryStatus }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void>; deliveryStatus: string | null }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const currentIndex = STATUS_FLOW.indexOf(order.status as OrderStatus);
   const nextStatuses = STATUS_FLOW.slice(currentIndex + 1);
   const dropdownOptions = [...nextStatuses, 'CANCELLED' as OrderStatus];
+
+  // SHIPPED is allowed only once a rider has picked the order up.
+  const canShip = deliveryStatus ? PICKED_UP_DELIVERY_STATES.includes(deliveryStatus) : false;
 
   if (order.status === 'DELIVERED' || order.status === 'CANCELLED') {
     const meta = STATUS_META[order.status as OrderStatus] ?? { label: order.status, color: 'text-gray-700', bg: 'bg-gray-100', icon: Clock };
@@ -235,9 +242,12 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
           {dropdownOptions.map(s => {
             const meta = STATUS_META[s];
             const Icon = meta.icon;
+            const shipBlocked = s === 'SHIPPED' && !canShip;
             return (
               <button
                 key={s}
+                disabled={shipBlocked}
+                title={shipBlocked ? 'Assign a rider and wait for pickup before shipping' : undefined}
                 onClick={async () => {
                   setOpen(false);
                   setLoading(true);
@@ -247,10 +257,11 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
                     setLoading(false);
                   }
                 }}
-                className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 ${meta.color}`}
+                className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 ${meta.color} ${shipBlocked ? 'opacity-40 cursor-not-allowed hover:bg-transparent' : ''}`}
               >
                 <Icon className="w-4 h-4" />
                 Mark as {meta.label}
+                {shipBlocked && <span className="ml-auto text-[10px] text-gray-400">after pickup</span>}
               </button>
             );
           })}
@@ -798,7 +809,7 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
 
   // Load delivery status when the card mounts for PROCESSING / SHIPPED orders
   useEffect(() => {
-    const eligible = ['PROCESSING', 'SHIPPED', 'CONFIRMED'];
+    const eligible = ['PROCESSING', 'SHIPPED'];
     if (!eligible.includes(order.status)) return;
     let cancelled = false;
     const loadDeliveryStatus = async (showLoading = false) => {
@@ -827,6 +838,22 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
       window.clearInterval(intervalId);
     };
   }, [order.id, order.status]);
+
+  // Real-time: when the rider advances the delivery (e.g. picks up the package),
+  // reflect it instantly instead of waiting for the 5s poll. The backend emits
+  // the detailed `riderStep` on the shared `orderStatusUpdated` event to every
+  // shop member (manager + salesmen).
+  useEffect(() => {
+    const socket = getSocket();
+    const handleDeliveryUpdate = (payload: { orderId: string; riderStep?: string }) => {
+      if (payload.orderId !== order.id || !payload.riderStep) return;
+      setDeliveryStatus(payload.riderStep);
+    };
+    socket.on('orderStatusUpdated', handleDeliveryUpdate);
+    return () => {
+      socket.off('orderStatusUpdated', handleDeliveryUpdate);
+    };
+  }, [order.id]);
 
   const retryDelivery = async () => {
     setRetryingDelivery(true);
@@ -865,7 +892,7 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
           <div className="mt-1 text-xs text-gray-400">{order.customer?.email}</div>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
-          <StatusDropdown order={order} onUpdate={onUpdate} />
+          <StatusDropdown order={order} onUpdate={onUpdate} deliveryStatus={deliveryStatus} />
           <span className="font-bold text-gray-900 text-sm">{formatRs(order.total)}</span>
         </div>
       </div>
@@ -927,7 +954,7 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
       </div>
 
       {/* Delivery Dispatch Section */}
-      {['CONFIRMED', 'PROCESSING', 'SHIPPED'].includes(order.status) && (
+      {['PROCESSING', 'SHIPPED'].includes(order.status) && (
         <div className="px-4 pb-4 border-t border-gray-50 pt-3">
           {deliveryStatus ? (
             <div className="space-y-2">
@@ -955,6 +982,13 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
                     </p>
                   )}
                 </>
+              )}
+              {/* Rider has collected the package → prompt the seller/manager to ship */}
+              {PICKED_UP_DELIVERY_STATES.includes(deliveryStatus) && order.status !== 'SHIPPED' && (
+                <div className="flex items-start gap-2 p-2.5 bg-green-50 border border-green-200 rounded-xl text-xs text-green-800 font-medium animate-pulse">
+                  <Package className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>Rider has picked up the package — you can now mark this order as <span className="font-bold">Shipped</span> from the status menu above.</span>
+                </div>
               )}
             </div>
           ) : (

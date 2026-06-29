@@ -3,6 +3,7 @@ import { sendNewOrderNotificationToSalesman } from '../lib/onesignal.js';
 import { createRiderJobsForMarketplaceOrders } from '../services/riderDeliveryJobFactory.js';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
 import { resolveShopOwnerId, getShopMemberIds } from '../lib/shopAccess.js';
+import { riderQuery } from '../lib/riderDb.js';
 
 /**
  * Get salesman's sales summary
@@ -430,6 +431,35 @@ export const updateOrderStatus = async (req, res) => {
         success: false,
         message: 'Order not found'
       });
+    }
+
+    // Gate manual SHIPPED: the seller/manager can only mark an order SHIPPED
+    // once a rider has been assigned AND has physically picked up the package.
+    // The rider's pickup keeps the order in PROCESSING (see syncMarketplaceOrderStatus),
+    // so SHIPPED is the seller's explicit confirmation that it has left the shop.
+    if (status === 'SHIPPED' && order.status !== 'SHIPPED') {
+      const pickedUpStatuses = ['picked_up', 'in_transit', 'arrived_at_dropoff', 'delivered'];
+      const jobRes = await riderQuery(
+        `SELECT status FROM "DeliveryJob"
+           WHERE marketplace_order_id = $1
+           ORDER BY created_at DESC
+           LIMIT 1`,
+        [id]
+      );
+      const deliveryJob = jobRes.rows[0];
+
+      if (!deliveryJob) {
+        return res.status(400).json({
+          success: false,
+          message: 'Assign a rider before marking this order as Shipped.'
+        });
+      }
+      if (!pickedUpStatuses.includes(deliveryJob.status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'You can mark this order as Shipped only after the rider has picked it up.'
+        });
+      }
     }
 
     // Run order update and wallet transfers in one atomic transaction

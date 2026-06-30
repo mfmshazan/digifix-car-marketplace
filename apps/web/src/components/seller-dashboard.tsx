@@ -97,7 +97,7 @@ function useOneSignalPush() {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 
-type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
+type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' | 'REFUND_REQUESTED';
 
 interface OrderItem {
   id: string;
@@ -119,6 +119,8 @@ interface Order {
   status: OrderStatus;
   paymentStatus: string;
   createdAt: string;
+  cancellationReason?: string | null;
+  isComplaint?: boolean;
 }
 
 interface SalesSummary {
@@ -148,7 +150,7 @@ interface AppNotification {
   id: string;
   orderNumber: string;
   total?: number;
-  type: 'NEW_ORDER' | 'REFUND_APPROVED';
+  type: 'NEW_ORDER' | 'REFUND_APPROVED' | 'COMPLAINT';
   message?: string;
   time: Date;
   read: boolean;
@@ -172,6 +174,7 @@ const STATUS_META: Record<OrderStatus, { label: string; color: string; bg: strin
   SHIPPED: { label: 'Shipped', color: 'text-purple-700', bg: 'bg-purple-100', icon: Truck },
   DELIVERED: { label: 'Delivered', color: 'text-green-700', bg: 'bg-green-100', icon: CheckCircle2 },
   CANCELLED: { label: 'Cancelled', color: 'text-red-700', bg: 'bg-red-100', icon: AlertCircle },
+  REFUND_REQUESTED: { label: 'Complaint', color: 'text-amber-700', bg: 'bg-amber-100', icon: AlertCircle },
 };
 
 function StatusBadge({ status }: { status: OrderStatus }) {
@@ -215,7 +218,7 @@ function StatusDropdown({ order, onUpdate, deliveryStatus }: { order: Order; onU
   // SHIPPED is allowed only once a rider has picked the order up.
   const canShip = deliveryStatus ? PICKED_UP_DELIVERY_STATES.includes(deliveryStatus) : false;
 
-  if (order.status === 'DELIVERED' || order.status === 'CANCELLED') {
+  if (order.status === 'DELIVERED' || order.status === 'CANCELLED' || order.status === 'REFUND_REQUESTED') {
     const meta = STATUS_META[order.status as OrderStatus] ?? { label: order.status, color: 'text-gray-700', bg: 'bg-gray-100', icon: Clock };
     const Icon = meta.icon;
     return (
@@ -798,10 +801,11 @@ function CreateDeliveryRequestModal({
 
 // ─── Order Card ──────────────────────────────────────────────────────────────
 
-function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void> }) {
+function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void>; onComplaint: (id: string, action: 'accept' | 'reject') => Promise<void>; isManager: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [resolvingComplaint, setResolvingComplaint] = useState(false);
   const [deliveryStatus, setDeliveryStatus] = useState<string | null>(null);
   const [loadingDeliveryStatus, setLoadingDeliveryStatus] = useState(false);
   const [retryingDelivery, setRetryingDelivery] = useState(false);
@@ -953,6 +957,48 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
         )}
       </div>
 
+      {/* Product Complaint Section — manager reviews & accepts/rejects the refund request */}
+      {isManager && order.status === 'REFUND_REQUESTED' && order.isComplaint && (
+        <div className="px-4 pb-4 border-t border-gray-50 pt-3">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <div className="flex items-center gap-1.5 mb-1">
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <span className="text-xs font-bold text-amber-800">Product Complaint</span>
+            </div>
+            <p className="text-sm text-amber-900">
+              {order.cancellationReason || 'The customer reported an issue with this delivered order.'}
+            </p>
+            <p className="text-[11px] text-amber-600 mt-1">
+              The customer should return the product to the warehouse. Accept to approve the refund, or reject to decline.
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={async () => {
+                  setResolvingComplaint(true);
+                  try { await onComplaint(order.id, 'accept'); } finally { setResolvingComplaint(false); }
+                }}
+                disabled={resolvingComplaint}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-60 transition-colors"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Accept Refund
+              </button>
+              <button
+                onClick={async () => {
+                  setResolvingComplaint(true);
+                  try { await onComplaint(order.id, 'reject'); } finally { setResolvingComplaint(false); }
+                }}
+                disabled={resolvingComplaint}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-semibold hover:bg-red-50 disabled:opacity-60 transition-colors"
+              >
+                <X className="w-4 h-4" />
+                Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delivery Dispatch Section */}
       {['PROCESSING', 'SHIPPED'].includes(order.status) && (
         <div className="px-4 pb-4 border-t border-gray-50 pt-3">
@@ -1042,11 +1088,13 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
 // ─── Current Orders Tab ──────────────────────────────────────────────────────
 
 function CurrentOrdersTab({ userId }: { userId: string }) {
+  const isManager = useAuthStore((s) => s.user?.role) === 'SHOP_MANAGER';
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
+  const [complaintAlert, setComplaintAlert] = useState<string | null>(null);
   const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
@@ -1100,14 +1148,31 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
       setLastRefresh(new Date());
     };
 
+    // Customer raised a post-delivery complaint — surfaced to the manager only.
+    const handleComplaintRaised = (payload: { orderNumber: string }) => {
+      if (!isManager) return;
+      setComplaintAlert(`⚠️ New complaint on order ${payload.orderNumber}`);
+      loadOrders();
+      setTimeout(() => setComplaintAlert(null), 12000);
+    };
+
+    // A complaint was accepted/rejected (e.g. from another tab) → refresh
+    const handleComplaintResolved = () => {
+      loadOrders();
+    };
+
     socket.on('newOrder', handleNewOrder);
     socket.on('orderStatusUpdated', handleStatusUpdate);
     socket.on('cancellationApproved', handleCancellationApproved);
+    socket.on('complaintRaised', handleComplaintRaised);
+    socket.on('complaintResolved', handleComplaintResolved);
 
     return () => {
       socket.off('newOrder', handleNewOrder);
       socket.off('orderStatusUpdated', handleStatusUpdate);
       socket.off('cancellationApproved', handleCancellationApproved);
+      socket.off('complaintRaised', handleComplaintRaised);
+      socket.off('complaintResolved', handleComplaintResolved);
     };
   }, [userId, loadOrders]);
 
@@ -1127,6 +1192,25 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     }
   };
 
+  const handleComplaint = async (id: string, action: 'accept' | 'reject') => {
+    setStatusUpdateError(null);
+    try {
+      if (action === 'accept') {
+        await ordersApi.acceptComplaint(id);
+      } else {
+        await ordersApi.rejectComplaint(id);
+      }
+      await loadOrders();
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to resolve complaint. Please try again.';
+      setStatusUpdateError(message);
+      console.error('Failed to resolve complaint', error);
+    }
+  };
+
   const activeOrders = orders.filter(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED');
   const displayOrders = filterStatus ? orders : activeOrders;
 
@@ -1136,6 +1220,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     { value: 'PROCESSING', label: 'Processing' },
     { value: 'SHIPPED', label: 'Shipped' },
     { value: 'DELIVERED', label: 'Delivered' },
+    ...(isManager ? [{ value: 'REFUND_REQUESTED', label: 'Complaints' }] : []),
     { value: 'CANCELLED', label: 'Cancelled' },
   ];
 
@@ -1146,6 +1231,19 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
         <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2 text-green-800 text-sm font-medium animate-pulse">
           <span className="text-lg">🔔</span>
           {newOrderAlert}
+        </div>
+      )}
+      {complaintAlert && (
+        <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-amber-800 text-sm font-medium animate-pulse">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{complaintAlert}</span>
+          <button
+            type="button"
+            onClick={() => { setFilterStatus('REFUND_REQUESTED'); setComplaintAlert(null); }}
+            className="ml-auto text-amber-700 hover:text-amber-900 underline"
+          >
+            Review
+          </button>
         </div>
       )}
       {statusUpdateError && (
@@ -1203,7 +1301,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {displayOrders.map(order => (
-            <OrderCard key={order.id} order={order} onUpdate={handleUpdateStatus} />
+            <OrderCard key={order.id} order={order} onUpdate={handleUpdateStatus} onComplaint={handleComplaint} isManager={isManager} />
           ))}
         </div>
       )}
@@ -1827,6 +1925,10 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
 
     const socket = connectSocket(userId);
 
+    // Refund and complaint messages are for the store owner (manager) only —
+    // not the salesmen who operate under them.
+    const isManager = user?.role === 'SHOP_MANAGER';
+
     const handleNewOrder = (orderData: any) => {
       const notif: AppNotification = {
         id: `new-order-${orderData.orderId}`,
@@ -1844,6 +1946,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
     };
 
     const handleRefundApproved = (payload: { orderId: string; orderNumber: string; message?: string }) => {
+      if (!isManager) return;
       const notif: AppNotification = {
         id: `refund-approved-${payload.orderId}`,
         orderNumber: payload.orderNumber,
@@ -1859,20 +1962,43 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
       }, 10000);
     };
 
+    // Customer raised a post-delivery product complaint → message the manager.
+    const handleComplaintRaised = (payload: { orderId: string; orderNumber: string; customerName?: string; reason?: string }) => {
+      if (!isManager) return;
+      const notif: AppNotification = {
+        id: `complaint-${payload.orderId}`,
+        orderNumber: payload.orderNumber,
+        type: 'COMPLAINT',
+        message: payload.reason
+          ? `Complaint on Order ${payload.orderNumber}: "${payload.reason}"`
+          : `${payload.customerName || 'A customer'} raised a complaint on Order ${payload.orderNumber}.`,
+        time: new Date(),
+        read: false,
+      };
+      setAppNotifs(prev => mergeNotification(prev, notif));
+      setToastNotif(notif);
+      setTimeout(() => {
+        setToastNotif(current => current?.id === notif.id ? null : current);
+      }, 10000);
+    };
+
     socket.on('newOrder', handleNewOrder);
     socket.on('cancellationApproved', handleRefundApproved);
+    socket.on('complaintRaised', handleComplaintRaised);
 
     return () => {
       socket.off('newOrder', handleNewOrder);
       socket.off('cancellationApproved', handleRefundApproved);
+      socket.off('complaintRaised', handleComplaintRaised);
     };
-  }, [user?.id, mounted]);
+  }, [user?.id, user?.role, mounted]);
 
   // On login/reload, rebuild refund-related messages from existing refunded orders
-  // so salesmen still see instructions even if they missed the live socket event.
+  // so the manager still sees instructions even if they missed the live socket event.
+  // Refund messages are for the manager (store owner) only — not salesmen.
   useEffect(() => {
     const loadRefundInstructionMessages = async () => {
-      if (!user?.id) return;
+      if (!user?.id || user?.role !== 'SHOP_MANAGER') return;
 
       try {
         const response = await ordersApi.getSalesmanOrders({ status: 'CANCELLED', limit: 50 });
@@ -1904,7 +2030,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
     };
 
     loadRefundInstructionMessages();
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
 
 
@@ -2069,14 +2195,16 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
                               <div className="flex justify-between items-start mb-0.5">
                                 <span className="font-semibold text-sm text-gray-900 flex items-center gap-1.5">
                                   {!notif.read && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />}
-                                  {notif.type === 'REFUND_APPROVED' ? 'Refund Approved' : `Order ${notif.orderNumber}`}
+                                  {notif.type === 'REFUND_APPROVED' ? 'Refund Approved'
+                                    : notif.type === 'COMPLAINT' ? `Complaint · Order ${notif.orderNumber}`
+                                    : `Order ${notif.orderNumber}`}
                                 </span>
                                 <span className="text-xs text-gray-400 shrink-0 ml-2">{timeAgo(notif.time.toISOString())}</span>
                               </div>
-                              {notif.type === 'REFUND_APPROVED' ? (
-                                <p className="text-xs text-gray-600">{notif.message}</p>
-                              ) : (
+                              {notif.type === 'NEW_ORDER' ? (
                                 <p className="text-xs text-gray-600">Total: Rs. {(notif.total || 0).toLocaleString()}</p>
+                              ) : (
+                                <p className="text-xs text-gray-600">{notif.message}</p>
                               )}
                             </div>
 
@@ -2168,19 +2296,21 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
         <div className="fixed bottom-4 right-4 z-50 bg-white rounded-xl shadow-xl border border-gray-100 p-4 max-w-sm w-full animate-in slide-in-from-bottom-5">
           <div className="flex items-start justify-between">
             <div className="flex gap-3">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${toastNotif.type === 'REFUND_APPROVED' ? 'bg-emerald-100' : 'bg-blue-100'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${toastNotif.type === 'REFUND_APPROVED' ? 'bg-emerald-100' : toastNotif.type === 'COMPLAINT' ? 'bg-amber-100' : 'bg-blue-100'}`}>
                 {toastNotif.type === 'REFUND_APPROVED' ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                ) : toastNotif.type === 'COMPLAINT' ? (
+                  <AlertCircle className="w-5 h-5 text-amber-600" />
                 ) : (
                   <ShoppingCart className="w-5 h-5 text-blue-600" />
                 )}
               </div>
               <div>
-                <h4 className="font-bold text-gray-900 text-sm">{toastNotif.type === 'REFUND_APPROVED' ? 'Refund Approved' : 'New Order!'}</h4>
-                {toastNotif.type === 'REFUND_APPROVED' ? (
-                  <p className="text-xs text-gray-500 mt-0.5">{toastNotif.message || `Order ${toastNotif.orderNumber} refund was approved.`}</p>
-                ) : (
+                <h4 className="font-bold text-gray-900 text-sm">{toastNotif.type === 'REFUND_APPROVED' ? 'Refund Approved' : toastNotif.type === 'COMPLAINT' ? 'New Complaint' : 'New Order!'}</h4>
+                {toastNotif.type === 'NEW_ORDER' ? (
                   <p className="text-xs text-gray-500 mt-0.5">Order {toastNotif.orderNumber} for Rs. {(toastNotif.total || 0).toLocaleString()}</p>
+                ) : (
+                  <p className="text-xs text-gray-500 mt-0.5">{toastNotif.message || `Order ${toastNotif.orderNumber}`}</p>
                 )}
               </div>
             </div>

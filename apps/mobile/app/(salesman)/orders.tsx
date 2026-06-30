@@ -16,9 +16,10 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import MapView, { Marker } from "react-native-maps";
-import { getSalesmanOrders, updateOrderStatus, createDeliveryRequest, getOrderDeliveryStatus, getAvailableRiders } from "../../src/api/orders";
+import { getSalesmanOrders, updateOrderStatus, createDeliveryRequest, getOrderDeliveryStatus, getAvailableRiders, resolveComplaint } from "../../src/api/orders";
 import { usePendingOrders } from "../../src/store/pendingOrdersStore";
 import { getSocket } from "../../src/lib/socket";
+import { getUser } from "../../src/api/storage";
 
 // ─── Delivery status label map ────────────────────────────────────────────────
 const DELIVERY_LABEL: Record<string, string> = {
@@ -401,6 +402,8 @@ interface Order {
   discount: number;
   total: number;
   createdAt: string;
+  cancellationReason?: string | null;
+  isComplaint?: boolean;
   customer?: {
     id: string;
     name: string;
@@ -409,7 +412,12 @@ interface Order {
   items: OrderItem[];
 }
 
-const statusFilters = ["All", "PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"];
+const statusFilters = ["All", "PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "REFUND_REQUESTED", "CANCELLED"];
+
+// Friendly labels for the filter chips (raw status values are otherwise shown).
+const FILTER_LABELS: Record<string, string> = {
+  REFUND_REQUESTED: "Complaints",
+};
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -418,6 +426,7 @@ const getStatusColor = (status: string) => {
     case "PROCESSING": return "#2196F3";
     case "SHIPPED": return "#9C27B0";
     case "DELIVERED": return "#4CAF50";
+    case "REFUND_REQUESTED": return "#D97706";
     case "CANCELLED": return "#F44336";
     case "REFUNDED": return "#F44336";
     default: return "#666";
@@ -443,6 +452,13 @@ export default function SalesmanOrdersScreen() {
   const [dispatchingOrder, setDispatchingOrder] = useState<Order | null>(null);
   // Maps orderId → delivery status string (loaded on demand)
   const [deliveryStatuses, setDeliveryStatuses] = useState<Record<string, string>>({});
+  const [resolvingComplaintId, setResolvingComplaintId] = useState<string | null>(null);
+  // Post-delivery complaints are reviewed by the manager (shop owner).
+  const [isManager, setIsManager] = useState(false);
+
+  useEffect(() => {
+    getUser().then((u) => setIsManager(u?.role === 'SHOP_MANAGER')).catch(() => {});
+  }, []);
 
   const loadDeliveryStatus = useCallback(async (orderId: string) => {
     try {
@@ -501,11 +517,19 @@ export default function SalesmanOrdersScreen() {
         setDeliveryStatuses((prev) => ({ ...prev, [payload.orderId]: payload.riderStep as string }));
       }
     };
+    // Customer raised a complaint, or a complaint was resolved elsewhere → refresh.
+    const handleComplaint = () => {
+      fetchOrders();
+    };
     socket.on('newOrder', handleNewOrder);
     socket.on('orderStatusUpdated', handleStatusUpdate);
+    socket.on('complaintRaised', handleComplaint);
+    socket.on('complaintResolved', handleComplaint);
     return () => {
       socket.off('newOrder', handleNewOrder);
       socket.off('orderStatusUpdated', handleStatusUpdate);
+      socket.off('complaintRaised', handleComplaint);
+      socket.off('complaintResolved', handleComplaint);
     };
   }, [fetchOrders]);
 
@@ -533,6 +557,34 @@ export default function SalesmanOrdersScreen() {
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to update status");
     }
+  };
+
+  const handleResolveComplaint = (orderId: string, orderNumber: string, action: 'accept' | 'reject') => {
+    Alert.alert(
+      action === 'accept' ? 'Accept Complaint' : 'Reject Complaint',
+      action === 'accept'
+        ? `Approve the refund request for order ${orderNumber}? The customer should return the product to the warehouse.`
+        : `Reject the complaint for order ${orderNumber}? The order will remain marked as Delivered.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: action === 'accept' ? 'Accept' : 'Reject',
+          style: action === 'accept' ? 'default' : 'destructive',
+          onPress: async () => {
+            setResolvingComplaintId(orderId);
+            try {
+              await resolveComplaint(orderId, action);
+              Alert.alert('Done', action === 'accept' ? 'Refund approved. Customer notified.' : 'Complaint rejected. Customer notified.');
+              fetchOrders();
+            } catch (err: any) {
+              Alert.alert('Error', err.message || 'Failed to resolve complaint');
+            } finally {
+              setResolvingComplaintId(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const confirmCancelOrder = (orderId: string, orderNumber: string) => {
@@ -663,6 +715,40 @@ export default function SalesmanOrdersScreen() {
           </TouchableOpacity>
         )}
 
+        {/* Product complaint — manager reviews and accepts/rejects the refund request */}
+        {isManager && item.status === "REFUND_REQUESTED" && item.isComplaint && (
+          <View style={styles.complaintBox}>
+            <View style={styles.complaintHeaderRow}>
+              <Ionicons name="alert-circle" size={16} color="#B45309" />
+              <Text style={styles.complaintTitle}>Product Complaint</Text>
+            </View>
+            <Text style={styles.complaintReason}>
+              {item.cancellationReason || "The customer reported an issue with this delivered order."}
+            </Text>
+            <Text style={styles.complaintHint}>
+              The customer should return the product to the warehouse. Accept to approve the refund, or reject to decline.
+            </Text>
+            <View style={styles.complaintActions}>
+              <TouchableOpacity
+                style={[styles.complaintAcceptBtn, resolvingComplaintId === item.id && { opacity: 0.6 }]}
+                disabled={resolvingComplaintId === item.id}
+                onPress={() => handleResolveComplaint(item.id, item.orderNumber, 'accept')}
+              >
+                <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+                <Text style={styles.complaintAcceptText}>Accept Refund</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.complaintRejectBtn, resolvingComplaintId === item.id && { opacity: 0.6 }]}
+                disabled={resolvingComplaintId === item.id}
+                onPress={() => handleResolveComplaint(item.id, item.orderNumber, 'reject')}
+              >
+                <Ionicons name="close" size={16} color="#DC2626" />
+                <Text style={styles.complaintRejectText}>Reject</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Dispatch Rider appears only once the order is PROCESSING; delivery
             status keeps showing through SHIPPED. */}
         {["PROCESSING", "SHIPPED"].includes(item.status) && (
@@ -716,7 +802,8 @@ export default function SalesmanOrdersScreen() {
       {/* Status Filters */}
       <View style={styles.filtersContainer}>
         <FlatList
-          data={statusFilters}
+          // Complaints filter is manager-only (post-delivery complaints go to the manager).
+          data={statusFilters.filter((f) => f !== "REFUND_REQUESTED" || isManager)}
           horizontal
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => item}
@@ -734,7 +821,7 @@ export default function SalesmanOrdersScreen() {
                   selectedFilter === item && styles.filterChipTextActive,
                 ]}
               >
-                {item}
+                {FILTER_LABELS[item] ?? item}
               </Text>
             </TouchableOpacity>
           )}
@@ -1042,6 +1129,71 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#15803D",
     fontWeight: "600",
+  },
+  complaintBox: {
+    marginTop: 12,
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    borderRadius: 12,
+    padding: 12,
+  },
+  complaintHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  complaintTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#B45309",
+  },
+  complaintReason: {
+    fontSize: 14,
+    color: "#92400E",
+  },
+  complaintHint: {
+    fontSize: 11,
+    color: "#B45309",
+    marginTop: 4,
+  },
+  complaintActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  complaintAcceptBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#16A34A",
+    borderRadius: 10,
+    paddingVertical: 10,
+  },
+  complaintAcceptText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  complaintRejectBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 10,
+    paddingVertical: 10,
+  },
+  complaintRejectText: {
+    color: "#DC2626",
+    fontSize: 13,
+    fontWeight: "700",
   },
 });
 

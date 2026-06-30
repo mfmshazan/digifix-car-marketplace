@@ -114,6 +114,46 @@ export async function sendCancellationRequestToAdmin({ orderNumber, customerName
  * Notify a salesman that a refund was approved for their order.
  * They need to stop any in-progress fulfillment and update their records.
  */
+export async function sendComplaintToShop({ salesmanId, orderNumber, customerName }) {
+  if (!isConfigured()) {
+    console.warn('⚠️  OneSignal not configured — skipping complaint push');
+    return { success: false, reason: 'not_configured' };
+  }
+
+  const body = {
+    app_id: process.env.ONESIGNAL_APP_ID,
+    include_aliases: { external_id: [salesmanId] },
+    target_channel: 'push',
+    headings: { en: '⚠️ New Product Complaint' },
+    contents: {
+      en: `${customerName || 'A customer'} raised a complaint on Order ${orderNumber}. Review and accept or reject the refund request.`,
+    },
+    url: `${process.env.WEB_URL || 'http://localhost:3001'}/dashboard/manager`,
+    data: { orderNumber, type: 'complaint_raised' },
+  };
+
+  try {
+    const response = await fetch(ONESIGNAL_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Key ${process.env.ONESIGNAL_REST_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const json = await response.json();
+    if (!response.ok) {
+      console.error(`❌ OneSignal API error (${response.status}):`, JSON.stringify(json));
+      return { success: false, error: json };
+    }
+    console.log(`🔔 OneSignal complaint push sent → shop member ${salesmanId} | order ${orderNumber}`, json.id);
+    return { success: true, data: json };
+  } catch (err) {
+    console.error('❌ OneSignal fetch failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 export async function sendRefundApprovedToSalesman({ salesmanId, orderNumber }) {
   if (!isConfigured()) {
     console.warn('⚠️  OneSignal not configured — skipping refund approved push');

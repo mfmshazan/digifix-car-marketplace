@@ -592,7 +592,7 @@ export default function OrdersScreen() {
             <View style={styles.deliveredHighlightTextWrap}>
               <Text style={styles.deliveredHighlightTitle}>Item Delivered</Text>
               <Text style={styles.deliveredHighlightSubtitle}>
-                If you have any concerns, please raise a complaint for admin review.
+                If you have any concerns, please raise a complaint for the store to review.
               </Text>
             </View>
           </View>
@@ -895,7 +895,7 @@ export default function OrdersScreen() {
 
             <Text style={styles.cancelModalLabel}>
               {cancellingOrder?.status?.toUpperCase() === 'DELIVERED'
-                ? 'Please describe your concern clearly (this goes to admin):'
+                ? 'Please describe your concern clearly (this goes to the store):'
                 : 'Please provide a reason for your request:'}
             </Text>
 
@@ -931,7 +931,7 @@ export default function OrdersScreen() {
                   Alert.alert(
                     'Request Submitted',
                     cancellingOrder.status?.toUpperCase() === 'DELIVERED'
-                      ? 'Your complaint has been sent to admin for review.'
+                      ? 'Your complaint has been sent to the store for review.'
                       : 'Your cancellation request has been sent to the admin for review.'
                   );
                 } catch (err: any) {

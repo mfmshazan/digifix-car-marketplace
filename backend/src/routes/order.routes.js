@@ -9,7 +9,9 @@ import {
   createOrder,
   requestCancellation,
   approveCancellation,
-  rejectCancellation
+  rejectCancellation,
+  acceptComplaint,
+  rejectComplaint
 } from '../controllers/order.controller.js';
 
 const router = Router();
@@ -32,5 +34,9 @@ router.get('/salesman/summary', authorize('SHOP_MANAGER', 'SALESMAN'), getSalesm
 router.get('/salesman/pending-count', authorize('SHOP_MANAGER', 'SALESMAN'), getSalesmanPendingCount);
 router.get('/salesman/orders', authorize('SHOP_MANAGER', 'SALESMAN'), getSalesmanOrders);
 router.put('/:id/status', authorize('SHOP_MANAGER', 'SALESMAN'), updateOrderStatus);
+
+// Complaint review — the product's shop (manager) accepts/rejects post-delivery complaints
+router.post('/:id/accept-complaint', authorize('SHOP_MANAGER', 'SALESMAN'), acceptComplaint);
+router.post('/:id/reject-complaint', authorize('SHOP_MANAGER', 'SALESMAN'), rejectComplaint);
 
 export default router;

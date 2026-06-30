@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import { riderQuery } from '../lib/riderDb.js';
 import { buildDeliveryRoadRoute } from '../services/roadRoute.js';
+import { resolveShopOwnerId } from '../lib/shopAccess.js';
 
 // GET /api/tracking/order/:orderId/rider-location
 // Returns the rider's latest GPS location for a given order (customer live tracking)
@@ -18,9 +19,13 @@ export const getRiderLiveLocation = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
+    // A salesman acts on behalf of their manager, so the order's salesmanId is
+    // the shop owner's id — resolve it before comparing, otherwise salesmen get 403.
+    const shopOwnerId = await resolveShopOwnerId(req.user);
     const isAuthorized =
       order.customerId === userId ||
       order.salesmanId === userId ||
+      order.salesmanId === shopOwnerId ||
       req.user.role === 'ADMIN';
 
     if (!isAuthorized) {
@@ -160,9 +165,13 @@ export const getOrderDeliveryStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
+    // A salesman acts on behalf of their manager, so the order's salesmanId is
+    // the shop owner's id — resolve it before comparing, otherwise salesmen get 403.
+    const shopOwnerId = await resolveShopOwnerId(req.user);
     const isAuthorized =
       order.customerId === userId ||
       order.salesmanId === userId ||
+      order.salesmanId === shopOwnerId ||
       req.user.role === 'ADMIN';
 
     if (!isAuthorized) {

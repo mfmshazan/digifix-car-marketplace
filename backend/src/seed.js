@@ -318,8 +318,150 @@ async function seed() {
   await prisma.order.deleteMany({});
   await prisma.carPart.deleteMany({});
   await prisma.car.deleteMany({});
+  await prisma.product.deleteMany({});
+  await prisma.vehicleRegistration.deleteMany({});
+  await prisma.vehicleModel.deleteMany({});
+  await prisma.vehicleBrand.deleteMany({});
+  await prisma.vehicleType.deleteMany({});
   await prisma.category.deleteMany({});
   console.log('  ✅ Data cleared\n');
+
+  // ─── VEHICLE TYPES ───────────────────────────────────────────────────────
+  console.log('Creating vehicle types...');
+  const vehicleTypes = {};
+  
+  const passengerCar = await prisma.vehicleType.create({
+    data: { name: 'Passenger Car' }
+  });
+  vehicleTypes['Passenger Car'] = passengerCar.id;
+  console.log(`  ✅ ${passengerCar.name}`);
+
+  const motorcycle = await prisma.vehicleType.create({
+    data: { name: 'Motorcycle' }
+  });
+  vehicleTypes['Motorcycle'] = motorcycle.id;
+  console.log(`  ✅ ${motorcycle.name}`);
+
+  const truck = await prisma.vehicleType.create({
+    data: { name: 'Truck' }
+  });
+  vehicleTypes['Truck'] = truck.id;
+  console.log(`  ✅ ${truck.name}\n`);
+
+  // ─── VEHICLE BRANDS ──────────────────────────────────────────────────────
+  console.log('Creating vehicle brands...');
+  const vehicleBrands = {};
+  const brandNames = ['Toyota', 'Mazda', 'Hyundai', 'Honda', 'Yamaha', 'Kawasaki', 'Suzuki', 'Isuzu', 'Hino', 'Volvo', 'Kenworth', 'Fuso'];
+  
+  for (const name of brandNames) {
+    const brand = await prisma.vehicleBrand.create({
+      data: { name }
+    });
+    vehicleBrands[name] = brand.id;
+    console.log(`  ✅ ${name}`);
+  }
+  console.log('');
+
+  // ─── VEHICLE MODELS ──────────────────────────────────────────────────────
+  console.log('Creating vehicle models...');
+  
+  const vehicleModels = {};
+  
+  // Passenger Car Models
+  const passengerModels = [
+    { name: 'Toyota Corolla', brand: 'Toyota', type: 'Passenger Car' },
+    { name: 'Toyota Camry', brand: 'Toyota', type: 'Passenger Car' },
+    { name: 'Mazda 3', brand: 'Mazda', type: 'Passenger Car' },
+    { name: 'Hyundai i30', brand: 'Hyundai', type: 'Passenger Car' },
+    { name: 'Honda Civic', brand: 'Honda', type: 'Passenger Car' },
+  ];
+
+  for (const model of passengerModels) {
+    const created = await prisma.vehicleModel.create({
+      data: {
+        name: model.name,
+        vehicleBrandId: vehicleBrands[model.brand],
+        vehicleTypeId: vehicleTypes[model.type],
+      }
+    });
+    vehicleModels[model.name] = created.id;
+    console.log(`  ✅ ${model.name}`);
+  }
+
+  // Motorcycle Models
+  const motorcycleModels = [
+    { name: 'Honda CBR500R', brand: 'Honda', type: 'Motorcycle' },
+    { name: 'Yamaha MT-07', brand: 'Yamaha', type: 'Motorcycle' },
+    { name: 'Kawasaki Ninja 400', brand: 'Kawasaki', type: 'Motorcycle' },
+    { name: 'Suzuki GSX-R600', brand: 'Suzuki', type: 'Motorcycle' },
+    { name: 'Yamaha YZF-R3', brand: 'Yamaha', type: 'Motorcycle' },
+  ];
+
+  for (const model of motorcycleModels) {
+    const created = await prisma.vehicleModel.create({
+      data: {
+        name: model.name,
+        vehicleBrandId: vehicleBrands[model.brand],
+        vehicleTypeId: vehicleTypes[model.type],
+      }
+    });
+    vehicleModels[model.name] = created.id;
+    console.log(`  ✅ ${model.name}`);
+  }
+
+  // Truck Models
+  const truckModels = [
+    { name: 'Isuzu N Series', brand: 'Isuzu', type: 'Truck' },
+    { name: 'Hino 300 Series', brand: 'Hino', type: 'Truck' },
+    { name: 'Fuso Canter', brand: 'Fuso', type: 'Truck' },
+    { name: 'Volvo FH', brand: 'Volvo', type: 'Truck' },
+    { name: 'Kenworth T610', brand: 'Kenworth', type: 'Truck' },
+  ];
+
+  for (const model of truckModels) {
+    const created = await prisma.vehicleModel.create({
+      data: {
+        name: model.name,
+        vehicleBrandId: vehicleBrands[model.brand],
+        vehicleTypeId: vehicleTypes[model.type],
+      }
+    });
+    vehicleModels[model.name] = created.id;
+    console.log(`  ✅ ${model.name}`);
+  }
+  console.log('');
+
+  // ─── VEHICLE REGISTRATIONS ───────────────────────────────────────────────
+  console.log('Creating vehicle registrations...');
+  
+  const registrations = [
+    { reg: 'ABC123', model: 'Toyota Corolla' },
+    { reg: 'XYZ458', model: 'Toyota Camry' },
+    { reg: 'KLM927', model: 'Mazda 3' },
+    { reg: 'JTR615', model: 'Hyundai i30' },
+    { reg: 'QWE742', model: 'Honda Civic' },
+    { reg: 'MTR101', model: 'Honda CBR500R' },
+    { reg: 'BIK202', model: 'Yamaha MT-07' },
+    { reg: 'RID303', model: 'Kawasaki Ninja 400' },
+    { reg: 'GSX404', model: 'Suzuki GSX-R600' },
+    { reg: 'YZR505', model: 'Yamaha YZF-R3' },
+    { reg: 'TRK111', model: 'Isuzu N Series' },
+    { reg: 'TRK222', model: 'Hino 300 Series' },
+    { reg: 'TRK333', model: 'Fuso Canter' },
+    { reg: 'TRK444', model: 'Volvo FH' },
+    { reg: 'TRK555', model: 'Kenworth T610' },
+  ];
+
+  for (const reg of registrations) {
+    await prisma.vehicleRegistration.create({
+      data: {
+        registrationNumber: reg.reg,
+        vehicleModelId: vehicleModels[reg.model],
+      }
+    });
+    console.log(`  ✅ ${reg.reg} -> ${reg.model}`);
+  }
+  console.log('');
 
   // Create categories
   console.log('Creating categories...');
@@ -376,45 +518,86 @@ async function seed() {
   });
   console.log(`  ✅ Admin: ${admin.email}`);
 
+   // SHOP A MANAGER
+const managerA = await prisma.user.upsert({
+  where: { email: 'shopa@gmail.com' },
+  update: {
+    password: hashedPassword,
+    name: 'Shop A Manager',
+    role: 'SHOP_MANAGER',
+    isVerified: true,
+  },
+  create: {
+    email: 'shopa@gmail.com',
+    password: hashedPassword,
+    name: 'Shop A Manager',
+    phone: '+94771111110',
+    role: 'SHOP_MANAGER',
+    isVerified: true,
+  },
+});
+console.log(`  ✅ Shop A Manager: ${managerA.email}`);
+
   // SHOP A - Salesman 1 (Brakes, Engine, Filters, Lighting)
   const salesmanA = await prisma.user.upsert({
-    where: { email: 'shopa@gmail.com' },
-    update: {
-      password: hashedPassword,
-      name: 'Shop A',
-      role: 'SALESMAN',
-      isVerified: true,
-    },
-    create: {
-      email: 'shopa@gmail.com',
-      password: hashedPassword,
-      name: 'Shop A',
-      phone: '+94771111111',
-      role: 'SALESMAN',
-      isVerified: true,
-    },
-  });
-  console.log(`  ✅ Shop A Salesman: ${salesmanA.email}`);
+  where: { email: 'salesmana@gmail.com' },
+  update: {
+    password: hashedPassword,
+    name: 'Shop A Salesman',
+    role: 'SALESMAN',
+    isVerified: true,
+  },
+  create: {
+    email: 'salesmana@gmail.com',
+    password: hashedPassword,
+    name: 'Shop A Salesman',
+    phone: '+94771111111',
+    role: 'SALESMAN',
+    isVerified: true,
+  },
+});
+console.log(`  ✅ Shop A Salesman: ${salesmanA.email}`);
+
+const managerB = await prisma.user.upsert({
+  where: { email: 'shopb@gmail.com' },
+  update: {
+    password: hashedPassword,
+    name: 'Shop B Manager',
+    role: 'SHOP_MANAGER',
+    isVerified: true,
+  },
+  create: {
+    email: 'shopb@gmail.com',
+    password: hashedPassword,
+    name: 'Shop B Manager',
+    phone: '+94772222220',
+    role: 'SHOP_MANAGER',
+    isVerified: true,
+  },
+});
+console.log(`  ✅ Shop B Manager: ${managerB.email}`);
+
+ 
 
   // SHOP B - Salesman 2 (Suspension, Electrical, Interior)
   const salesmanB = await prisma.user.upsert({
-    where: { email: 'shopb@gmail.com' },
-    update: {
-      password: hashedPassword,
-      name: 'Shop B',
-      role: 'SALESMAN',
-      isVerified: true,
-    },
-    create: {
-      email: 'shopb@gmail.com',
-      password: hashedPassword,
-      name: 'Shop B',
-      phone: '+94772222222',
-      role: 'SALESMAN',
-      isVerified: true,
-    },
-  });
-  console.log(`  ✅ Shop B Salesman: ${salesmanB.email}`);
+  where: { email: 'salesmanb@gmail.com' },
+  update: {
+    password: hashedPassword,
+    name: 'Shop B Salesman',
+    role: 'SALESMAN',
+    isVerified: true,
+  },
+  create: {
+    email: 'salesmanb@gmail.com',
+    password: hashedPassword,
+    name: 'Shop B Salesman',
+    phone: '+94772222222',
+    role: 'SALESMAN',
+    isVerified: true,
+  },
+});
+console.log(`  ✅ Shop B Salesman: ${salesmanB.email}`);
 
   // Create a test customer user
   const customer = await prisma.user.upsert({
@@ -644,13 +827,21 @@ async function seed() {
   console.log('\n🔑 LOGIN CREDENTIALS:');
   console.log('─'.repeat(50));
   console.log('');
-  console.log('🏪 SHOP A SALESMAN:');
+  console.log('� SHOP A MANAGER (Dashboard with Add Product):');
   console.log('   Email:    shopa@gmail.com');
+  console.log('   Password: password123');
+  console.log('');
+  console.log('👨‍💼 SHOP A SALESMAN:');
+  console.log('   Email:    salesmana@gmail.com');
   console.log('   Password: password123');
   console.log('   Products: Brakes, Engine Parts, Filters, Lighting, Exhaust, Tires');
   console.log('');
-  console.log('🏪 SHOP B SALESMAN:');
+  console.log('🏢 SHOP B MANAGER (Dashboard with Add Product):');
   console.log('   Email:    shopb@gmail.com');
+  console.log('   Password: password123');
+  console.log('');
+  console.log('👨‍💼 SHOP B SALESMAN:');
+  console.log('   Email:    salesmanb@gmail.com');
   console.log('   Password: password123');
   console.log('   Products: Suspension, Electrical, Interior');
   console.log('');

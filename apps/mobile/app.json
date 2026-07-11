@@ -43,7 +43,13 @@
         }
       ],
       "@clerk/expo",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "development"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

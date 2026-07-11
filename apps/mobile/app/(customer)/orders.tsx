@@ -22,6 +22,7 @@ import MapView, { Marker, Polyline } from "react-native-maps";
 import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../../src/api/orders";
 import { submitReviews } from "../../src/api/reviews";
 import { connectSocket } from "../../src/lib/socket";
+import { loginOneSignal } from "../../src/lib/onesignal";
 import { getToken } from "../../src/api/storage";
 
 // Order badge colors are reused across the list, the tracking stepper, and socket updates.
@@ -413,6 +414,10 @@ export default function OrdersScreen() {
         const decoded = JSON.parse(atob(payloadBase64));
         const userId: string = decoded?.userId || decoded?.id || decoded?.sub;
         if (!userId) return;
+
+        // Register this device for push so order updates reach the customer
+        // even when the app is closed (backend targets by this user id).
+        loginOneSignal(userId);
 
         const socket = connectSocket(userId);
 

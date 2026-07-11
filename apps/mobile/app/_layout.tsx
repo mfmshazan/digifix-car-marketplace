@@ -3,12 +3,13 @@ import { Stack } from "expo-router";
 import { CartProvider } from "../src/store/cartStore";
 import { PendingOrdersProvider } from "../src/store/pendingOrdersStore";
 import { ClerkAuthProvider } from "../src/config/clerk-provider";
+import { initOneSignal } from "../src/lib/onesignal";
 
 
 export default function RootLayout() {
   useEffect(() => {
-
-
+    // Initialise push notifications once at launch (no-ops in Expo Go / web).
+    initOneSignal();
   }, []);
 
   return (

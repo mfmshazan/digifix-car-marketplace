@@ -175,14 +175,29 @@ const getVehicleModelsByBrand = async (req, res) => {
 // ─── VEHICLE REGISTRATION ───────────────────────────────────────────────
 
 /**
- * Search vehicle by registration number
+ * Search vehicle by registration number and return compatible products + part types.
  * GET /vehicle/search/:registrationNumber
+ *
+ * Response shape:
+ * {
+ *   success: true,
+ *   data: {
+ *     registration: { id, registrationNumber, vehicleModelId },
+ *     vehicleInfo: {
+ *       type:  { id, name }   // e.g. Passenger Car
+ *       brand: { id, name }   // e.g. Toyota
+ *       model: { id, name }   // e.g. Corolla
+ *     },
+ *     compatibleProducts: Product[],
+ *     compatiblePartTypes: { id, name, icon, productCount }[]
+ *   }
+ * }
  */
 const searchVehicleByRegistration = async (req, res) => {
   try {
     const { registrationNumber } = req.params;
 
-    // Validate registrationNumber
+    // Validate
     if (!registrationNumber || registrationNumber.trim() === '') {
       return res.status(400).json({
         success: false,
@@ -190,17 +205,14 @@ const searchVehicleByRegistration = async (req, res) => {
       });
     }
 
+    // 1. Resolve registration → vehicleModel (with brand + type)
     const registration = await prisma.vehicleRegistration.findUnique({
-      where: { registrationNumber: registrationNumber.toUpperCase() },
+      where: { registrationNumber: registrationNumber.trim().toUpperCase() },
       include: {
         vehicleModel: {
           include: {
-            vehicleBrand: {
-              select: { id: true, name: true },
-            },
-            vehicleType: {
-              select: { id: true, name: true },
-            },
+            vehicleBrand: { select: { id: true, name: true } },
+            vehicleType:  { select: { id: true, name: true } },
           },
         },
       },
@@ -209,13 +221,59 @@ const searchVehicleByRegistration = async (req, res) => {
     if (!registration) {
       return res.status(404).json({
         success: false,
-        message: 'Vehicle registration not found',
+        message: `No vehicle found with registration number "${registrationNumber.toUpperCase()}"`,
       });
     }
 
+    const { vehicleModel } = registration;
+
+    // 2. Fetch all active + approved Products compatible with this vehicle model
+    const compatibleProducts = await prisma.product.findMany({
+      where: {
+        vehicleModelId: vehicleModel.id,
+        isActive: true,
+        approvalStatus: 'APPROVED',
+      },
+      include: {
+        category: { select: { id: true, name: true, icon: true } },
+        salesman: { select: { id: true, name: true } },
+        store:    { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // 3. Derive unique part types (categories) from those products
+    const partTypeMap = new Map();
+    for (const product of compatibleProducts) {
+      if (product.category) {
+        const { id, name, icon } = product.category;
+        if (partTypeMap.has(id)) {
+          partTypeMap.get(id).productCount += 1;
+        } else {
+          partTypeMap.set(id, { id, name, icon: icon || null, productCount: 1 });
+        }
+      }
+    }
+    const compatiblePartTypes = Array.from(partTypeMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+
     res.json({
       success: true,
-      data: registration,
+      data: {
+        registration: {
+          id: registration.id,
+          registrationNumber: registration.registrationNumber,
+          vehicleModelId: registration.vehicleModelId,
+        },
+        vehicleInfo: {
+          type:  vehicleModel.vehicleType,
+          brand: vehicleModel.vehicleBrand,
+          model: { id: vehicleModel.id, name: vehicleModel.name },
+        },
+        compatibleProducts,
+        compatiblePartTypes,
+      },
     });
   } catch (error) {
     console.error('Search vehicle error:', error);

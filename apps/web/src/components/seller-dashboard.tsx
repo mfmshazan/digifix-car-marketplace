@@ -2278,8 +2278,14 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
-      const newImages = Array.from(files).map(file => URL.createObjectURL(file));
-      setImages(prev => [...prev, ...newImages].slice(0, 5));
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result as string;
+          setImages(prev => [...prev, base64].slice(0, 5));
+        };
+        reader.readAsDataURL(file);
+      });
     }
   };
 
@@ -2302,7 +2308,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
         ...formData,
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock),
-        images: [],
+        images: images,
       });
       alert('Product added successfully!');
       onClose();

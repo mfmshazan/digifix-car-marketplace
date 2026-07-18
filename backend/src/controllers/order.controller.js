@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma.js';
-import { sendNewOrderNotificationToSalesman } from '../lib/onesignal.js';
+import { sendNewOrderNotificationToSalesman, sendOrderStatusToCustomer } from '../lib/onesignal.js';
 import { createRiderJobsForMarketplaceOrders } from '../services/riderDeliveryJobFactory.js';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
 import { resolveShopOwnerId, getShopMemberIds } from '../lib/shopAccess.js';
@@ -579,6 +579,16 @@ export const updateOrderStatus = async (req, res) => {
       }
       console.log(`📡 Emitted orderStatusUpdated for order ${id} → customer ${updatedOrder.customerId} + ${shopMemberIds.length} shop member(s)`);
     }
+
+    // 🔔 Push notification to the customer (reaches them even if the app is closed).
+    // Only fires for customer-facing statuses; the socket event above handles the
+    // live in-app update when the app is open. Fire-and-forget: never block the response.
+    sendOrderStatusToCustomer({
+      customerId: updatedOrder.customerId,
+      orderNumber: updatedOrder.orderNumber,
+      orderId: id,
+      status,
+    }).catch((err) => console.error('Order status push failed:', err?.message || err));
 
     res.json({
       success: true,

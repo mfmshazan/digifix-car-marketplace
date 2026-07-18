@@ -141,7 +141,9 @@ const getProductById = async (req, res) => {
 // Create product (Salesman only)
 const createProduct = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Scope to the shop owner (manager) so a salesman's items belong to the shop,
+    // matching how orders are recorded & how dashboards query. See resolveShopOwnerId.
+    const userId = await resolveShopOwnerId(req.user);
     const {
       name,
       description,
@@ -210,7 +212,9 @@ const createProduct = async (req, res) => {
 // Update product (Salesman only)
 const updateProduct = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Scope to the shop owner (manager) so a salesman's items belong to the shop,
+    // matching how orders are recorded & how dashboards query. See resolveShopOwnerId.
+    const userId = await resolveShopOwnerId(req.user);
     const { id } = req.params;
     const updateData = req.body;
 
@@ -263,7 +267,9 @@ const updateProduct = async (req, res) => {
 // Delete product (Salesman only)
 const deleteProduct = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Scope to the shop owner (manager) so a salesman's items belong to the shop,
+    // matching how orders are recorded & how dashboards query. See resolveShopOwnerId.
+    const userId = await resolveShopOwnerId(req.user);
     const { id } = req.params;
 
     // Check if product belongs to salesman

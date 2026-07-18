@@ -91,12 +91,16 @@ export const API_PORT = Number(process.env.EXPO_PUBLIC_API_PORT || 3000);
  * `hostUri` once Metro is ready, and falls back to LAN IP when it is not.
  */
 export function getApiUrl(): string {
-  if (!__DEV__) {
-    return 'https://api.your-production-domain.com/api';
-  }
-
+  // An explicit EXPO_PUBLIC_API_URL wins in EVERY environment, including release
+  // APKs. EXPO_PUBLIC_* vars are inlined at build time, so a release build set
+  // with your deployed backend URL reaches it here instead of the placeholder.
   if (ENV_API_URL) {
     return ENV_API_URL;
+  }
+
+  if (!__DEV__) {
+    // Release build with no URL configured — last-resort production domain.
+    return 'https://api.your-production-domain.com/api';
   }
 
   if (Platform.OS === 'web') {

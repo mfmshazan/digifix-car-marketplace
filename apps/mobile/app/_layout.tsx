@@ -3,13 +3,17 @@ import { Stack } from "expo-router";
 import { CartProvider } from "../src/store/cartStore";
 import { PendingOrdersProvider } from "../src/store/pendingOrdersStore";
 import { ClerkAuthProvider } from "../src/config/clerk-provider";
-import { initOneSignal } from "../src/lib/onesignal";
+import { initOneSignal, registerPushForToken } from "../src/lib/onesignal";
+import { getToken } from "../src/api/storage";
 
 
 export default function RootLayout() {
   useEffect(() => {
     // Initialise push notifications once at launch (no-ops in Expo Go / web).
     initOneSignal();
+    // Re-attach the device to an already-logged-in user on cold start, so push
+    // keeps working across app restarts without visiting any screen.
+    getToken().then((token) => registerPushForToken(token)).catch(() => {});
   }, []);
 
   return (

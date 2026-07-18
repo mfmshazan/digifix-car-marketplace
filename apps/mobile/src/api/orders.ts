@@ -191,6 +191,35 @@ export const updateOrderStatus = async (orderId: string, status: string) => {
   }
 };
 
+// Manager resolves a post-delivery product complaint (accept = approve refund, reject = decline)
+export const resolveComplaint = async (orderId: string, action: 'accept' | 'reject', message?: string) => {
+  try {
+    const token = await getToken();
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    const endpoint = action === 'accept' ? 'accept-complaint' : 'reject-complaint';
+    const response = await fetch(`${getApiUrl()}/orders/${orderId}/${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(action === 'reject' ? { message } : {}),
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to resolve complaint');
+    }
+    return result;
+  } catch (error) {
+    console.error('Resolve complaint error:', error);
+    throw error;
+  }
+};
+
 // Get salesman pending orders count (lightweight - avoids connection exhaustion)
 export const getSalesmanPendingCount = async (): Promise<number> => {
   try {

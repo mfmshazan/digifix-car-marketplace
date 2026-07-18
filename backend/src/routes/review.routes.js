@@ -24,7 +24,7 @@ router.post('/', createReviews);
 router.put('/:id', editReview);
 
 // Seller/Customer flagging endpoints
-router.post('/:id/reply', authorize('SALESMAN'), replyToReview);
+router.post('/:id/reply', authorize('SALESMAN', 'SHOP_MANAGER'), replyToReview);
 router.post('/:id/flag', flagReview);
 
 // Driver endpoints

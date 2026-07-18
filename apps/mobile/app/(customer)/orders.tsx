@@ -22,6 +22,7 @@ import MapView, { Marker, Polyline } from "react-native-maps";
 import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../../src/api/orders";
 import { submitReviews } from "../../src/api/reviews";
 import { connectSocket } from "../../src/lib/socket";
+import { loginOneSignal } from "../../src/lib/onesignal";
 import { getToken } from "../../src/api/storage";
 
 // Order badge colors are reused across the list, the tracking stepper, and socket updates.
@@ -414,6 +415,10 @@ export default function OrdersScreen() {
         const userId: string = decoded?.userId || decoded?.id || decoded?.sub;
         if (!userId) return;
 
+        // Register this device for push so order updates reach the customer
+        // even when the app is closed (backend targets by this user id).
+        loginOneSignal(userId);
+
         const socket = connectSocket(userId);
 
         const handleStatusUpdate = (payload: {
@@ -592,7 +597,7 @@ export default function OrdersScreen() {
             <View style={styles.deliveredHighlightTextWrap}>
               <Text style={styles.deliveredHighlightTitle}>Item Delivered</Text>
               <Text style={styles.deliveredHighlightSubtitle}>
-                If you have any concerns, please raise a complaint for admin review.
+                If you have any concerns, please raise a complaint for the store to review.
               </Text>
             </View>
           </View>
@@ -895,7 +900,7 @@ export default function OrdersScreen() {
 
             <Text style={styles.cancelModalLabel}>
               {cancellingOrder?.status?.toUpperCase() === 'DELIVERED'
-                ? 'Please describe your concern clearly (this goes to admin):'
+                ? 'Please describe your concern clearly (this goes to the store):'
                 : 'Please provide a reason for your request:'}
             </Text>
 
@@ -931,7 +936,7 @@ export default function OrdersScreen() {
                   Alert.alert(
                     'Request Submitted',
                     cancellingOrder.status?.toUpperCase() === 'DELIVERED'
-                      ? 'Your complaint has been sent to admin for review.'
+                      ? 'Your complaint has been sent to the store for review.'
                       : 'Your cancellation request has been sent to the admin for review.'
                   );
                 } catch (err: any) {

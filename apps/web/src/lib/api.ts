@@ -272,6 +272,18 @@ export const ordersApi = {
     const response = await api.put(`/orders/${id}/status`, { status });
     return response.data;
   },
+
+  // Manager accepts a post-delivery product complaint (approves the refund request)
+  acceptComplaint: async (orderId: string) => {
+    const response = await api.post(`/orders/${orderId}/accept-complaint`);
+    return response.data;
+  },
+
+  // Manager rejects a post-delivery product complaint (order reverts to Delivered)
+  rejectComplaint: async (orderId: string, message?: string) => {
+    const response = await api.post(`/orders/${orderId}/reject-complaint`, { message });
+    return response.data;
+  },
 };
 
 export const deliveryRequestsApi = {

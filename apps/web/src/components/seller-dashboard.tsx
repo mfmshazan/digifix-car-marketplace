@@ -37,7 +37,7 @@ import {
   Send,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
-import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi } from '@/lib/api';
+import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi, vehicleApi } from '@/lib/api';
 import type { Review } from '@/lib/api';
 import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket';
 import { initOneSignal, loginOneSignalUser, logoutOneSignalUser, requestNotificationPermission } from '@/lib/onesignal';
@@ -2343,12 +2343,18 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
   );
 }
 
-// ─── Add Product Modal (unchanged) ──────────────────────────────────────────
+// ─── Add Product Modal (with Vehicle Types, Brands, Models) ─────────────────
 
 function AddProductModal({ onClose }: { onClose: () => void }) {
   const [categories, setCategories] = useState<any[]>([]);
+  const [vehicleTypes, setVehicleTypes] = useState<any[]>([]);
+  const [vehicleBrands, setVehicleBrands] = useState<any[]>([]);
+  const [vehicleModels, setVehicleModels] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  const [loadingBrands, setLoadingBrands] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -2356,27 +2362,94 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     stock: '',
     condition: 'NEW',
     categoryId: '',
+    vehicleTypeId: '',
+    vehicleBrandId: '',
+    vehicleModelId: '',
   });
 
-
+  // Load vehicle types and categories on mount
   useEffect(() => {
-    const fetchCategories = async () => {
+    const loadInitialData = async () => {
       try {
-        const res = await categoriesApi.getAll();
-        if (res.success) setCategories(res.data);
+        const [categoriesRes, typesRes] = await Promise.all([
+          categoriesApi.getAll(),
+          vehicleApi.getVehicleTypes(),
+        ]);
+        if (categoriesRes.success) setCategories(categoriesRes.data);
+        if (typesRes.success) setVehicleTypes(typesRes.data);
       } catch (err) {
-        console.error('Failed to load categories', err);
+        console.error('Failed to load initial data', err);
       }
     };
-    fetchCategories();
+    loadInitialData();
   }, []);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Load vehicle brands when vehicle type changes
+  useEffect(() => {
+    if (!formData.vehicleTypeId) {
+      setVehicleBrands([]);
+      setVehicleModels([]);
+      return;
+    }
 
+    const loadBrands = async () => {
+      setLoadingBrands(true);
+      try {
+        const res = await vehicleApi.getVehicleBrandsByType(formData.vehicleTypeId);
+        if (res.success) {
+          setVehicleBrands(res.data);
+          // Reset brand and model selections
+          setFormData(prev => ({ ...prev, vehicleBrandId: '', vehicleModelId: '' }));
+          setVehicleModels([]);
+        }
+      } catch (err) {
+        console.error('Failed to load vehicle brands', err);
+      } finally {
+        setLoadingBrands(false);
+      }
+    };
+
+    loadBrands();
+  }, [formData.vehicleTypeId]);
+
+  // Load vehicle models when vehicle brand changes
+  useEffect(() => {
+    if (!formData.vehicleBrandId) {
+      setVehicleModels([]);
+      setFormData(prev => ({ ...prev, vehicleModelId: '' }));
+      return;
+    }
+
+    const loadModels = async () => {
+      setLoadingModels(true);
+      try {
+        const res = await vehicleApi.getVehicleModelsByBrand(formData.vehicleBrandId);
+        if (res.success) {
+          setVehicleModels(res.data);
+          // Reset model selection
+          setFormData(prev => ({ ...prev, vehicleModelId: '' }));
+        }
+      } catch (err) {
+        console.error('Failed to load vehicle models', err);
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+
+    loadModels();
+  }, [formData.vehicleBrandId]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
-      const newImages = Array.from(files).map(file => URL.createObjectURL(file));
-      setImages(prev => [...prev, ...newImages].slice(0, 5));
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result as string;
+          setImages(prev => [...prev, base64].slice(0, 5));
+        };
+        reader.readAsDataURL(file);
+      });
     }
   };
 
@@ -2386,20 +2459,24 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Category is now optional
+
+    // Validate required fields
+    if (!formData.vehicleModelId) {
+      alert('Please select a vehicle model');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      // In a real app, you'd upload images first and get URLs.
-      // For now, we'll send the dummy local URLs if any, or empty array.
       await productsApi.createProduct({
         ...formData,
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock),
-        images: [], // Assuming backend handles image upload separately or we use placeholders
+        images: images,
       });
       alert('Product added successfully!');
       onClose();
-      window.location.reload(); // Quick refresh to show new product
+      window.location.reload();
     } catch (err) {
       console.error('Failed to add product', err);
       alert('Failed to add product');
@@ -2407,7 +2484,6 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
       setIsSubmitting(false);
     }
   };
-
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -2448,15 +2524,72 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Name */}
+          {/* Vehicle Type Dropdown */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Product Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Type *</label>
+            <select
+              title="Select vehicle type"
+              value={formData.vehicleTypeId}
+              onChange={e => setFormData({ ...formData, vehicleTypeId: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
+              required
+            >
+              <option value="">Select a vehicle type</option>
+              {vehicleTypes.map(type => (
+                <option key={type.id} value={type.id}>{type.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Vehicle Brand Dropdown */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Brand *</label>
+            <select
+              title="Select vehicle brand"
+              value={formData.vehicleBrandId}
+              onChange={e => setFormData({ ...formData, vehicleBrandId: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
+              disabled={!formData.vehicleTypeId || loadingBrands}
+              required
+            >
+              <option value="">
+                {loadingBrands ? 'Loading brands...' : 'Select a brand'}
+              </option>
+              {vehicleBrands.map(brand => (
+                <option key={brand.id} value={brand.id}>{brand.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Vehicle Model Dropdown */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Model *</label>
+            <select
+              title="Select vehicle model"
+              value={formData.vehicleModelId}
+              onChange={e => setFormData({ ...formData, vehicleModelId: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
+              disabled={!formData.vehicleBrandId || loadingModels}
+              required
+            >
+              <option value="">
+                {loadingModels ? 'Loading models...' : 'Select a model'}
+              </option>
+              {vehicleModels.map(model => (
+                <option key={model.id} value={model.id}>{model.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Product Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Product Name *</label>
             <input
               type="text"
               value={formData.name}
               onChange={e => setFormData({ ...formData, name: e.target.value })}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
-              placeholder="e.g., Front Brake Pad Set"
+              placeholder="e.g., Premium Brake Pads"
               required
             />
           </div>
@@ -2475,7 +2608,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
           {/* Price & Stock */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Price (Rs.)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Price (Rs.) *</label>
               <input
                 type="number"
                 value={formData.price}
@@ -2486,7 +2619,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Stock</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Stock (Qty) *</label>
               <input
                 type="number"
                 value={formData.stock}
@@ -2498,9 +2631,9 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Category */}
+          {/* Category (Optional) */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Category (Optional)</label>
             <select
               title="Select product category"
               value={formData.categoryId}
@@ -2514,16 +2647,14 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             </select>
           </div>
 
-
           {/* Submit */}
           <div className="flex gap-3 pt-4">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl transition-all">
               Cancel
             </button>
-            <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
+            <button type="submit" disabled={isSubmitting || !formData.vehicleModelId} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
               {isSubmitting ? 'Adding...' : 'Add Product'}
             </button>
-
           </div>
         </form>
       </div>

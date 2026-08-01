@@ -58,6 +58,14 @@ const getProducts = async (req, res) => {
           store: {
             select: { id: true, name: true, rating: true },
           },
+          vehicleModel: {
+            select: {
+              id: true,
+              name: true,
+              vehicleBrand: { select: { id: true, name: true } },
+              vehicleType: { select: { id: true, name: true } },
+            },
+          },
           _count: {
             select: { reviews: true },
           },
@@ -101,6 +109,12 @@ const getProductById = async (req, res) => {
         },
         store: {
           select: { id: true, name: true, rating: true, logo: true },
+        },
+        vehicleModel: {
+          include: {
+            vehicleBrand: true,
+            vehicleType: true,
+          },
         },
         compatibleVehicles: true,
         reviews: {
@@ -153,14 +167,27 @@ const createProduct = async (req, res) => {
       stock,
       images,
       categoryId,
+      vehicleModelId,
       compatibleVehicles,
     } = req.body;
 
     // Validate required fields
-    if (!name || !price) {
+    if (!name || !price || !vehicleModelId) {
       return res.status(400).json({
         success: false,
-        message: 'Name and price are required',
+        message: 'Name, price, and vehicleModelId are required',
+      });
+    }
+
+    // Verify that the vehicleModelId exists
+    const vehicleModel = await prisma.vehicleModel.findUnique({
+      where: { id: vehicleModelId },
+    });
+
+    if (!vehicleModel) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid vehicleModelId',
       });
     }
 
@@ -180,6 +207,7 @@ const createProduct = async (req, res) => {
         stock: stock ? parseInt(stock) : 0,
         images: images || [],
         categoryId: categoryId || null,
+        vehicleModelId,
         salesmanId: userId,
         storeId: store?.id,
         compatibleVehicles: compatibleVehicles
@@ -191,6 +219,12 @@ const createProduct = async (req, res) => {
       include: {
         category: true,
         store: true,
+        vehicleModel: {
+          include: {
+            vehicleBrand: true,
+            vehicleType: true,
+          },
+        },
         compatibleVehicles: true,
       },
     });
@@ -230,6 +264,20 @@ const updateProduct = async (req, res) => {
       });
     }
 
+    // Verify vehicleModelId if provided
+    if (updateData.vehicleModelId) {
+      const vehicleModel = await prisma.vehicleModel.findUnique({
+        where: { id: updateData.vehicleModelId },
+      });
+
+      if (!vehicleModel) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid vehicleModelId',
+        });
+      }
+    }
+
     // Update product
     const product = await prisma.product.update({
       where: { id },
@@ -242,11 +290,18 @@ const updateProduct = async (req, res) => {
         stock: updateData.stock ? parseInt(updateData.stock) : undefined,
         images: updateData.images,
         categoryId: updateData.categoryId || null,
+        vehicleModelId: updateData.vehicleModelId,
         isActive: updateData.isActive,
       },
       include: {
         category: true,
         store: true,
+        vehicleModel: {
+          include: {
+            vehicleBrand: true,
+            vehicleType: true,
+          },
+        },
       },
     });
 
@@ -320,6 +375,12 @@ const getSalesmanProducts = async (req, res) => {
         include: {
           category: {
             select: { id: true, name: true },
+          },
+          vehicleModel: {
+            include: {
+              vehicleBrand: { select: { id: true, name: true } },
+              vehicleType: { select: { id: true, name: true } },
+            },
           },
           orderItems: {
             select: {

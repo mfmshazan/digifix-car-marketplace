@@ -23,6 +23,7 @@ import RealtimeDispatchLayer from './components/RealtimeDispatchLayer';
 
 import { getAccessToken, getRefreshToken } from './services/storage';
 import { requestLocationPermission } from './services/location';
+import { initOneSignal, registerPushForToken } from './services/onesignal';
 
 import { flushPendingNavigation, navigationRef } from './services/navigation';
 import { colors, shadows } from './styles/theme';
@@ -119,6 +120,8 @@ function AppContent() {
     const dispatch = useDispatch();
 
     useEffect(() => {
+        // Initialise push once at launch (no-ops in Expo Go / web).
+        initOneSignal();
         checkAuth();
         requestLocationPermission();
     }, []);
@@ -133,6 +136,9 @@ function AppContent() {
             setIsAuthenticated(authenticated);
 
             if (authenticated) {
+                // Re-attach the device to the logged-in rider on cold start so
+                // delivery pushes keep working across app restarts.
+                registerPushForToken(token);
                 dispatch(hydrateAvailability());
                 dispatch(fetchDriverHome());
 

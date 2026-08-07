@@ -3,8 +3,30 @@ import { dispatchAvailableJobs, resolveOffer } from '../services/riderRealtimeDi
 import { isFloatInRange, validationError } from '../utils/riderValidation.js';
 import { recordRiderAvailability } from '../services/riderAvailability.js';
 import { getShopMemberIds } from '../lib/shopAccess.js';
+import {
+  sendJobAssignedToRider,
+  sendRiderStatusToCustomer,
+  sendRiderStatusToShop,
+  sendRiderNearbyToCustomer,
+} from '../lib/onesignal.js';
 
 const ACTIVE_JOB_STATUSES = ['assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff'];
+
+// "Rider is nearby" push tuning: how close (km) counts as nearby, and a guard so
+// each job only fires the push once (in-memory; resets on restart, which is fine).
+const RIDER_NEARBY_KM = Number(process.env.RIDER_NEARBY_KM || 0.5);
+const nearbyNotifiedJobs = new Set();
+
+const distanceKmBetween = (lat1, lon1, lat2, lon2) => {
+  const toRad = (v) => (Number(v) * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(Number(lat2) - Number(lat1));
+  const dLon = toRad(Number(lon2) - Number(lon1));
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
 
 const formatRiderJob = (job, riderLocation = null) => {
   if (!job) return null;
@@ -297,6 +319,14 @@ export const acceptRiderJob = async (req, res, next) => {
       'delivery_accepted'
     );
 
+    // 🔔 Confirm the assignment + pickup address to the rider. Fire-and-forget.
+    sendJobAssignedToRider({
+      riderId: req.user.id,
+      jobId,
+      orderNumber: result.rows[0]?.order_number,
+      pickupAddress: result.rows[0]?.pickup_address,
+    }).catch((error) => console.error('Rider assigned push failed:', error.message));
+
     return res.json({
       success: true,
       message: 'Job accepted successfully',
@@ -406,7 +436,7 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   // Fetch customer + salesman IDs and the current status so we can target socket
   // rooms and avoid downgrading a status the seller already advanced.
   const orderResult = await client.query(
-    'SELECT "customerId", "salesmanId", status FROM "Order" WHERE id = $1',
+    'SELECT "customerId", "salesmanId", "orderNumber", status FROM "Order" WHERE id = $1',
     [marketplaceOrderId]
   );
   const orderRow = orderResult.rows[0];
@@ -453,6 +483,22 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
     for (const memberId of shopMemberIds) {
       global.io.to(`user:${memberId}`).emit('orderStatusUpdated', payload);
     }
+
+    // 🔔 Push the rider's progress: the full journey to the customer, and the
+    // pickup-relevant steps to the shop. Non-blocking — never delays the txn.
+    sendRiderStatusToCustomer({
+      customerId: orderRow.customerId,
+      orderId: marketplaceOrderId,
+      orderNumber: orderRow.orderNumber,
+      riderStep: riderStatus,
+    }).catch((error) => console.error('Rider status customer push failed:', error.message));
+
+    sendRiderStatusToShop({
+      shopMemberIds,
+      orderId: marketplaceOrderId,
+      orderNumber: orderRow.orderNumber,
+      riderStep: riderStatus,
+    }).catch((error) => console.error('Rider status shop push failed:', error.message));
   }
 };
 
@@ -573,7 +619,8 @@ export const addRiderJobLocation = async (req, res, next) => {
     }
 
     const jobCheck = await riderQuery(
-      `SELECT id, marketplace_order_id, status
+      `SELECT id, marketplace_order_id, status, order_number,
+              dropoff_latitude, dropoff_longitude
          FROM "DeliveryJob"
         WHERE id = $1
           AND partner_id = $2`,
@@ -624,6 +671,21 @@ export const addRiderJobLocation = async (req, res, next) => {
             recordedAt: new Date().toISOString(),
           },
         });
+
+        // 🔔 One-time "your rider is nearby" push once the rider comes within
+        // RIDER_NEARBY_KM of the drop-off. Guarded so it only fires once per job.
+        const { dropoff_latitude: dLat, dropoff_longitude: dLng } = jobCheck.rows[0];
+        if (dLat != null && dLng != null && !nearbyNotifiedJobs.has(jobId)) {
+          const km = distanceKmBetween(latitude, longitude, dLat, dLng);
+          if (km <= RIDER_NEARBY_KM) {
+            nearbyNotifiedJobs.add(jobId);
+            sendRiderNearbyToCustomer({
+              customerId,
+              orderId: marketplaceOrderId,
+              orderNumber: jobCheck.rows[0].order_number,
+            }).catch((error) => console.error('Rider nearby push failed:', error.message));
+          }
+        }
       }
     }
 

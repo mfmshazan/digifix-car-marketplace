@@ -1,8 +1,26 @@
 {
   "expo": {
-    "name": "delivery-partner-mobile",
+    "name": "Digifix Rider",
     "slug": "delivery-partner-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a7a4a"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.digifix.rider"
+    },
     "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a7a4a"
+      },
+      "package": "com.digifix.rider",
       "usesCleartextTraffic": true
     },
     "plugins": [
@@ -10,7 +28,7 @@
       [
         "onesignal-expo-plugin",
         {
-          "mode": "development"
+          "mode": "production"
         }
       ]
     ]

@@ -12,7 +12,7 @@ RUN addgroup -g 1001 -S nodejs && \
 COPY package*.json ./
 COPY prisma ./prisma/
 
-RUN npm install && \
+RUN npm ci && \
     npx prisma generate && \
     chown -R nodejs:nodejs /app/node_modules
 
@@ -26,7 +26,7 @@ EXPOSE 3000
 
 USER nodejs
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
 # Use 'prisma migrate deploy' in production when migrations are ready

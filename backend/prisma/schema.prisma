@@ -118,6 +118,7 @@ model Product {
   categoryId         String?
   salesmanId         String
   storeId            String?
+  vehicleModelId     String?
   averageRating      Float                  @default(0)
   totalReviews       Int                    @default(0)
   approvalStatus     ItemApprovalStatus     @default(PENDING)
@@ -126,12 +127,14 @@ model Product {
   category           Category?              @relation(fields: [categoryId], references: [id])
   salesman           User                   @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
   store              Store?                 @relation(fields: [storeId], references: [id])
+  vehicleModel       VehicleModel?          @relation(fields: [vehicleModelId], references: [id], onDelete: SetNull)
   compatibleVehicles VehicleCompatibility[]
   wishlistItems      WishlistItem[]
 
   @@index([categoryId])
   @@index([salesmanId])
   @@index([storeId])
+  @@index([vehicleModelId])
   @@index([name])
 }
 
@@ -523,6 +526,56 @@ model DeliveryOffer {
   @@index([jobId], map: "idx_rider_dispatch_offers_job_id")
   @@index([partnerId], map: "idx_rider_dispatch_offers_partner_id")
   @@index([offerStatus, expiresAt], map: "idx_rider_dispatch_offers_status")
+}
+
+model VehicleType {
+  id             String         @id @default(cuid())
+  name           String         @unique
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  vehicleModels  VehicleModel[]
+
+  @@index([name])
+}
+
+model VehicleBrand {
+  id             String         @id @default(cuid())
+  name           String         @unique
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  vehicleModels  VehicleModel[]
+
+  @@index([name])
+}
+
+model VehicleModel {
+  id               String                @id @default(cuid())
+  name             String
+  vehicleBrandId   String
+  vehicleTypeId    String
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  vehicleBrand     VehicleBrand          @relation(fields: [vehicleBrandId], references: [id], onDelete: Cascade)
+  vehicleType      VehicleType           @relation(fields: [vehicleTypeId], references: [id], onDelete: Cascade)
+  products         Product[]
+  registrations    VehicleRegistration[]
+
+  @@unique([name, vehicleBrandId, vehicleTypeId])
+  @@index([vehicleBrandId])
+  @@index([vehicleTypeId])
+  @@index([name])
+}
+
+model VehicleRegistration {
+  id             String       @id @default(cuid())
+  registrationNumber String     @unique
+  vehicleModelId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  vehicleModel   VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
+
+  @@index([registrationNumber])
+  @@index([vehicleModelId])
 }
 
 enum UserRole {

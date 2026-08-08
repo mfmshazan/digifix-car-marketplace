@@ -117,6 +117,50 @@ export const productsApi = {
     const response = await api.post('/products', data);
     return response.data;
   },
+
+  // Update a product
+  updateProduct: async (id: string, data: any) => {
+    const response = await api.put(`/products/${id}`, data);
+    return response.data;
+  },
+};
+
+export const vehicleApi = {
+  // Get all vehicle types
+  getVehicleTypes: async () => {
+    const response = await api.get('/vehicle/types');
+    return response.data;
+  },
+
+  // Get all vehicle brands
+  getVehicleBrands: async () => {
+    const response = await api.get('/vehicle/brands');
+    return response.data;
+  },
+
+  // Get vehicle brands filtered by vehicle type
+  getVehicleBrandsByType: async (vehicleTypeId: string) => {
+    const response = await api.get(`/vehicle/brands/by-type/${vehicleTypeId}`);
+    return response.data;
+  },
+
+  // Get all vehicle models
+  getVehicleModels: async () => {
+    const response = await api.get('/vehicle/models');
+    return response.data;
+  },
+
+  // Get vehicle models filtered by brand
+  getVehicleModelsByBrand: async (brandId: string) => {
+    const response = await api.get(`/vehicle/models/by-brand/${brandId}`);
+    return response.data;
+  },
+
+  // Search vehicle by registration number
+  searchVehicleByRegistration: async (registrationNumber: string) => {
+    const response = await api.get(`/vehicle/search/${encodeURIComponent(registrationNumber)}`);
+    return response.data;
+  },
 };
 
 export const commonApi = {

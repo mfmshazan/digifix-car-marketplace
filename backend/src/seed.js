@@ -318,8 +318,162 @@ async function seed() {
   await prisma.order.deleteMany({});
   await prisma.carPart.deleteMany({});
   await prisma.car.deleteMany({});
+  await prisma.product.deleteMany({});
+  await prisma.vehicleRegistration.deleteMany({});
+  await prisma.vehicleModel.deleteMany({});
+  await prisma.vehicleBrand.deleteMany({});
+  await prisma.vehicleType.deleteMany({});
   await prisma.category.deleteMany({});
   console.log('  ✅ Data cleared\n');
+
+  // ─── VEHICLE TYPES ───────────────────────────────────────────────────────
+  console.log('Creating vehicle types...');
+  const vehicleTypes = {};
+  
+  const passengerCar = await prisma.vehicleType.create({
+    data: { name: 'Passenger Car' }
+  });
+  vehicleTypes['Passenger Car'] = passengerCar.id;
+  console.log(`  ✅ ${passengerCar.name}`);
+
+  const motorcycle = await prisma.vehicleType.create({
+    data: { name: 'Motorcycle' }
+  });
+  vehicleTypes['Motorcycle'] = motorcycle.id;
+  console.log(`  ✅ ${motorcycle.name}`);
+
+  const truck = await prisma.vehicleType.create({
+    data: { name: 'Truck' }
+  });
+  vehicleTypes['Truck'] = truck.id;
+  console.log(`  ✅ ${truck.name}\n`);
+
+  // ─── VEHICLE BRANDS ──────────────────────────────────────────────────────
+  console.log('Creating vehicle brands...');
+  const vehicleBrands = {};
+  const brandNames = ['Toyota', 'Mazda', 'Hyundai', 'Honda', 'Yamaha', 'Kawasaki', 'Suzuki', 'Isuzu', 'Hino', 'Volvo', 'Kenworth', 'Fuso'];
+  
+  for (const name of brandNames) {
+    const brand = await prisma.vehicleBrand.create({
+      data: { name }
+    });
+    vehicleBrands[name] = brand.id;
+    console.log(`  ✅ ${name}`);
+  }
+  console.log('');
+
+  // ─── VEHICLE MODELS ──────────────────────────────────────────────────────
+  console.log('Creating vehicle models...');
+  
+  const vehicleModels = {};
+  
+  // Passenger Car Models
+  const passengerModels = [
+    { name: 'Toyota Corolla', brand: 'Toyota', type: 'Passenger Car' },
+    { name: 'Toyota Camry', brand: 'Toyota', type: 'Passenger Car' },
+    { name: 'Mazda 3', brand: 'Mazda', type: 'Passenger Car' },
+    { name: 'Hyundai i30', brand: 'Hyundai', type: 'Passenger Car' },
+    { name: 'Honda Civic', brand: 'Honda', type: 'Passenger Car' },
+  ];
+
+  for (const model of passengerModels) {
+    const created = await prisma.vehicleModel.create({
+      data: {
+        name: model.name,
+        vehicleBrandId: vehicleBrands[model.brand],
+        vehicleTypeId: vehicleTypes[model.type],
+      }
+    });
+    vehicleModels[model.name] = created.id;
+    console.log(`  ✅ ${model.name}`);
+  }
+
+  // Motorcycle Models
+  const motorcycleModels = [
+    { name: 'Honda CBR500R', brand: 'Honda', type: 'Motorcycle' },
+    { name: 'Yamaha MT-07', brand: 'Yamaha', type: 'Motorcycle' },
+    { name: 'Kawasaki Ninja 400', brand: 'Kawasaki', type: 'Motorcycle' },
+    { name: 'Suzuki GSX-R600', brand: 'Suzuki', type: 'Motorcycle' },
+    { name: 'Yamaha YZF-R3', brand: 'Yamaha', type: 'Motorcycle' },
+  ];
+
+  for (const model of motorcycleModels) {
+    const created = await prisma.vehicleModel.create({
+      data: {
+        name: model.name,
+        vehicleBrandId: vehicleBrands[model.brand],
+        vehicleTypeId: vehicleTypes[model.type],
+      }
+    });
+    vehicleModels[model.name] = created.id;
+    console.log(`  ✅ ${model.name}`);
+  }
+
+  // Truck Models
+  const truckModels = [
+    { name: 'Isuzu N Series', brand: 'Isuzu', type: 'Truck' },
+    { name: 'Hino 300 Series', brand: 'Hino', type: 'Truck' },
+    { name: 'Fuso Canter', brand: 'Fuso', type: 'Truck' },
+    { name: 'Volvo FH', brand: 'Volvo', type: 'Truck' },
+    { name: 'Kenworth T610', brand: 'Kenworth', type: 'Truck' },
+  ];
+
+  for (const model of truckModels) {
+    const created = await prisma.vehicleModel.create({
+      data: {
+        name: model.name,
+        vehicleBrandId: vehicleBrands[model.brand],
+        vehicleTypeId: vehicleTypes[model.type],
+      }
+    });
+    vehicleModels[model.name] = created.id;
+    console.log(`  ✅ ${model.name}`);
+  }
+  console.log('');
+
+  // ─── VEHICLE REGISTRATIONS ───────────────────────────────────────────────
+  console.log('Creating vehicle registrations...');
+  
+  const registrations = [
+    // Toyota Corolla — 3 different plates, same model → same products visible to all
+    { reg: 'ABC123',     model: 'Toyota Corolla' },
+    { reg: 'WP-CAR-001', model: 'Toyota Corolla' },
+    { reg: 'NC-1234',    model: 'Toyota Corolla' },
+    // Toyota Camry — 2 plates
+    { reg: 'XYZ458',     model: 'Toyota Camry' },
+    { reg: 'CP-CAM-002', model: 'Toyota Camry' },
+    // Mazda 3 — 2 plates
+    { reg: 'KLM927',     model: 'Mazda 3' },
+    { reg: 'WP-MZD-003', model: 'Mazda 3' },
+    // Hyundai i30
+    { reg: 'JTR615',     model: 'Hyundai i30' },
+    // Honda Civic — 2 plates
+    { reg: 'QWE742',     model: 'Honda Civic' },
+    { reg: 'SG-CIV-005', model: 'Honda Civic' },
+    // Motorcycles
+    { reg: 'MTR101', model: 'Honda CBR500R' },
+    { reg: 'BIK202', model: 'Yamaha MT-07' },
+    { reg: 'RID303', model: 'Kawasaki Ninja 400' },
+    { reg: 'GSX404', model: 'Suzuki GSX-R600' },
+    { reg: 'YZR505', model: 'Yamaha YZF-R3' },
+    // Trucks
+    { reg: 'TRK111', model: 'Isuzu N Series' },
+    { reg: 'TRK222', model: 'Hino 300 Series' },
+    { reg: 'TRK333', model: 'Fuso Canter' },
+    { reg: 'TRK444', model: 'Volvo FH' },
+    { reg: 'TRK555', model: 'Kenworth T610' },
+  ];
+
+  for (const reg of registrations) {
+    await prisma.vehicleRegistration.create({
+      data: {
+        registrationNumber: reg.reg,
+        vehicleModelId: vehicleModels[reg.model],
+      }
+    });
+    console.log(`  ✅ ${reg.reg} -> ${reg.model}`);
+  }
+  console.log('');
 
   // Create categories
   console.log('Creating categories...');
@@ -376,45 +530,86 @@ async function seed() {
   });
   console.log(`  ✅ Admin: ${admin.email}`);
 
+   // SHOP A MANAGER
+const managerA = await prisma.user.upsert({
+  where: { email: 'shopa@gmail.com' },
+  update: {
+    password: hashedPassword,
+    name: 'Shop A Manager',
+    role: 'SHOP_MANAGER',
+    isVerified: true,
+  },
+  create: {
+    email: 'shopa@gmail.com',
+    password: hashedPassword,
+    name: 'Shop A Manager',
+    phone: '+94771111110',
+    role: 'SHOP_MANAGER',
+    isVerified: true,
+  },
+});
+console.log(`  ✅ Shop A Manager: ${managerA.email}`);
+
   // SHOP A - Salesman 1 (Brakes, Engine, Filters, Lighting)
   const salesmanA = await prisma.user.upsert({
-    where: { email: 'shopa@gmail.com' },
-    update: {
-      password: hashedPassword,
-      name: 'Shop A',
-      role: 'SALESMAN',
-      isVerified: true,
-    },
-    create: {
-      email: 'shopa@gmail.com',
-      password: hashedPassword,
-      name: 'Shop A',
-      phone: '+94771111111',
-      role: 'SALESMAN',
-      isVerified: true,
-    },
-  });
-  console.log(`  ✅ Shop A Salesman: ${salesmanA.email}`);
+  where: { email: 'salesmana@gmail.com' },
+  update: {
+    password: hashedPassword,
+    name: 'Shop A Salesman',
+    role: 'SALESMAN',
+    isVerified: true,
+  },
+  create: {
+    email: 'salesmana@gmail.com',
+    password: hashedPassword,
+    name: 'Shop A Salesman',
+    phone: '+94771111111',
+    role: 'SALESMAN',
+    isVerified: true,
+  },
+});
+console.log(`  ✅ Shop A Salesman: ${salesmanA.email}`);
+
+const managerB = await prisma.user.upsert({
+  where: { email: 'shopb@gmail.com' },
+  update: {
+    password: hashedPassword,
+    name: 'Shop B Manager',
+    role: 'SHOP_MANAGER',
+    isVerified: true,
+  },
+  create: {
+    email: 'shopb@gmail.com',
+    password: hashedPassword,
+    name: 'Shop B Manager',
+    phone: '+94772222220',
+    role: 'SHOP_MANAGER',
+    isVerified: true,
+  },
+});
+console.log(`  ✅ Shop B Manager: ${managerB.email}`);
+
+ 
 
   // SHOP B - Salesman 2 (Suspension, Electrical, Interior)
   const salesmanB = await prisma.user.upsert({
-    where: { email: 'shopb@gmail.com' },
-    update: {
-      password: hashedPassword,
-      name: 'Shop B',
-      role: 'SALESMAN',
-      isVerified: true,
-    },
-    create: {
-      email: 'shopb@gmail.com',
-      password: hashedPassword,
-      name: 'Shop B',
-      phone: '+94772222222',
-      role: 'SALESMAN',
-      isVerified: true,
-    },
-  });
-  console.log(`  ✅ Shop B Salesman: ${salesmanB.email}`);
+  where: { email: 'salesmanb@gmail.com' },
+  update: {
+    password: hashedPassword,
+    name: 'Shop B Salesman',
+    role: 'SALESMAN',
+    isVerified: true,
+  },
+  create: {
+    email: 'salesmanb@gmail.com',
+    password: hashedPassword,
+    name: 'Shop B Salesman',
+    phone: '+94772222222',
+    role: 'SALESMAN',
+    isVerified: true,
+  },
+});
+console.log(`  ✅ Shop B Salesman: ${salesmanB.email}`);
 
   // Create a test customer user
   const customer = await prisma.user.upsert({
@@ -476,6 +671,60 @@ async function seed() {
     }
   }
   console.log(`  ✅ Shop B: ${shopBPartsCount} parts created`);
+
+  // ─── PRODUCTS (linked to vehicle model, not a specific plate) ────────────
+  // Any registration that shares the same vehicleModel will see these products.
+  console.log('\nCreating products (by vehicle model)...');
+
+  const shopAProducts = [
+    // Toyota Corolla
+    { name: 'Front Brake Pad Set - Corolla', description: 'Ceramic front brake pads for Toyota Corolla. Excellent stopping power.', price: 8500, discountPrice: 7500, stock: 15, sku: 'P-A-BRK-COR-001', categoryId: categoryMap['Braking System'], vehicleModelId: vehicleModels['Toyota Corolla'] },
+    { name: 'Spark Plug Set - Corolla', description: 'Iridium spark plugs for Toyota Corolla. Better fuel efficiency.', price: 4500, discountPrice: 3800, stock: 25, sku: 'P-A-ENG-COR-002', categoryId: categoryMap['Engine Components'], vehicleModelId: vehicleModels['Toyota Corolla'] },
+    { name: 'Engine Oil Filter - Corolla', description: 'OEM oil filter for Toyota Corolla.', price: 1200, discountPrice: 950, stock: 50, sku: 'P-A-FLT-COR-003', categoryId: categoryMap['Filters & Fluids'], vehicleModelId: vehicleModels['Toyota Corolla'] },
+    { name: 'LED Headlight Bulbs - Corolla', description: '6000K LED headlight pair for Toyota Corolla.', price: 6500, discountPrice: 5500, stock: 20, sku: 'P-A-LGT-COR-004', categoryId: categoryMap['Lighting'], vehicleModelId: vehicleModels['Toyota Corolla'] },
+    // Toyota Camry
+    { name: 'Front Brake Pad Set - Camry', description: 'Ceramic front brake pads for Toyota Camry.', price: 9500, discountPrice: 8500, stock: 12, sku: 'P-A-BRK-CAM-001', categoryId: categoryMap['Braking System'], vehicleModelId: vehicleModels['Toyota Camry'] },
+    { name: 'Air Filter - Camry', description: 'High-flow air filter for Toyota Camry.', price: 2800, discountPrice: 2300, stock: 30, sku: 'P-A-FLT-CAM-002', categoryId: categoryMap['Filters & Fluids'], vehicleModelId: vehicleModels['Toyota Camry'] },
+    { name: 'All-Season Tire - Camry', description: 'Premium all-season tire for Toyota Camry.', price: 14000, discountPrice: 12500, stock: 16, sku: 'P-A-TIR-CAM-003', categoryId: categoryMap['Wheels & Tires'], vehicleModelId: vehicleModels['Toyota Camry'] },
+    // Honda Civic
+    { name: 'Front Brake Pad Set - Civic', description: 'High-performance brake pads for Honda Civic Turbo.', price: 8800, discountPrice: 7800, stock: 18, sku: 'P-A-BRK-CIV-001', categoryId: categoryMap['Braking System'], vehicleModelId: vehicleModels['Honda Civic'] },
+    { name: 'Engine Oil Filter - Civic', description: 'OEM oil filter for Honda Civic 1.5T.', price: 1400, discountPrice: 1100, stock: 40, sku: 'P-A-FLT-CIV-002', categoryId: categoryMap['Filters & Fluids'], vehicleModelId: vehicleModels['Honda Civic'] },
+    { name: 'LED Headlight Bulbs - Civic', description: '6000K LED headlight pair for Honda Civic.', price: 6800, discountPrice: 5800, stock: 22, sku: 'P-A-LGT-CIV-003', categoryId: categoryMap['Lighting'], vehicleModelId: vehicleModels['Honda Civic'] },
+    // Mazda 3
+    { name: 'Spark Plug Set - Mazda 3', description: 'Iridium spark plugs for Mazda 3.', price: 5000, discountPrice: 4200, stock: 20, sku: 'P-A-ENG-MZD-001', categoryId: categoryMap['Engine Components'], vehicleModelId: vehicleModels['Mazda 3'] },
+    { name: 'Air Filter - Mazda 3', description: 'High-flow air filter for Mazda 3.', price: 2600, stock: 25, sku: 'P-A-FLT-MZD-002', categoryId: categoryMap['Filters & Fluids'], vehicleModelId: vehicleModels['Mazda 3'] },
+  ];
+
+  const shopBProducts = [
+    // Toyota Corolla
+    { name: 'Front Shock Absorber - Corolla', description: 'Gas-filled front shock absorber for Toyota Corolla.', price: 15000, stock: 10, sku: 'P-B-SUS-COR-001', categoryId: categoryMap['Suspension'], vehicleModelId: vehicleModels['Toyota Corolla'] },
+    { name: 'Car Battery 12V 60Ah - Corolla', description: 'Maintenance-free battery for Toyota Corolla. 2-year warranty.', price: 22000, discountPrice: 19500, stock: 12, sku: 'P-B-ELC-COR-002', categoryId: categoryMap['Electrical'], vehicleModelId: vehicleModels['Toyota Corolla'] },
+    { name: 'Car Floor Mats - Corolla', description: 'Custom-fit rubber floor mats for Toyota Corolla.', price: 4500, discountPrice: 3800, stock: 15, sku: 'P-B-INT-COR-003', categoryId: categoryMap['Upholstery'], vehicleModelId: vehicleModels['Toyota Corolla'] },
+    // Honda Civic
+    { name: 'Front Shock Absorber - Civic', description: 'Sport-tuned shock absorber for Honda Civic.', price: 16500, stock: 8, sku: 'P-B-SUS-CIV-001', categoryId: categoryMap['Suspension'], vehicleModelId: vehicleModels['Honda Civic'] },
+    { name: 'Alternator - Civic', description: 'High-output alternator for Honda Civic 1.5T.', price: 35000, stock: 5, sku: 'P-B-ELC-CIV-002', categoryId: categoryMap['Electrical'], vehicleModelId: vehicleModels['Honda Civic'] },
+    // Hyundai i30
+    { name: 'Rear Coil Spring Set - i30', description: 'Heavy-duty rear coil springs for Hyundai i30.', price: 18000, discountPrice: 16000, stock: 6, sku: 'P-B-SUS-I30-001', categoryId: categoryMap['Suspension'], vehicleModelId: vehicleModels['Hyundai i30'] },
+    { name: 'Car Battery 12V 55Ah - i30', description: 'Maintenance-free battery for Hyundai i30.', price: 20000, discountPrice: 18000, stock: 10, sku: 'P-B-ELC-I30-002', categoryId: categoryMap['Electrical'], vehicleModelId: vehicleModels['Hyundai i30'] },
+    { name: 'Car Floor Mats - i30', description: 'Custom-fit rubber floor mats for Hyundai i30.', price: 4200, discountPrice: 3500, stock: 15, sku: 'P-B-INT-I30-003', categoryId: categoryMap['Upholstery'], vehicleModelId: vehicleModels['Hyundai i30'] },
+    // Mazda 3
+    { name: 'Front Shock Absorber - Mazda 3', description: 'Gas-filled front shock absorber for Mazda 3.', price: 14500, stock: 9, sku: 'P-B-SUS-MZD-001', categoryId: categoryMap['Suspension'], vehicleModelId: vehicleModels['Mazda 3'] },
+  ];
+
+  let productCount = 0;
+  for (const p of shopAProducts) {
+    await prisma.product.create({
+      data: { ...p, salesmanId: salesmanA.id, isActive: true, approvalStatus: 'APPROVED', images: ['https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800'] },
+    });
+    productCount++;
+  }
+  for (const p of shopBProducts) {
+    await prisma.product.create({
+      data: { ...p, salesmanId: salesmanB.id, isActive: true, approvalStatus: 'APPROVED', images: ['https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=800'] },
+    });
+    productCount++;
+  }
+  console.log(`  ✅ ${productCount} products created (model-based, visible to all matching plates)`);
 
   // Create mock orders
   console.log('\nCreating mock orders...');
@@ -636,21 +885,31 @@ async function seed() {
   console.log('\n📦 SUMMARY:');
   console.log(`   - ${categoriesData.length} parent categories`);
 
-  console.log(`   - ${createdCars.length} cars`);
+  console.log(`   - ${createdCars.length} cars (old CarPart system)`);
   console.log(`   - ${shopAPartsCount} parts (Shop A)`);
   console.log(`   - ${shopBPartsCount} parts (Shop B)`);
+  console.log(`   - ${productCount} products (new model-based system, approved)`);
+  console.log(`   - 20 vehicle registrations (multiple plates per model)`);
   console.log(`   - 5 orders (2 for Shop A, 2 for Shop B, 1 split)`);
 
   console.log('\n🔑 LOGIN CREDENTIALS:');
   console.log('─'.repeat(50));
   console.log('');
-  console.log('🏪 SHOP A SALESMAN:');
+  console.log('� SHOP A MANAGER (Dashboard with Add Product):');
   console.log('   Email:    shopa@gmail.com');
+  console.log('   Password: password123');
+  console.log('');
+  console.log('👨‍💼 SHOP A SALESMAN:');
+  console.log('   Email:    salesmana@gmail.com');
   console.log('   Password: password123');
   console.log('   Products: Brakes, Engine Parts, Filters, Lighting, Exhaust, Tires');
   console.log('');
-  console.log('🏪 SHOP B SALESMAN:');
+  console.log('🏢 SHOP B MANAGER (Dashboard with Add Product):');
   console.log('   Email:    shopb@gmail.com');
+  console.log('   Password: password123');
+  console.log('');
+  console.log('👨‍💼 SHOP B SALESMAN:');
+  console.log('   Email:    salesmanb@gmail.com');
   console.log('   Password: password123');
   console.log('   Products: Suspension, Electrical, Interior');
   console.log('');

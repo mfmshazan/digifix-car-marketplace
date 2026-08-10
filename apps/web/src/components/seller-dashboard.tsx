@@ -37,9 +37,9 @@ import {
   Send,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
-import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi } from '@/lib/api';
+import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi, vehicleApi } from '@/lib/api';
 import type { Review } from '@/lib/api';
-import { connectSocket, disconnectSocket } from '@/lib/socket';
+import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket';
 import { initOneSignal, loginOneSignalUser, logoutOneSignalUser, requestNotificationPermission } from '@/lib/onesignal';
 
 // ─── Push Notification Hook ───────────────────────────────────────────────────
@@ -97,7 +97,7 @@ function useOneSignalPush() {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 
-type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
+type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' | 'REFUND_REQUESTED';
 
 interface OrderItem {
   id: string;
@@ -119,6 +119,8 @@ interface Order {
   status: OrderStatus;
   paymentStatus: string;
   createdAt: string;
+  cancellationReason?: string | null;
+  isComplaint?: boolean;
 }
 
 interface SalesSummary {
@@ -148,7 +150,7 @@ interface AppNotification {
   id: string;
   orderNumber: string;
   total?: number;
-  type: 'NEW_ORDER' | 'REFUND_APPROVED';
+  type: 'NEW_ORDER' | 'REFUND_APPROVED' | 'COMPLAINT';
   message?: string;
   time: Date;
   read: boolean;
@@ -172,6 +174,7 @@ const STATUS_META: Record<OrderStatus, { label: string; color: string; bg: strin
   SHIPPED: { label: 'Shipped', color: 'text-purple-700', bg: 'bg-purple-100', icon: Truck },
   DELIVERED: { label: 'Delivered', color: 'text-green-700', bg: 'bg-green-100', icon: CheckCircle2 },
   CANCELLED: { label: 'Cancelled', color: 'text-red-700', bg: 'bg-red-100', icon: AlertCircle },
+  REFUND_REQUESTED: { label: 'Complaint', color: 'text-amber-700', bg: 'bg-amber-100', icon: AlertCircle },
 };
 
 function StatusBadge({ status }: { status: OrderStatus }) {
@@ -201,14 +204,21 @@ function timeAgo(dateStr: string) {
 
 // ─── Status Update Dropdown ──────────────────────────────────────────────────
 
-function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void> }) {
+// Rider delivery statuses that mean the package has physically left the shop —
+// only then can the seller/manager mark the order SHIPPED.
+const PICKED_UP_DELIVERY_STATES = ['picked_up', 'in_transit', 'arrived_at_dropoff', 'delivered'];
+
+function StatusDropdown({ order, onUpdate, deliveryStatus }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void>; deliveryStatus: string | null }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const currentIndex = STATUS_FLOW.indexOf(order.status as OrderStatus);
   const nextStatuses = STATUS_FLOW.slice(currentIndex + 1);
   const dropdownOptions = [...nextStatuses, 'CANCELLED' as OrderStatus];
 
-  if (order.status === 'DELIVERED' || order.status === 'CANCELLED') {
+  // SHIPPED is allowed only once a rider has picked the order up.
+  const canShip = deliveryStatus ? PICKED_UP_DELIVERY_STATES.includes(deliveryStatus) : false;
+
+  if (order.status === 'DELIVERED' || order.status === 'CANCELLED' || order.status === 'REFUND_REQUESTED') {
     const meta = STATUS_META[order.status as OrderStatus] ?? { label: order.status, color: 'text-gray-700', bg: 'bg-gray-100', icon: Clock };
     const Icon = meta.icon;
     return (
@@ -235,9 +245,12 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
           {dropdownOptions.map(s => {
             const meta = STATUS_META[s];
             const Icon = meta.icon;
+            const shipBlocked = s === 'SHIPPED' && !canShip;
             return (
               <button
                 key={s}
+                disabled={shipBlocked}
+                title={shipBlocked ? 'Assign a rider and wait for pickup before shipping' : undefined}
                 onClick={async () => {
                   setOpen(false);
                   setLoading(true);
@@ -247,10 +260,11 @@ function StatusDropdown({ order, onUpdate }: { order: Order; onUpdate: (id: stri
                     setLoading(false);
                   }
                 }}
-                className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 ${meta.color}`}
+                className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 ${meta.color} ${shipBlocked ? 'opacity-40 cursor-not-allowed hover:bg-transparent' : ''}`}
               >
                 <Icon className="w-4 h-4" />
                 Mark as {meta.label}
+                {shipBlocked && <span className="ml-auto text-[10px] text-gray-400">after pickup</span>}
               </button>
             );
           })}
@@ -787,10 +801,11 @@ function CreateDeliveryRequestModal({
 
 // ─── Order Card ──────────────────────────────────────────────────────────────
 
-function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void> }) {
+function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; onUpdate: (id: string, status: OrderStatus) => Promise<void>; onComplaint: (id: string, action: 'accept' | 'reject') => Promise<void>; isManager: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [resolvingComplaint, setResolvingComplaint] = useState(false);
   const [deliveryStatus, setDeliveryStatus] = useState<string | null>(null);
   const [loadingDeliveryStatus, setLoadingDeliveryStatus] = useState(false);
   const [retryingDelivery, setRetryingDelivery] = useState(false);
@@ -798,7 +813,7 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
 
   // Load delivery status when the card mounts for PROCESSING / SHIPPED orders
   useEffect(() => {
-    const eligible = ['PROCESSING', 'SHIPPED', 'CONFIRMED'];
+    const eligible = ['PROCESSING', 'SHIPPED'];
     if (!eligible.includes(order.status)) return;
     let cancelled = false;
     const loadDeliveryStatus = async (showLoading = false) => {
@@ -827,6 +842,22 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
       window.clearInterval(intervalId);
     };
   }, [order.id, order.status]);
+
+  // Real-time: when the rider advances the delivery (e.g. picks up the package),
+  // reflect it instantly instead of waiting for the 5s poll. The backend emits
+  // the detailed `riderStep` on the shared `orderStatusUpdated` event to every
+  // shop member (manager + salesmen).
+  useEffect(() => {
+    const socket = getSocket();
+    const handleDeliveryUpdate = (payload: { orderId: string; riderStep?: string }) => {
+      if (payload.orderId !== order.id || !payload.riderStep) return;
+      setDeliveryStatus(payload.riderStep);
+    };
+    socket.on('orderStatusUpdated', handleDeliveryUpdate);
+    return () => {
+      socket.off('orderStatusUpdated', handleDeliveryUpdate);
+    };
+  }, [order.id]);
 
   const retryDelivery = async () => {
     setRetryingDelivery(true);
@@ -865,7 +896,7 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
           <div className="mt-1 text-xs text-gray-400">{order.customer?.email}</div>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
-          <StatusDropdown order={order} onUpdate={onUpdate} />
+          <StatusDropdown order={order} onUpdate={onUpdate} deliveryStatus={deliveryStatus} />
           <span className="font-bold text-gray-900 text-sm">{formatRs(order.total)}</span>
         </div>
       </div>
@@ -926,8 +957,50 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
         )}
       </div>
 
+      {/* Product Complaint Section — manager reviews & accepts/rejects the refund request */}
+      {isManager && order.status === 'REFUND_REQUESTED' && order.isComplaint && (
+        <div className="px-4 pb-4 border-t border-gray-50 pt-3">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <div className="flex items-center gap-1.5 mb-1">
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <span className="text-xs font-bold text-amber-800">Product Complaint</span>
+            </div>
+            <p className="text-sm text-amber-900">
+              {order.cancellationReason || 'The customer reported an issue with this delivered order.'}
+            </p>
+            <p className="text-[11px] text-amber-600 mt-1">
+              The customer should return the product to the warehouse. Accept to approve the refund, or reject to decline.
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={async () => {
+                  setResolvingComplaint(true);
+                  try { await onComplaint(order.id, 'accept'); } finally { setResolvingComplaint(false); }
+                }}
+                disabled={resolvingComplaint}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-60 transition-colors"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Accept Refund
+              </button>
+              <button
+                onClick={async () => {
+                  setResolvingComplaint(true);
+                  try { await onComplaint(order.id, 'reject'); } finally { setResolvingComplaint(false); }
+                }}
+                disabled={resolvingComplaint}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-semibold hover:bg-red-50 disabled:opacity-60 transition-colors"
+              >
+                <X className="w-4 h-4" />
+                Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delivery Dispatch Section */}
-      {['CONFIRMED', 'PROCESSING', 'SHIPPED'].includes(order.status) && (
+      {['PROCESSING', 'SHIPPED'].includes(order.status) && (
         <div className="px-4 pb-4 border-t border-gray-50 pt-3">
           {deliveryStatus ? (
             <div className="space-y-2">
@@ -955,6 +1028,13 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
                     </p>
                   )}
                 </>
+              )}
+              {/* Rider has collected the package → prompt the seller/manager to ship */}
+              {PICKED_UP_DELIVERY_STATES.includes(deliveryStatus) && order.status !== 'SHIPPED' && (
+                <div className="flex items-start gap-2 p-2.5 bg-green-50 border border-green-200 rounded-xl text-xs text-green-800 font-medium animate-pulse">
+                  <Package className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>Rider has picked up the package — you can now mark this order as <span className="font-bold">Shipped</span> from the status menu above.</span>
+                </div>
               )}
             </div>
           ) : (
@@ -1008,11 +1088,13 @@ function OrderCard({ order, onUpdate }: { order: Order; onUpdate: (id: string, s
 // ─── Current Orders Tab ──────────────────────────────────────────────────────
 
 function CurrentOrdersTab({ userId }: { userId: string }) {
+  const isManager = useAuthStore((s) => s.user?.role) === 'SHOP_MANAGER';
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
+  const [complaintAlert, setComplaintAlert] = useState<string | null>(null);
   const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
@@ -1066,14 +1148,31 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
       setLastRefresh(new Date());
     };
 
+    // Customer raised a post-delivery complaint — surfaced to the manager only.
+    const handleComplaintRaised = (payload: { orderNumber: string }) => {
+      if (!isManager) return;
+      setComplaintAlert(`⚠️ New complaint on order ${payload.orderNumber}`);
+      loadOrders();
+      setTimeout(() => setComplaintAlert(null), 12000);
+    };
+
+    // A complaint was accepted/rejected (e.g. from another tab) → refresh
+    const handleComplaintResolved = () => {
+      loadOrders();
+    };
+
     socket.on('newOrder', handleNewOrder);
     socket.on('orderStatusUpdated', handleStatusUpdate);
     socket.on('cancellationApproved', handleCancellationApproved);
+    socket.on('complaintRaised', handleComplaintRaised);
+    socket.on('complaintResolved', handleComplaintResolved);
 
     return () => {
       socket.off('newOrder', handleNewOrder);
       socket.off('orderStatusUpdated', handleStatusUpdate);
       socket.off('cancellationApproved', handleCancellationApproved);
+      socket.off('complaintRaised', handleComplaintRaised);
+      socket.off('complaintResolved', handleComplaintResolved);
     };
   }, [userId, loadOrders]);
 
@@ -1093,6 +1192,25 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     }
   };
 
+  const handleComplaint = async (id: string, action: 'accept' | 'reject') => {
+    setStatusUpdateError(null);
+    try {
+      if (action === 'accept') {
+        await ordersApi.acceptComplaint(id);
+      } else {
+        await ordersApi.rejectComplaint(id);
+      }
+      await loadOrders();
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to resolve complaint. Please try again.';
+      setStatusUpdateError(message);
+      console.error('Failed to resolve complaint', error);
+    }
+  };
+
   const activeOrders = orders.filter(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED');
   const displayOrders = filterStatus ? orders : activeOrders;
 
@@ -1102,6 +1220,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     { value: 'PROCESSING', label: 'Processing' },
     { value: 'SHIPPED', label: 'Shipped' },
     { value: 'DELIVERED', label: 'Delivered' },
+    ...(isManager ? [{ value: 'REFUND_REQUESTED', label: 'Complaints' }] : []),
     { value: 'CANCELLED', label: 'Cancelled' },
   ];
 
@@ -1112,6 +1231,19 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
         <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2 text-green-800 text-sm font-medium animate-pulse">
           <span className="text-lg">🔔</span>
           {newOrderAlert}
+        </div>
+      )}
+      {complaintAlert && (
+        <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-amber-800 text-sm font-medium animate-pulse">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{complaintAlert}</span>
+          <button
+            type="button"
+            onClick={() => { setFilterStatus('REFUND_REQUESTED'); setComplaintAlert(null); }}
+            className="ml-auto text-amber-700 hover:text-amber-900 underline"
+          >
+            Review
+          </button>
         </div>
       )}
       {statusUpdateError && (
@@ -1169,7 +1301,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {displayOrders.map(order => (
-            <OrderCard key={order.id} order={order} onUpdate={handleUpdateStatus} />
+            <OrderCard key={order.id} order={order} onUpdate={handleUpdateStatus} onComplaint={handleComplaint} isManager={isManager} />
           ))}
         </div>
       )}
@@ -1793,6 +1925,10 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
 
     const socket = connectSocket(userId);
 
+    // Refund and complaint messages are for the store owner (manager) only —
+    // not the salesmen who operate under them.
+    const isManager = user?.role === 'SHOP_MANAGER';
+
     const handleNewOrder = (orderData: any) => {
       const notif: AppNotification = {
         id: `new-order-${orderData.orderId}`,
@@ -1810,6 +1946,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
     };
 
     const handleRefundApproved = (payload: { orderId: string; orderNumber: string; message?: string }) => {
+      if (!isManager) return;
       const notif: AppNotification = {
         id: `refund-approved-${payload.orderId}`,
         orderNumber: payload.orderNumber,
@@ -1825,20 +1962,43 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
       }, 10000);
     };
 
+    // Customer raised a post-delivery product complaint → message the manager.
+    const handleComplaintRaised = (payload: { orderId: string; orderNumber: string; customerName?: string; reason?: string }) => {
+      if (!isManager) return;
+      const notif: AppNotification = {
+        id: `complaint-${payload.orderId}`,
+        orderNumber: payload.orderNumber,
+        type: 'COMPLAINT',
+        message: payload.reason
+          ? `Complaint on Order ${payload.orderNumber}: "${payload.reason}"`
+          : `${payload.customerName || 'A customer'} raised a complaint on Order ${payload.orderNumber}.`,
+        time: new Date(),
+        read: false,
+      };
+      setAppNotifs(prev => mergeNotification(prev, notif));
+      setToastNotif(notif);
+      setTimeout(() => {
+        setToastNotif(current => current?.id === notif.id ? null : current);
+      }, 10000);
+    };
+
     socket.on('newOrder', handleNewOrder);
     socket.on('cancellationApproved', handleRefundApproved);
+    socket.on('complaintRaised', handleComplaintRaised);
 
     return () => {
       socket.off('newOrder', handleNewOrder);
       socket.off('cancellationApproved', handleRefundApproved);
+      socket.off('complaintRaised', handleComplaintRaised);
     };
-  }, [user?.id, mounted]);
+  }, [user?.id, user?.role, mounted]);
 
   // On login/reload, rebuild refund-related messages from existing refunded orders
-  // so salesmen still see instructions even if they missed the live socket event.
+  // so the manager still sees instructions even if they missed the live socket event.
+  // Refund messages are for the manager (store owner) only — not salesmen.
   useEffect(() => {
     const loadRefundInstructionMessages = async () => {
-      if (!user?.id) return;
+      if (!user?.id || user?.role !== 'SHOP_MANAGER') return;
 
       try {
         const response = await ordersApi.getSalesmanOrders({ status: 'CANCELLED', limit: 50 });
@@ -1870,7 +2030,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
     };
 
     loadRefundInstructionMessages();
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
 
 
@@ -2035,14 +2195,16 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
                               <div className="flex justify-between items-start mb-0.5">
                                 <span className="font-semibold text-sm text-gray-900 flex items-center gap-1.5">
                                   {!notif.read && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />}
-                                  {notif.type === 'REFUND_APPROVED' ? 'Refund Approved' : `Order ${notif.orderNumber}`}
+                                  {notif.type === 'REFUND_APPROVED' ? 'Refund Approved'
+                                    : notif.type === 'COMPLAINT' ? `Complaint · Order ${notif.orderNumber}`
+                                    : `Order ${notif.orderNumber}`}
                                 </span>
                                 <span className="text-xs text-gray-400 shrink-0 ml-2">{timeAgo(notif.time.toISOString())}</span>
                               </div>
-                              {notif.type === 'REFUND_APPROVED' ? (
-                                <p className="text-xs text-gray-600">{notif.message}</p>
-                              ) : (
+                              {notif.type === 'NEW_ORDER' ? (
                                 <p className="text-xs text-gray-600">Total: Rs. {(notif.total || 0).toLocaleString()}</p>
+                              ) : (
+                                <p className="text-xs text-gray-600">{notif.message}</p>
                               )}
                             </div>
 
@@ -2134,19 +2296,21 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
         <div className="fixed bottom-4 right-4 z-50 bg-white rounded-xl shadow-xl border border-gray-100 p-4 max-w-sm w-full animate-in slide-in-from-bottom-5">
           <div className="flex items-start justify-between">
             <div className="flex gap-3">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${toastNotif.type === 'REFUND_APPROVED' ? 'bg-emerald-100' : 'bg-blue-100'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${toastNotif.type === 'REFUND_APPROVED' ? 'bg-emerald-100' : toastNotif.type === 'COMPLAINT' ? 'bg-amber-100' : 'bg-blue-100'}`}>
                 {toastNotif.type === 'REFUND_APPROVED' ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                ) : toastNotif.type === 'COMPLAINT' ? (
+                  <AlertCircle className="w-5 h-5 text-amber-600" />
                 ) : (
                   <ShoppingCart className="w-5 h-5 text-blue-600" />
                 )}
               </div>
               <div>
-                <h4 className="font-bold text-gray-900 text-sm">{toastNotif.type === 'REFUND_APPROVED' ? 'Refund Approved' : 'New Order!'}</h4>
-                {toastNotif.type === 'REFUND_APPROVED' ? (
-                  <p className="text-xs text-gray-500 mt-0.5">{toastNotif.message || `Order ${toastNotif.orderNumber} refund was approved.`}</p>
-                ) : (
+                <h4 className="font-bold text-gray-900 text-sm">{toastNotif.type === 'REFUND_APPROVED' ? 'Refund Approved' : toastNotif.type === 'COMPLAINT' ? 'New Complaint' : 'New Order!'}</h4>
+                {toastNotif.type === 'NEW_ORDER' ? (
                   <p className="text-xs text-gray-500 mt-0.5">Order {toastNotif.orderNumber} for Rs. {(toastNotif.total || 0).toLocaleString()}</p>
+                ) : (
+                  <p className="text-xs text-gray-500 mt-0.5">{toastNotif.message || `Order ${toastNotif.orderNumber}`}</p>
                 )}
               </div>
             </div>
@@ -2179,12 +2343,18 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
   );
 }
 
-// ─── Add Product Modal (unchanged) ──────────────────────────────────────────
+// ─── Add Product Modal (with Vehicle Types, Brands, Models) ─────────────────
 
 function AddProductModal({ onClose }: { onClose: () => void }) {
   const [categories, setCategories] = useState<any[]>([]);
+  const [vehicleTypes, setVehicleTypes] = useState<any[]>([]);
+  const [vehicleBrands, setVehicleBrands] = useState<any[]>([]);
+  const [vehicleModels, setVehicleModels] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  const [loadingBrands, setLoadingBrands] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -2192,27 +2362,94 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     stock: '',
     condition: 'NEW',
     categoryId: '',
+    vehicleTypeId: '',
+    vehicleBrandId: '',
+    vehicleModelId: '',
   });
 
-
+  // Load vehicle types and categories on mount
   useEffect(() => {
-    const fetchCategories = async () => {
+    const loadInitialData = async () => {
       try {
-        const res = await categoriesApi.getAll();
-        if (res.success) setCategories(res.data);
+        const [categoriesRes, typesRes] = await Promise.all([
+          categoriesApi.getAll(),
+          vehicleApi.getVehicleTypes(),
+        ]);
+        if (categoriesRes.success) setCategories(categoriesRes.data);
+        if (typesRes.success) setVehicleTypes(typesRes.data);
       } catch (err) {
-        console.error('Failed to load categories', err);
+        console.error('Failed to load initial data', err);
       }
     };
-    fetchCategories();
+    loadInitialData();
   }, []);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Load vehicle brands when vehicle type changes
+  useEffect(() => {
+    if (!formData.vehicleTypeId) {
+      setVehicleBrands([]);
+      setVehicleModels([]);
+      return;
+    }
 
+    const loadBrands = async () => {
+      setLoadingBrands(true);
+      try {
+        const res = await vehicleApi.getVehicleBrandsByType(formData.vehicleTypeId);
+        if (res.success) {
+          setVehicleBrands(res.data);
+          // Reset brand and model selections
+          setFormData(prev => ({ ...prev, vehicleBrandId: '', vehicleModelId: '' }));
+          setVehicleModels([]);
+        }
+      } catch (err) {
+        console.error('Failed to load vehicle brands', err);
+      } finally {
+        setLoadingBrands(false);
+      }
+    };
+
+    loadBrands();
+  }, [formData.vehicleTypeId]);
+
+  // Load vehicle models when vehicle brand changes
+  useEffect(() => {
+    if (!formData.vehicleBrandId) {
+      setVehicleModels([]);
+      setFormData(prev => ({ ...prev, vehicleModelId: '' }));
+      return;
+    }
+
+    const loadModels = async () => {
+      setLoadingModels(true);
+      try {
+        const res = await vehicleApi.getVehicleModelsByBrand(formData.vehicleBrandId);
+        if (res.success) {
+          setVehicleModels(res.data);
+          // Reset model selection
+          setFormData(prev => ({ ...prev, vehicleModelId: '' }));
+        }
+      } catch (err) {
+        console.error('Failed to load vehicle models', err);
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+
+    loadModels();
+  }, [formData.vehicleBrandId]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
-      const newImages = Array.from(files).map(file => URL.createObjectURL(file));
-      setImages(prev => [...prev, ...newImages].slice(0, 5));
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result as string;
+          setImages(prev => [...prev, base64].slice(0, 5));
+        };
+        reader.readAsDataURL(file);
+      });
     }
   };
 
@@ -2222,20 +2459,24 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Category is now optional
+
+    // Validate required fields
+    if (!formData.vehicleModelId) {
+      alert('Please select a vehicle model');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      // In a real app, you'd upload images first and get URLs.
-      // For now, we'll send the dummy local URLs if any, or empty array.
       await productsApi.createProduct({
         ...formData,
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock),
-        images: [], // Assuming backend handles image upload separately or we use placeholders
+        images: images,
       });
       alert('Product added successfully!');
       onClose();
-      window.location.reload(); // Quick refresh to show new product
+      window.location.reload();
     } catch (err) {
       console.error('Failed to add product', err);
       alert('Failed to add product');
@@ -2243,7 +2484,6 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
       setIsSubmitting(false);
     }
   };
-
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -2284,15 +2524,72 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Name */}
+          {/* Vehicle Type Dropdown */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Product Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Type *</label>
+            <select
+              title="Select vehicle type"
+              value={formData.vehicleTypeId}
+              onChange={e => setFormData({ ...formData, vehicleTypeId: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
+              required
+            >
+              <option value="">Select a vehicle type</option>
+              {vehicleTypes.map(type => (
+                <option key={type.id} value={type.id}>{type.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Vehicle Brand Dropdown */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Brand *</label>
+            <select
+              title="Select vehicle brand"
+              value={formData.vehicleBrandId}
+              onChange={e => setFormData({ ...formData, vehicleBrandId: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
+              disabled={!formData.vehicleTypeId || loadingBrands}
+              required
+            >
+              <option value="">
+                {loadingBrands ? 'Loading brands...' : 'Select a brand'}
+              </option>
+              {vehicleBrands.map(brand => (
+                <option key={brand.id} value={brand.id}>{brand.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Vehicle Model Dropdown */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Model *</label>
+            <select
+              title="Select vehicle model"
+              value={formData.vehicleModelId}
+              onChange={e => setFormData({ ...formData, vehicleModelId: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
+              disabled={!formData.vehicleBrandId || loadingModels}
+              required
+            >
+              <option value="">
+                {loadingModels ? 'Loading models...' : 'Select a model'}
+              </option>
+              {vehicleModels.map(model => (
+                <option key={model.id} value={model.id}>{model.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Product Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Product Name *</label>
             <input
               type="text"
               value={formData.name}
               onChange={e => setFormData({ ...formData, name: e.target.value })}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
-              placeholder="e.g., Front Brake Pad Set"
+              placeholder="e.g., Premium Brake Pads"
               required
             />
           </div>
@@ -2311,7 +2608,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
           {/* Price & Stock */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Price (Rs.)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Price (Rs.) *</label>
               <input
                 type="number"
                 value={formData.price}
@@ -2322,7 +2619,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Stock</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Stock (Qty) *</label>
               <input
                 type="number"
                 value={formData.stock}
@@ -2334,9 +2631,9 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Category */}
+          {/* Category (Optional) */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Category (Optional)</label>
             <select
               title="Select product category"
               value={formData.categoryId}
@@ -2350,16 +2647,14 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             </select>
           </div>
 
-
           {/* Submit */}
           <div className="flex gap-3 pt-4">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl transition-all">
               Cancel
             </button>
-            <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
+            <button type="submit" disabled={isSubmitting || !formData.vehicleModelId} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
               {isSubmitting ? 'Adding...' : 'Add Product'}
             </button>
-
           </div>
         </form>
       </div>

@@ -3,6 +3,7 @@ import { WebSocketServer } from 'ws';
 import { getRiderClient, riderQuery } from '../lib/riderDb.js';
 import { verifyRiderAccessToken } from '../lib/riderTokens.js';
 import { recordRiderAvailability } from './riderAvailability.js';
+import { sendNewJobOfferToRider, sendJobAssignedToRider } from '../lib/onesignal.js';
 
 export const REQUEST_WINDOW_SECONDS = Number(process.env.DISPATCH_REQUEST_WINDOW_SECONDS || 30);
 const MATCH_RADIUS_KM = Number(process.env.RIDER_MATCH_RADIUS_KM || 2);
@@ -165,6 +166,19 @@ const sendPendingOfferToPartner = async (offerId) => {
     'incoming_order_request',
     formatOfferPayload(offerPayload)
   );
+
+  // 🔔 Push the offer too, so a rider whose app is backgrounded/closed (and thus
+  // has no live websocket) still gets a chance to grab the job. Fire-and-forget.
+  sendNewJobOfferToRider({
+    riderId: offerPayload.partner_id,
+    jobId: offerPayload.job_id,
+    orderNumber: offerPayload.order_number,
+    pickupAddress: offerPayload.pickup_address,
+    dropoffAddress: offerPayload.dropoff_address,
+    paymentAmount: offerPayload.payment_amount,
+    distanceKm: offerPayload.distance_km,
+    secondsToRespond: Math.ceil(Number(offerPayload.seconds_remaining) || 0),
+  }).catch((error) => console.error('Rider offer push failed:', error.message));
 
   if (sentCount === 0) {
     console.warn(
@@ -553,6 +567,15 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
         jobId: offer.job_id,
         resolution: 'accepted',
       });
+
+      // 🔔 Confirm the assignment + pickup address to the rider (persists as a
+      // notification they can refer back to). Fire-and-forget.
+      sendJobAssignedToRider({
+        riderId: offer.partner_id,
+        jobId: offer.job_id,
+        orderNumber: job?.order_number,
+        pickupAddress: job?.pickup_address,
+      }).catch((error) => console.error('Rider assigned push failed:', error.message));
 
       return { success: true, data: job };
     }

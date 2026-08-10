@@ -2,8 +2,31 @@ import { getRiderClient, riderQuery } from '../lib/riderDb.js';
 import { dispatchAvailableJobs, resolveOffer } from '../services/riderRealtimeDispatch.js';
 import { isFloatInRange, validationError } from '../utils/riderValidation.js';
 import { recordRiderAvailability } from '../services/riderAvailability.js';
+import { getShopMemberIds } from '../lib/shopAccess.js';
+import {
+  sendJobAssignedToRider,
+  sendRiderStatusToCustomer,
+  sendRiderStatusToShop,
+  sendRiderNearbyToCustomer,
+} from '../lib/onesignal.js';
 
 const ACTIVE_JOB_STATUSES = ['assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff'];
+
+// "Rider is nearby" push tuning: how close (km) counts as nearby, and a guard so
+// each job only fires the push once (in-memory; resets on restart, which is fine).
+const RIDER_NEARBY_KM = Number(process.env.RIDER_NEARBY_KM || 0.5);
+const nearbyNotifiedJobs = new Set();
+
+const distanceKmBetween = (lat1, lon1, lat2, lon2) => {
+  const toRad = (v) => (Number(v) * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(Number(lat2) - Number(lat1));
+  const dLon = toRad(Number(lon2) - Number(lon1));
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
 
 const formatRiderJob = (job, riderLocation = null) => {
   if (!job) return null;
@@ -296,6 +319,14 @@ export const acceptRiderJob = async (req, res, next) => {
       'delivery_accepted'
     );
 
+    // 🔔 Confirm the assignment + pickup address to the rider. Fire-and-forget.
+    sendJobAssignedToRider({
+      riderId: req.user.id,
+      jobId,
+      orderNumber: result.rows[0]?.order_number,
+      pickupAddress: result.rows[0]?.pickup_address,
+    }).catch((error) => console.error('Rider assigned push failed:', error.message));
+
     return res.json({
       success: true,
       message: 'Job accepted successfully',
@@ -369,15 +400,16 @@ export const rejectRiderAssignedJob = async (req, res, next) => {
 // appear as SHIPPED to the customer and salesman so the UI is clean and simple.
 // The exact rider step is still stored in OrderTracking for full audit history.
 const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
-  // Rider status → user-facing order status mapping
-  // PROCESSING = rider is at the shop collecting the item
-  // SHIPPED    = item is physically on its way to the customer
+  // Rider step → user-facing order status mapping.
+  //
+  // IMPORTANT: pickup and the steps after it (picked_up, in_transit,
+  // arrived_at_dropoff) deliberately do NOT auto-advance the order. After the
+  // rider collects the package the order stays PROCESSING and the seller/manager
+  // manually marks it SHIPPED (gated on pickup in updateOrderStatus). Only the
+  // terminal steps move the order on their own.
   const userFacingStatusMap = {
     accepted:           'PROCESSING', // Rider accepted & heading to shop → still being prepared
     arrived_at_pickup:  'PROCESSING', // Rider at shop collecting → PROCESSING
-    picked_up:          'SHIPPED',    // Package collected, leaving shop → SHIPPED
-    in_transit:         'SHIPPED',    // En route → SHIPPED
-    arrived_at_dropoff: 'SHIPPED',    // Rider near customer → still SHIPPED
     delivered:          'DELIVERED',  // Final step
     failed:             'FAILED',
   };
@@ -393,9 +425,6 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
     failed:             'Delivery attempt failed',
   };
 
-  const marketplaceStatus = userFacingStatusMap[riderStatus];
-  if (!marketplaceStatus) return;
-
   const jobResult = await client.query(
     'SELECT marketplace_order_id FROM "DeliveryJob" WHERE id = $1 AND marketplace_order_id IS NOT NULL',
     [jobId]
@@ -404,37 +433,72 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   const marketplaceOrderId = jobResult.rows[0]?.marketplace_order_id;
   if (!marketplaceOrderId) return;
 
-  // Fetch customer + salesman IDs so we can target socket rooms
+  // Fetch customer + salesman IDs and the current status so we can target socket
+  // rooms and avoid downgrading a status the seller already advanced.
   const orderResult = await client.query(
-    'SELECT "customerId", "salesmanId" FROM "Order" WHERE id = $1',
+    'SELECT "customerId", "salesmanId", "orderNumber", status FROM "Order" WHERE id = $1',
     [marketplaceOrderId]
   );
   const orderRow = orderResult.rows[0];
+  if (!orderRow) return;
 
-  // Update the order's user-facing status
-  await client.query(
-    'UPDATE "Order" SET status = $1, "updatedAt" = NOW() WHERE id = $2',
-    [marketplaceStatus, marketplaceOrderId]
-  );
+  const mappedStatus = userFacingStatusMap[riderStatus];
+  let effectiveStatus = orderRow.status;
 
-  // Log detailed rider step in the tracking timeline
+  // Move the order only when there is a mapped status, and never downgrade a
+  // manual SHIPPED back to PROCESSING (the seller already shipped it).
+  if (mappedStatus && mappedStatus !== orderRow.status) {
+    const isDowngrade = mappedStatus === 'PROCESSING' && orderRow.status === 'SHIPPED';
+    if (!isDowngrade) {
+      await client.query(
+        'UPDATE "Order" SET status = $1, "updatedAt" = NOW() WHERE id = $2',
+        [mappedStatus, marketplaceOrderId]
+      );
+      effectiveStatus = mappedStatus;
+    }
+  }
+
+  // Always log the detailed rider step in the tracking timeline.
   const description = riderStatusDescriptions[riderStatus] || `Delivery update: ${riderStatus}`;
   await client.query(
     'INSERT INTO "OrderTracking" (id, status, description, "orderId", "createdAt") VALUES (gen_random_uuid()::text, $1, $2, $3, NOW())',
-    [marketplaceStatus, description, marketplaceOrderId]
+    [effectiveStatus, description, marketplaceOrderId]
   );
 
-  // 🔌 Emit real-time socket update so customer & salesman UIs update instantly
-  if (global.io && orderRow) {
+  // 🔌 Emit real-time socket update so the customer + the whole shop (manager &
+  // salesmen) update instantly. `readyToShip` tells the seller/manager dashboard
+  // that the rider has the package and the order can now be marked SHIPPED.
+  if (global.io) {
     const payload = {
       orderId: marketplaceOrderId,
-      status: marketplaceStatus,
-      riderStep: riderStatus,     // Detailed rider step (for tracking panel label)
+      status: effectiveStatus,
+      riderStep: riderStatus,            // Detailed rider step (for tracking + ship gating)
+      readyToShip: riderStatus === 'picked_up',
       description,
       updatedAt: new Date().toISOString(),
     };
     global.io.to(`user:${orderRow.customerId}`).emit('orderStatusUpdated', payload);
-    global.io.to(`user:${orderRow.salesmanId}`).emit('orderStatusUpdated', payload);
+
+    const shopMemberIds = await getShopMemberIds(orderRow.salesmanId);
+    for (const memberId of shopMemberIds) {
+      global.io.to(`user:${memberId}`).emit('orderStatusUpdated', payload);
+    }
+
+    // 🔔 Push the rider's progress: the full journey to the customer, and the
+    // pickup-relevant steps to the shop. Non-blocking — never delays the txn.
+    sendRiderStatusToCustomer({
+      customerId: orderRow.customerId,
+      orderId: marketplaceOrderId,
+      orderNumber: orderRow.orderNumber,
+      riderStep: riderStatus,
+    }).catch((error) => console.error('Rider status customer push failed:', error.message));
+
+    sendRiderStatusToShop({
+      shopMemberIds,
+      orderId: marketplaceOrderId,
+      orderNumber: orderRow.orderNumber,
+      riderStep: riderStatus,
+    }).catch((error) => console.error('Rider status shop push failed:', error.message));
   }
 };
 
@@ -555,7 +619,8 @@ export const addRiderJobLocation = async (req, res, next) => {
     }
 
     const jobCheck = await riderQuery(
-      `SELECT id, marketplace_order_id, status
+      `SELECT id, marketplace_order_id, status, order_number,
+              dropoff_latitude, dropoff_longitude
          FROM "DeliveryJob"
         WHERE id = $1
           AND partner_id = $2`,
@@ -606,6 +671,21 @@ export const addRiderJobLocation = async (req, res, next) => {
             recordedAt: new Date().toISOString(),
           },
         });
+
+        // 🔔 One-time "your rider is nearby" push once the rider comes within
+        // RIDER_NEARBY_KM of the drop-off. Guarded so it only fires once per job.
+        const { dropoff_latitude: dLat, dropoff_longitude: dLng } = jobCheck.rows[0];
+        if (dLat != null && dLng != null && !nearbyNotifiedJobs.has(jobId)) {
+          const km = distanceKmBetween(latitude, longitude, dLat, dLng);
+          if (km <= RIDER_NEARBY_KM) {
+            nearbyNotifiedJobs.add(jobId);
+            sendRiderNearbyToCustomer({
+              customerId,
+              orderId: marketplaceOrderId,
+              orderNumber: jobCheck.rows[0].order_number,
+            }).catch((error) => console.error('Rider nearby push failed:', error.message));
+          }
+        }
       }
     }
 

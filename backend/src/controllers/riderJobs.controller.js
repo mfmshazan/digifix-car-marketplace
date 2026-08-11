@@ -1,6 +1,19 @@
 import { getRiderClient, riderQuery } from '../lib/riderDb.js';
 import { dispatchAvailableJobs, resolveOffer } from '../services/riderRealtimeDispatch.js';
 import { isFloatInRange, validationError } from '../utils/riderValidation.js';
+<<<<<<< Updated upstream
+=======
+import { recordRiderAvailability } from '../services/riderAvailability.js';
+import { getShopMemberIds } from '../lib/shopAccess.js';
+import { randomUUID } from 'crypto';
+import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
+import { getRiderClient, riderQuery } from '../lib/riderDb.js';
+import { dispatchAvailableJobs, resolveOffer } from '../services/riderRealtimeDispatch.js';
+import { isFloatInRange, validationError } from '../utils/riderValidation.js';
+import { recordRiderAvailability } from '../services/riderAvailability.js';
+import { getShopMemberIds } from '../lib/shopAccess.js';
+
+>>>>>>> Stashed changes
 
 const ACTIVE_JOB_STATUSES = ['assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff'];
 
@@ -93,15 +106,15 @@ export const getActiveRiderJob = async (req, res, next) => {
     const trackingPoint = trackingResult.rows[0];
     const riderLocation = trackingPoint
       ? {
-          latitude: Number(trackingPoint.latitude),
-          longitude: Number(trackingPoint.longitude),
-          accuracy: trackingPoint.accuracy !== null ? Number(trackingPoint.accuracy) : null,
-          speed: trackingPoint.speed !== null ? Number(trackingPoint.speed) : null,
-          heading: trackingPoint.heading !== null ? Number(trackingPoint.heading) : null,
-          recordedAt: trackingPoint.recorded_at,
-        }
+        latitude: Number(trackingPoint.latitude),
+        longitude: Number(trackingPoint.longitude),
+        accuracy: trackingPoint.accuracy !== null ? Number(trackingPoint.accuracy) : null,
+        speed: trackingPoint.speed !== null ? Number(trackingPoint.speed) : null,
+        heading: trackingPoint.heading !== null ? Number(trackingPoint.heading) : null,
+        recordedAt: trackingPoint.recorded_at,
+      }
       : job.current_latitude !== null && job.current_longitude !== null
-      ? {
+        ? {
           latitude: Number(job.current_latitude),
           longitude: Number(job.current_longitude),
           accuracy: null,
@@ -109,7 +122,7 @@ export const getActiveRiderJob = async (req, res, next) => {
           heading: null,
           recordedAt: null,
         }
-      : null;
+        : null;
 
     return res.json({ success: true, data: formatRiderJob(job, riderLocation) });
   } catch (error) {
@@ -359,6 +372,7 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   // PROCESSING = rider is at the shop collecting the item
   // SHIPPED    = item is physically on its way to the customer
   const userFacingStatusMap = {
+<<<<<<< Updated upstream
     accepted:           'PROCESSING', // Rider accepted & heading to shop → still being prepared
     arrived_at_pickup:  'PROCESSING', // Rider at shop collecting → PROCESSING
     picked_up:          'SHIPPED',    // Package collected, leaving shop → SHIPPED
@@ -366,17 +380,23 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
     arrived_at_dropoff: 'SHIPPED',    // Rider near customer → still SHIPPED
     delivered:          'DELIVERED',  // Final step
     failed:             'FAILED',
+=======
+    accepted: 'PROCESSING', // Rider accepted & heading to shop → still being prepared
+    arrived_at_pickup: 'PROCESSING', // Rider at shop collecting → PROCESSING
+    delivered: 'DELIVERED',  // Final step
+    failed: 'FAILED',
+>>>>>>> Stashed changes
   };
 
   // Friendly description for the order timeline
   const riderStatusDescriptions = {
-    accepted:           'Rider has accepted your delivery',
-    arrived_at_pickup:  'Rider arrived at the shop',
-    picked_up:          'Package collected by rider',
-    in_transit:         'Package is on its way to you',
+    accepted: 'Rider has accepted your delivery',
+    arrived_at_pickup: 'Rider arrived at the shop',
+    picked_up: 'Package collected by rider',
+    in_transit: 'Package is on its way to you',
     arrived_at_dropoff: 'Rider has arrived at your location',
-    delivered:          'Package delivered successfully',
-    failed:             'Delivery attempt failed',
+    delivered: 'Package delivered successfully',
+    failed: 'Delivery attempt failed',
   };
 
   const marketplaceStatus = userFacingStatusMap[riderStatus];
@@ -510,6 +530,9 @@ export const updateRiderJobStatus = async (req, res, next) => {
     }
 
     await syncMarketplaceOrderStatus(client, jobId, status);
+    if (status === 'delivered') {
+      await creditDriverDeliveryFee(client, jobId);
+    }
     await client.query('COMMIT');
 
     if (status === 'failed') await dispatchAvailableJobs();
@@ -660,6 +683,7 @@ export const submitRiderProof = async (req, res, next) => {
       );
 
       await syncMarketplaceOrderStatus(client, jobId, 'delivered');
+      await creditDriverDeliveryFee(client, jobId)
     }
 
     await client.query('COMMIT');

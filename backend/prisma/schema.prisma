@@ -173,6 +173,7 @@ model WalletTransaction {
 
   // COD Tracking
   codSettlementStatus CodSettlementStatus @default(NOT_APPLICABLE)
+<<<<<<< Updated upstream
 
   description String?
   createdAt   DateTime @default(now())
@@ -180,6 +181,15 @@ model WalletTransaction {
   // Relations
   orderId String?
   order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+=======
+  description         String?
+  createdAt           DateTime            @default(now())
+  orderId             String?
+  sourceRef           String?             @unique
+  order               Order?              @relation(fields: [orderId], references: [id])
+  receiverWallet      Wallet?             @relation("ReceivedTransactions", fields: [receiverWalletId], references: [id])
+  senderWallet        Wallet?             @relation("SentTransactions", fields: [senderWalletId], references: [id])
+>>>>>>> Stashed changes
 
   @@index([senderWalletId])
   @@index([receiverWalletId])

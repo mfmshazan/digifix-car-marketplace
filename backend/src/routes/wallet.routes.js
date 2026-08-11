@@ -17,9 +17,12 @@ router.post('/refund/customer', authorize('ADMIN'), walletController.addCustomer
 router.post('/earnings/delivery', authorize('ADMIN'), walletController.addDeliveryPersonEarnings);
 router.post('/cod/collect', authorize('DELIVERY_PERSON'), walletController.substractCODPayment);
 router.post('/cod/settle', authorize('DELIVERY_PERSON'), walletController.settleCODPayment);
-router.post('/payout/delivery', authorize('ADMIN'), walletController.substractDeliveryPersonDayPayment);
+// router.post('/payout/delivery', authorize('ADMIN'), walletController.substractDeliveryPersonDayPayment);
 router.post('/earnings/salesman', authorize('ADMIN'), walletController.addPurchaseAmountToSalesman);
 router.post('/refund/salesman-settlement', authorize('ADMIN'), walletController.addRefundSatlmentsToSalesman);
+router.post('/cod/collect', authorize('DELIVERY_PERSON'), walletController.substractCODPayment);
+router.post('/cod/settle', authorize('DELIVERY_PERSON'), walletController.settleCODPayment);
+router.post('/earnings/salesman', authorize('ADMIN'), walletController.addPurchaseAmountToSalesman);
 
 // Users trigger their own payout
 router.post('/payout', walletController.triggerPayout);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -8,6 +8,7 @@ import {
     Platform,
     ScrollView,
     TouchableOpacity,
+    ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,12 +16,40 @@ import { Button, Input, SurfaceCard } from '../components/Common';
 import { authAPI } from '../services/api';
 import { saveTokens, saveUserData } from '../services/storage';
 import { colors, spacing, typography, radii } from '../styles/theme';
+import { useGoogleSignIn, syncClerkWithBackend } from '../services/googleSignin';
+import { useAuth } from '@clerk/expo';
 
 export default function LoginScreen({ navigation }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [googleLoading, setGoogleLoading] = useState(false);
+
+    const { signInWithGoogle } = useGoogleSignIn();
+    const { isLoaded, isSignedIn, getToken, session } = useAuth();
+    const hasAttemptedSyncRef = useRef(false);
+
+    // Auto-sync an existing Clerk session with the backend on screen load
+    useEffect(() => {
+        const checkExistingSession = async () => {
+            if (!isLoaded || !isSignedIn || !session || hasAttemptedSyncRef.current) return;
+            try {
+                const clerkToken = await getToken();
+                if (clerkToken) {
+                    hasAttemptedSyncRef.current = true;
+                    setGoogleLoading(true);
+                    await handleBackendSync(clerkToken, session?.id);
+                }
+            } catch (err) {
+                console.error('Auto-sync error:', err);
+                hasAttemptedSyncRef.current = false;
+            } finally {
+                setGoogleLoading(false);
+            }
+        };
+        checkExistingSession();
+    }, [isLoaded, isSignedIn, session]);
 
     const handleLogin = async () => {
         if (!email || !password) {
@@ -46,6 +75,45 @@ export default function LoginScreen({ navigation }) {
             Alert.alert('Login Failed', message);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleGoogleSignIn = async () => {
+        try {
+            setGoogleLoading(true);
+            const result = await signInWithGoogle();
+
+            if (!result.success) {
+                if (result.message) Alert.alert('Google Sign-In Failed', result.message);
+                return;
+            }
+
+            // Session is now active — getToken() will return the Clerk JWT
+            const clerkToken = await getToken();
+            if (!clerkToken) {
+                Alert.alert('Error', 'Could not retrieve authentication token. Please try again.');
+                return;
+            }
+
+            await handleBackendSync(clerkToken, result.sessionId);
+        } catch (err) {
+            console.error('Google sign-in error:', err);
+            Alert.alert('Google Sign-In Failed', err.message || 'An unexpected error occurred. Please try again.');
+        } finally {
+            setGoogleLoading(false);
+        }
+    };
+
+    const handleBackendSync = async (clerkToken, sessionId) => {
+        const response = await syncClerkWithBackend(clerkToken, 'DELIVERY_PARTNER', sessionId);
+        if (response.success && response.data) {
+            const { token, user } = response.data;
+            await saveTokens(token, '');
+            await saveUserData(user);
+            navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+        } else {
+            const msg = response.message || 'Backend sync failed. Please try again.';
+            Alert.alert('Sign-In Error', msg);
         }
     };
 
@@ -129,6 +197,28 @@ export default function LoginScreen({ navigation }) {
                             loading={loading}
                             style={styles.primaryAction}
                         />
+
+                        {/* Divider */}
+                        <View style={styles.divider}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>or continue with</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        {/* Google Sign In Button */}
+                        <TouchableOpacity
+                            style={[styles.googleButton, (loading || googleLoading) && { opacity: 0.6 }]}
+                            onPress={handleGoogleSignIn}
+                            disabled={loading || googleLoading}
+                            activeOpacity={0.7}
+                        >
+                            {googleLoading ? (
+                                <ActivityIndicator size="small" color={colors.secondary} />
+                            ) : (
+                                <Ionicons name="logo-google" size={20} color="#DB4437" />
+                            )}
+                            <Text style={styles.googleButtonText}>Sign in with Google</Text>
+                        </TouchableOpacity>
 
                         <View style={styles.footerContainer}>
                             <Text style={styles.footerText}>New delivery partner?</Text>
@@ -331,5 +421,39 @@ const styles = StyleSheet.create({
         ...typography.bodySmall,
         color: colors.secondary,
         fontWeight: '800',
+    },
+    divider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: spacing.md,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: colors.borderSubtle,
+    },
+    dividerText: {
+        ...typography.caption,
+        color: colors.textSecondary,
+        marginHorizontal: spacing.md,
+    },
+    googleButton: {
+        minHeight: 52,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.surface,
+        borderRadius: radii.sm,
+        borderWidth: 1,
+        borderColor: colors.border,
+        paddingVertical: 14,
+        paddingHorizontal: spacing.md,
+        gap: spacing.sm,
+        marginBottom: spacing.xs,
+    },
+    googleButtonText: {
+        ...typography.body,
+        fontWeight: '700',
+        color: colors.text,
     },
 });

@@ -8,6 +8,7 @@ import {
     Platform,
     ScrollView,
     TouchableOpacity,
+    ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +16,8 @@ import { Button, Input, Dropdown, SurfaceCard } from '../components/Common';
 import { authAPI } from '../services/api';
 import { saveTokens, saveUserData } from '../services/storage';
 import { colors, spacing, typography, radii } from '../styles/theme';
+import { useGoogleSignIn, syncClerkWithBackend } from '../services/googleSignin';
+import { useAuth } from '@clerk/expo';
 
 const PASSWORD_REQUIREMENTS_ERROR = 'Password does not meet the minimum requirements.';
 const PASSWORD_REQUIREMENTS = [
@@ -40,6 +43,7 @@ export default function RegisterScreen({ navigation }) {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [googleLoading, setGoogleLoading] = useState(false);
     const [error, setError] = useState('');
     const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
     const [hasTouchedConfirmPassword, setHasTouchedConfirmPassword] = useState(false);
@@ -47,6 +51,9 @@ export default function RegisterScreen({ navigation }) {
     const isConfirmPasswordValid = isConfirmPasswordEntered && formData.confirmPassword === formData.password;
     const shouldShowConfirmPasswordMismatch =
         hasTouchedConfirmPassword && isConfirmPasswordEntered && !isConfirmPasswordValid;
+
+    const { signInWithGoogle } = useGoogleSignIn();
+    const { getToken } = useAuth();
 
     const handleRegister = async () => {
         setError('');
@@ -99,6 +106,42 @@ export default function RegisterScreen({ navigation }) {
             );
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleGoogleSignUp = async () => {
+        try {
+            setGoogleLoading(true);
+            const result = await signInWithGoogle();
+
+            if (!result.success) {
+                if (result.message) Alert.alert('Google Sign-Up Failed', result.message);
+                return;
+            }
+
+            const clerkToken = await getToken();
+            if (!clerkToken) {
+                Alert.alert('Error', 'Could not retrieve authentication token. Please try again.');
+                return;
+            }
+
+            const response = await syncClerkWithBackend(clerkToken, 'DELIVERY_PARTNER', result.sessionId);
+            if (response.success && response.data) {
+                const { token, user } = response.data;
+                await saveTokens(token, '');
+                await saveUserData(user);
+                Alert.alert('Success', 'Account created successfully!', [
+                    { text: 'OK', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] }) }
+                ]);
+            } else {
+                const msg = response.message || 'Could not complete registration. Please try again.';
+                Alert.alert('Sign-Up Error', msg);
+            }
+        } catch (err) {
+            console.error('Google sign-up error:', err);
+            Alert.alert('Google Sign-Up Failed', err.message || 'An unexpected error occurred. Please try again.');
+        } finally {
+            setGoogleLoading(false);
         }
     };
 
@@ -275,13 +318,13 @@ export default function RegisterScreen({ navigation }) {
                             placeholder="Select vehicle type"
                             value={formData.vehicleType}
                             onSelect={(text) => setFormData({ ...formData, vehicleType: text })}
-                            options={['Car', 'Motorcycle', 'Bicycle']}
+                            options={['Car', 'Motorcycle', 'Lorry']}
                         />
                         <Input
                             label="Vehicle Number"
                             placeholder="Registration or identifier"
                             value={formData.vehicleNumber}
-                            onChangeText={(text) => setFormData({ ...formData, vehicleNumber: text })}
+                            onChangeText={(text) => setFormData({ ...formData, vehicleNumber: text.toUpperCase().replace(/[\s-]/g, '') })}
                         />
 
                         <Button
@@ -291,6 +334,28 @@ export default function RegisterScreen({ navigation }) {
                             loading={loading}
                             style={styles.primaryAction}
                         />
+
+                        {/* Divider */}
+                        <View style={styles.divider}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>or continue with</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        {/* Google Sign Up Button */}
+                        <TouchableOpacity
+                            style={[styles.googleButton, (loading || googleLoading) && { opacity: 0.6 }]}
+                            onPress={handleGoogleSignUp}
+                            disabled={loading || googleLoading}
+                            activeOpacity={0.7}
+                        >
+                            {googleLoading ? (
+                                <ActivityIndicator size="small" color={colors.secondary} />
+                            ) : (
+                                <Ionicons name="logo-google" size={20} color="#DB4437" />
+                            )}
+                            <Text style={styles.googleButtonText}>Sign up with Google</Text>
+                        </TouchableOpacity>
                     </SurfaceCard>
                 </ScrollView>
             </KeyboardAvoidingView>
@@ -486,5 +551,39 @@ const styles = StyleSheet.create({
     },
     primaryAction: {
         marginTop: spacing.sm,
+    },
+    divider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: spacing.md,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: colors.borderSubtle,
+    },
+    dividerText: {
+        ...typography.caption,
+        color: colors.textSecondary,
+        marginHorizontal: spacing.md,
+    },
+    googleButton: {
+        minHeight: 52,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.surface,
+        borderRadius: radii.sm,
+        borderWidth: 1,
+        borderColor: colors.border,
+        paddingVertical: 14,
+        paddingHorizontal: spacing.md,
+        gap: spacing.sm,
+        marginBottom: spacing.xs,
+    },
+    googleButtonText: {
+        ...typography.body,
+        fontWeight: '700',
+        color: colors.text,
     },
 });

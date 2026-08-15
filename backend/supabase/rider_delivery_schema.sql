@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS rider_delivery_partners (
     status VARCHAR(20) DEFAULT 'offline' CHECK (status IN ('online', 'offline', 'busy')),
     current_latitude DECIMAL(10, 8),
     current_longitude DECIMAL(11, 8),
-    rating DECIMAL(3, 2) DEFAULT 0.00,
+    rating DECIMAL(3, 2) DEFAULT 3.2,
     total_deliveries INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

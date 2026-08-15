@@ -122,7 +122,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ─── Start server ─────────────────────────────────────────────────────────────
+// ─── Start server ───────────────────────────────────────────────────────────
 initializeRiderRealtimeDispatch(httpServer).catch((error) => {
   console.warn('Rider realtime dispatch did not initialize:', error.message);
 });

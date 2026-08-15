@@ -5,6 +5,7 @@
   "scripts": {
     "start": "expo start --dev-client",
     "start:expo-go": "expo start",
+    "start:offline": "expo start --offline",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/android-dev.ps1",
     "ios": "expo run:ios",

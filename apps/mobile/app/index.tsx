@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Redirect } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { View, ActivityIndicator } from "react-native";
+import { getValidToken } from "../src/api/storage";
 
 export default function Index() {
   const [isChecking, setIsChecking] = useState(true);
@@ -10,7 +10,7 @@ export default function Index() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const token = await AsyncStorage.getItem("@digifix_auth_token");
+        const token = await getValidToken();
         setIsAuthenticated(!!token);
       } catch {
         setIsAuthenticated(false);

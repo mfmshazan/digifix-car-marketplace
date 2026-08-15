@@ -4,6 +4,25 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const TOKEN_KEY = '@digifix_auth_token';
 const USER_KEY = '@digifix_user_data';
 
+const decodeJwtPayload = (token: string): Record<string, any> | null => {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload || typeof globalThis.atob !== 'function') return null;
+
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return JSON.parse(globalThis.atob(padded));
+  } catch {
+    return null;
+  }
+};
+
+export const isTokenExpired = (token: string, clockSkewSeconds = 15): boolean => {
+  const payload = decodeJwtPayload(token);
+  if (!payload || typeof payload.exp !== 'number') return false;
+  return payload.exp <= Math.floor(Date.now() / 1000) + clockSkewSeconds;
+};
+
 /**
  * Web / Expo web often uses `blob:` URIs from the image picker. Those URLs are tied to the
  * current document session and break after Metro `--clear` or a full reload (ERR_FILE_NOT_FOUND).
@@ -53,6 +72,18 @@ export const getToken = async (): Promise<string | null> => {
     console.error('Error getting token:', error);
     return null;
   }
+};
+
+export const getValidToken = async (): Promise<string | null> => {
+  const token = await getToken();
+  if (!token) return null;
+
+  if (isTokenExpired(token)) {
+    await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+    return null;
+  }
+
+  return token;
 };
 
 // Remove authentication token

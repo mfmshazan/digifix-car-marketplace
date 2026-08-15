@@ -30,11 +30,23 @@ export const resolveShopOwnerId = async (reqUser) => {
  * fan out socket events and push notifications so salesmen — not just the
  * manager — see new orders and status changes.
  *
- * @param {string} shopOwnerId  the manager / shop owner id
+ * Accepts either the manager id or one of their salesman ids. This keeps
+ * legacy records scoped to a salesman visible to the whole shop.
+ *
+ * @param {string} shopOwnerOrMemberId  manager / shop member id
  * @returns {Promise<string[]>} [shopOwnerId, ...salesmanIds]
  */
-export const getShopMemberIds = async (shopOwnerId) => {
-  if (!shopOwnerId) return [];
+export const getShopMemberIds = async (shopOwnerOrMemberId) => {
+  if (!shopOwnerOrMemberId) return [];
+
+  const user = await prisma.user.findUnique({
+    where: { id: shopOwnerOrMemberId },
+    select: { role: true, managerId: true },
+  });
+  const shopOwnerId = user?.role === 'SALESMAN' && user.managerId
+    ? user.managerId
+    : shopOwnerOrMemberId;
+
   const salesmen = await prisma.user.findMany({
     where: { managerId: shopOwnerId },
     select: { id: true },

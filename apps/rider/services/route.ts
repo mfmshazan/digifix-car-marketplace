@@ -319,8 +319,9 @@ export const fetchRoute = async (
         );
     }
 
+    console.warn(`Road route providers failed: ${failures.join(' | ')}`);
     throw createRouteServiceError(
         'REQUEST_FAILED',
-        `Real road route unavailable. ${failures.join(' | ')}`
+        'Road directions are temporarily unavailable. Open the stop in Maps to continue navigation.'
     );
 };

@@ -319,7 +319,7 @@ export const getSalesmanPendingCount = async (req, res) => {
  */
 export const getSalesmanOrders = async (req, res) => {
   try {
-    // A salesman sees the shop's orders, which are recorded against the manager.
+    // Include legacy orders recorded against a salesman as well as manager-owned orders.
     const shopOwnerId = await resolveShopOwnerId(req.user);
     const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
     const { status, page = 1, limit = 20 } = req.query;
@@ -805,6 +805,8 @@ export const createOrder = async (req, res) => {
           select: {
             id: true,
             name: true,
+            role: true,
+            managerId: true,
             store: {
               select: {
                 name: true

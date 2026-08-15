@@ -214,6 +214,17 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
         return pickupCoordinate || dropoffCoordinate;
     }, [dropoffCoordinate, job?.status, pickupCoordinate]);
 
+    const openStopInMaps = () => {
+        if (!nextStopCoordinate) {
+            return;
+        }
+
+        const destination = `${nextStopCoordinate.latitude},${nextStopCoordinate.longitude}`;
+        void Linking.openURL(
+            `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`
+        );
+    };
+
     const {
         route: deliveryRoute,
         isLoading: isLoadingRoute,
@@ -406,6 +417,12 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                                 routeError ||
                                 'We could not build a live route right now. Pickup and drop-off markers are still shown on the map.'}
                         </Text>
+                        {nextStopCoordinate ? (
+                            <TouchableOpacity style={styles.callButton} onPress={openStopInMaps}>
+                                <Ionicons name="navigate-outline" size={18} color="#FFFFFF" />
+                                <Text style={styles.callButtonText}>Open in Maps</Text>
+                            </TouchableOpacity>
+                        ) : null}
                     </SurfaceCard>
                 ) : null}
 

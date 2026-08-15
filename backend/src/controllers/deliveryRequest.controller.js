@@ -1,6 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { riderQuery } from '../lib/riderDb.js';
-import { resolveShopOwnerId } from '../lib/shopAccess.js';
+import { getShopMemberIds, resolveShopOwnerId } from '../lib/shopAccess.js';
 import {
   dispatchJobToNextEligibleDriver,
   dispatchJobToSelectedDriver,
@@ -92,7 +92,8 @@ export const createDeliveryRequest = async (req, res) => {
     // Orders are recorded against the manager, so compare to the shop owner id.
     if (req.user.role === 'SALESMAN' || req.user.role === 'SHOP_MANAGER') {
       const shopOwnerId = await resolveShopOwnerId(req.user);
-      if (order.salesmanId !== shopOwnerId) {
+      const shopMemberIds = await getShopMemberIds(shopOwnerId);
+      if (!shopMemberIds.includes(order.salesmanId)) {
         return res.status(403).json({
           success: false,
           message: 'You can only create delivery requests for your own orders',
@@ -100,25 +101,94 @@ export const createDeliveryRequest = async (req, res) => {
       }
     }
 
-    const existing = await riderQuery(
-      'SELECT id, status, partner_id FROM "DeliveryJob" WHERE marketplace_order_id = $1 LIMIT 1',
-      [orderId]
-    );
-
-    if (existing.rows.length) {
-      return res.status(409).json({
-        success: false,
-        message: 'Delivery request already exists for this order',
-        data: existing.rows[0],
-      });
-    }
-
     const itemSummary = order.items
       .map((item) => `${item.quantity} x ${item.itemName || item.itemType}`)
       .join(', ');
 
-    const result = await riderQuery(
-      `INSERT INTO "DeliveryJob" (
+    const jobValues = [
+      buildOrderNumber(order),
+      customerName || order.customer?.name || order.customer?.email || 'Customer',
+      customerPhone || order.customer?.phone || '',
+      pickupAddress || order.salesman?.store?.address || order.salesman?.store?.name || 'Pickup location',
+      pickupLatitude,
+      pickupLongitude,
+      pickupContactName || order.salesman?.store?.name || order.salesman?.name || null,
+      pickupContactPhone || order.salesman?.store?.phone || order.salesman?.phone || null,
+      deliveryAddress,
+      deliveryLatitude,
+      deliveryLongitude,
+      estimatedEarnings ?? order.deliveryFee ?? order.serviceCharge ?? 0,
+      packageWeight ?? null,
+      packageType || null,
+      packageNotes || null,
+      normalizedPaymentType,
+      itemSummary || packageType || null,
+      packageNotes || order.notes || null,
+    ];
+
+    const existing = await riderQuery(
+      `SELECT id, status, partner_id
+         FROM "DeliveryJob"
+        WHERE marketplace_order_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [orderId]
+    );
+
+    let job;
+    let createdNewJob = false;
+
+    if (existing.rows.length) {
+      const existingJob = existing.rows[0];
+      if (
+        existingJob.partner_id ||
+        !['awaiting_dispatch', 'pending', 'available'].includes(existingJob.status)
+      ) {
+        return res.status(409).json({
+          success: false,
+          message: 'This delivery request is no longer available for rider assignment',
+          data: existingJob,
+        });
+      }
+
+      const updated = await riderQuery(
+        `UPDATE "DeliveryJob"
+            SET order_number = $2,
+                customer_name = $3,
+                customer_phone = $4,
+                pickup_address = $5,
+                pickup_latitude = $6,
+                pickup_longitude = $7,
+                pickup_contact_name = $8,
+                pickup_contact_phone = $9,
+                dropoff_address = $10,
+                dropoff_latitude = $11,
+                dropoff_longitude = $12,
+                payment_amount = $13,
+                package_weight = $14,
+                package_type = $15,
+                package_notes = $16,
+                payment_type = $17,
+                items_description = $18,
+                special_instructions = $19,
+                updated_at = NOW()
+          WHERE id = $1
+            AND partner_id IS NULL
+            AND status IN ('pending', 'available')
+          RETURNING id, order_number, status, partner_id, marketplace_order_id, created_at`,
+        [existingJob.id, ...jobValues]
+      );
+
+      if (!updated.rows.length) {
+        return res.status(409).json({
+          success: false,
+          message: 'This delivery request changed while assigning the rider. Reload the order and try again.',
+        });
+      }
+      job = updated.rows[0];
+    } else {
+      const result = await riderQuery(
+        `INSERT INTO "DeliveryJob" (
           marketplace_order_id,
           order_number,
           customer_name,
@@ -141,31 +211,13 @@ export const createDeliveryRequest = async (req, res) => {
           special_instructions,
           status
        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL, $13, $14, $15, $16, $17, $18, $19, 'pending')
-       RETURNING id, order_number, status, partner_id, marketplace_order_id, created_at`,
-      [
-        orderId,
-        buildOrderNumber(order),
-        customerName || order.customer?.name || order.customer?.email || 'Customer',
-        customerPhone || order.customer?.phone || '',
-        pickupAddress || order.salesman?.store?.address || order.salesman?.store?.name || 'Pickup location',
-        pickupLatitude,
-        pickupLongitude,
-        pickupContactName || order.salesman?.store?.name || order.salesman?.name || null,
-        pickupContactPhone || order.salesman?.store?.phone || order.salesman?.phone || null,
-        deliveryAddress,
-        deliveryLatitude,
-        deliveryLongitude,
-        estimatedEarnings || order.deliveryFee || order.serviceCharge || 0,
-        packageWeight || null,
-        packageType || null,
-        packageNotes || null,
-        normalizedPaymentType,
-        itemSummary || packageType || null,
-        packageNotes || order.notes || null,
-      ]
-    );
+         RETURNING id, order_number, status, partner_id, marketplace_order_id, created_at`,
+        [orderId, ...jobValues]
+      );
+      job = result.rows[0];
+      createdNewJob = true;
+    }
 
-    const job = result.rows[0];
     const selectedPartnerId = partnerId || riderId || selectedRiderId;
 
     // Dispatch is best-effort — a failure must NOT roll back the already-committed job
@@ -173,7 +225,12 @@ export const createDeliveryRequest = async (req, res) => {
     if (selectedPartnerId) {
       const selectedDispatch = await dispatchJobToSelectedDriver(job.id, Number(selectedPartnerId));
       if (!selectedDispatch.success) {
-        await riderQuery('DELETE FROM "DeliveryJob" WHERE id = $1 AND status = $2 AND partner_id IS NULL', [job.id, 'pending']);
+        if (createdNewJob) {
+          await riderQuery(
+            'DELETE FROM "DeliveryJob" WHERE id = $1 AND status = $2 AND partner_id IS NULL',
+            [job.id, 'pending']
+          );
+        }
         return res.status(selectedDispatch.statusCode || 400).json({
           success: false,
           message: selectedDispatch.message,
@@ -183,13 +240,19 @@ export const createDeliveryRequest = async (req, res) => {
       offer = selectedDispatch.data;
     } else {
       try {
+        if (job.status === 'awaiting_dispatch') {
+          await riderQuery(
+            `UPDATE "DeliveryJob" SET status = 'pending', updated_at = NOW() WHERE id = $1`,
+            [job.id]
+          );
+        }
         offer = await dispatchJobToNextEligibleDriver(job.id);
       } catch (dispatchError) {
         console.error('Dispatch failed (job still created, will retry):', dispatchError.message);
       }
     }
 
-    return res.status(201).json({
+    return res.status(createdNewJob ? 201 : 200).json({
       success: true,
       message: offer
         ? selectedPartnerId
@@ -253,7 +316,8 @@ export const retryDeliveryRequest = async (req, res) => {
 
     if (req.user.role === 'SALESMAN' || req.user.role === 'SHOP_MANAGER') {
       const shopOwnerId = await resolveShopOwnerId(req.user);
-      if (order.salesmanId !== shopOwnerId) {
+      const shopMemberIds = await getShopMemberIds(shopOwnerId);
+      if (!shopMemberIds.includes(order.salesmanId)) {
         return res.status(403).json({
           success: false,
           message: 'You can only retry delivery requests for your own orders',

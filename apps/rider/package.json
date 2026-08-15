@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
-    "start": "expo start --dev-client",
+    "start": "expo start --dev-client --port 8082",
     "start:expo-go": "expo start",
-    "android": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/android-dev.ps1",
+    "android": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/android-dev.ps1 --port 8082",
     "ios": "expo run:ios",
     "web": "expo start --web"
   },

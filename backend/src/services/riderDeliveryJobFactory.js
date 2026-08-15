@@ -1,6 +1,5 @@
 import prisma from '../lib/prisma.js';
 import { riderQuery } from '../lib/riderDb.js';
-import { dispatchJobToNextEligibleDriver } from './riderRealtimeDispatch.js';
 
 const toNumberOrNull = (value) => {
   const number = Number(value);
@@ -86,7 +85,7 @@ export const createRiderJobFromMarketplaceOrder = async (orderId) => {
         items_description,
         special_instructions,
         status
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL, $13, NULL, NULL, NULL, 'PREPAID', $14, $15, 'pending')
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL, $13, NULL, NULL, NULL, 'PREPAID', $14, $15, 'awaiting_dispatch')
      RETURNING id, order_number, status, created_at`,
     [
       order.id,
@@ -107,7 +106,6 @@ export const createRiderJobFromMarketplaceOrder = async (orderId) => {
     ]
   );
 
-  await dispatchJobToNextEligibleDriver(result.rows[0].id);
   return result.rows[0];
 };
 

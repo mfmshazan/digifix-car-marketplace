@@ -258,7 +258,7 @@ export const dispatchJobToNextEligibleDriver = async (jobId) => {
     }
 
     const job = jobResult.rows[0];
-    if (!['pending', 'available'].includes(job.status) || job.partner_id) {
+    if (!['awaiting_dispatch', 'pending', 'available'].includes(job.status) || job.partner_id) {
       await client.query('ROLLBACK');
       return null;
     }
@@ -772,6 +772,7 @@ export const listEligibleDeliveryPartners = async ({ pickupLatitude, pickupLongi
 
 export const dispatchJobToSelectedDriver = async (jobId, partnerId) => {
   const client = await getRiderClient();
+  let cancelledOffers = [];
 
   try {
     await client.query('BEGIN');
@@ -836,15 +837,30 @@ export const dispatchJobToSelectedDriver = async (jobId, partnerId) => {
 
     const pendingOfferCheck = await client.query(
       `SELECT id FROM "DeliveryOffer"
-        WHERE partner_id = $1 AND offer_status = 'pending' AND expires_at > NOW()
+        WHERE partner_id = $1
+          AND job_id <> $2
+          AND offer_status = 'pending'
+          AND expires_at > NOW()
         LIMIT 1`,
-      [partnerId]
+      [partnerId, jobId]
     );
 
     if (pendingOfferCheck.rows.length) {
       await client.query('ROLLBACK');
       return { success: false, statusCode: 409, message: 'Selected rider has a pending request' };
     }
+
+    const cancelledOfferResult = await client.query(
+      `UPDATE "DeliveryOffer"
+          SET offer_status = 'cancelled',
+              responded_at = NOW(),
+              response_reason = 'supplier_selected_rider'
+        WHERE job_id = $1
+          AND offer_status = 'pending'
+        RETURNING id, partner_id`,
+      [jobId]
+    );
+    cancelledOffers = cancelledOfferResult.rows;
 
     const distanceToPickupKm =
       partner.current_latitude && partner.current_longitude
@@ -857,7 +873,10 @@ export const dispatchJobToSelectedDriver = async (jobId, partnerId) => {
         : null;
 
     await client.query(
-      `UPDATE "DeliveryJob" SET status = 'available' WHERE id = $1 AND status = 'pending'`,
+      `UPDATE "DeliveryJob"
+          SET status = 'available'
+        WHERE id = $1
+          AND status IN ('awaiting_dispatch', 'pending')`,
       [jobId]
     );
 
@@ -878,6 +897,14 @@ export const dispatchJobToSelectedDriver = async (jobId, partnerId) => {
     await client.query('COMMIT');
 
     const offer = offerResult.rows[0];
+    cancelledOffers.forEach((cancelledOffer) => {
+      clearOfferTimer(cancelledOffer.id);
+      emitToPartner(cancelledOffer.partner_id, 'order_request_resolved', {
+        requestId: cancelledOffer.id,
+        jobId,
+        resolution: 'cancelled',
+      });
+    });
     scheduleOfferTimer(offer.id, offer.remaining_ms);
     await sendPendingOfferToPartner(offer.id);
 

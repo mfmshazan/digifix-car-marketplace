@@ -15,6 +15,23 @@ const api = axios.create({
 let isRefreshing = false;
 let refreshSubscribers = [];
 
+const PUBLIC_AUTH_ENDPOINTS = [
+    '/auth/login',
+    '/auth/register',
+    '/auth/forgot-password',
+    '/auth/verify-otp',
+    '/auth/reset-password',
+    '/auth/refresh',
+];
+
+const isPublicAuthRequest = (request = {}) => {
+    const url = String(request.url || '').split('?')[0];
+    return PUBLIC_AUTH_ENDPOINTS.some((endpoint) => url.endsWith(endpoint));
+};
+
+const hasAuthorizationHeader = (request = {}) =>
+    Boolean(request.headers?.Authorization || request.headers?.authorization);
+
 /**
  * Subscribe to token refresh
  */
@@ -62,10 +79,14 @@ api.interceptors.response.use(
     async (error) => {
         const originalRequest = error.config;
 
-        // If error is 401/403 and we haven't tried to refresh yet
+        // Public login/register failures are credential errors, not expired sessions.
+        // Refresh only protected requests that were actually sent with an access token.
         if (
             (error.response?.status === 401 || error.response?.status === 403) &&
-            !originalRequest._retry
+            originalRequest &&
+            !originalRequest._retry &&
+            !isPublicAuthRequest(originalRequest) &&
+            hasAuthorizationHeader(originalRequest)
         ) {
             if (isRefreshing) {
                 // Wait for the ongoing refresh to complete
@@ -88,9 +109,11 @@ api.interceptors.response.use(
                 const refreshToken = await getRefreshToken();
 
                 if (!refreshToken) {
-                    // No refresh token, user needs to login again
+                    const sessionError = new Error('Your rider session has expired. Please sign in again.');
+                    isRefreshing = false;
+                    onRefreshFailed(sessionError);
                     await clearTokens();
-                    throw new Error('No refresh token available');
+                    return Promise.reject(sessionError);
                 }
 
                 // Call refresh endpoint

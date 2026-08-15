@@ -60,6 +60,18 @@ export const ADMIN_API_KEY = 'test_admin_key_change_in_production';
 export const TOKEN_REFRESH_THRESHOLD = 60 * 1000; // Refresh 1 minute before expiry
 
 // Route service configuration
+const normalizeOptionalCredential = (value) => {
+    const credential = String(value || '').trim();
+    if (!credential || /^(your_|replace_|placeholder|change_me)/i.test(credential)) {
+        return '';
+    }
+    return credential;
+};
+
 export const ROUTE_PROVIDER = process.env.EXPO_PUBLIC_ROUTE_PROVIDER || 'google';
-export const MAPBOX_ACCESS_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
-export const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+export const MAPBOX_ACCESS_TOKEN = normalizeOptionalCredential(
+    process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN
+);
+export const GOOGLE_MAPS_API_KEY = normalizeOptionalCredential(
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
+);

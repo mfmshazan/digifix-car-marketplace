@@ -234,17 +234,35 @@ class StripeController {
 
             const [products, carParts] = await Promise.all([
                 productIds.length > 0
-                    ? prisma.product.findMany({ where: { id: { in: productIds } } })
+                    ? prisma.product.findMany({
+                        where: { id: { in: productIds } },
+                        include: { salesman: { select: { managerId: true } } },
+                    })
                     : Promise.resolve([]),
                 carPartIds.length > 0
-                    ? prisma.carPart.findMany({ where: { id: { in: carPartIds } } })
+                    ? prisma.carPart.findMany({
+                        where: { id: { in: carPartIds } },
+                        include: { seller: { select: { managerId: true } } },
+                    })
                     : Promise.resolve([]),
             ]);
 
             // Build unified item lookup: productId -> item info with sellerId
             const itemMap = {};
-            products.forEach(p => { itemMap[p.id] = { ...p, sellerId: p.salesmanId, type: 'PRODUCT' }; });
-            carParts.forEach(cp => { itemMap[cp.id] = { ...cp, type: 'CAR_PART' }; });
+            products.forEach(p => {
+                itemMap[p.id] = {
+                    ...p,
+                    sellerId: p.salesman?.managerId || p.salesmanId,
+                    type: 'PRODUCT',
+                };
+            });
+            carParts.forEach(cp => {
+                itemMap[cp.id] = {
+                    ...cp,
+                    sellerId: cp.seller?.managerId || cp.sellerId,
+                    type: 'CAR_PART',
+                };
+            });
 
             // Group cart items by seller
             const groupedBySeller = {};

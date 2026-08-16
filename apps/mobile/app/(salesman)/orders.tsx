@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import {
   getSalesmanOrders,
   updateOrderStatus,
@@ -404,6 +404,7 @@ function DispatchModal({
               {hasSavedCustomerLocation && (
                 <MapView
                   style={dispatchStyles.customerMapPreview}
+                  provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
                   initialRegion={{
                     latitude: Number(deliveryLat),
                     longitude: Number(deliveryLng),
@@ -463,6 +464,7 @@ function DispatchModal({
               {/* Map */}
               <MapView
                 style={{ flex: 1 }}
+                provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
                 initialRegion={
                   tempPin
                     ? { latitude: tempPin.latitude, longitude: tempPin.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 }
@@ -498,15 +500,24 @@ function DispatchModal({
                     if (!tempPin) return;
                     setDeliveryLat(tempPin.latitude.toFixed(6));
                     setDeliveryLng(tempPin.longitude.toFixed(6));
-                    // Reverse geocode via Nominatim (OSM, free)
                     setGeocoding(true);
                     try {
-                      const res = await fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${tempPin.latitude}&lon=${tempPin.longitude}`,
-                        { headers: { "Accept-Language": "en" } }
-                      );
-                      const data = await res.json();
-                      if (data.display_name) setDeliveryAddress(data.display_name);
+                      const currentPermission = await Location.getForegroundPermissionsAsync();
+                      const permission = currentPermission.status === "granted"
+                        ? currentPermission
+                        : await Location.requestForegroundPermissionsAsync();
+                      if (permission.status === "granted") {
+                        const [place] = await Location.reverseGeocodeAsync(tempPin);
+                        const address = [
+                          place?.streetNumber,
+                          place?.street || place?.name,
+                          place?.city || place?.subregion,
+                          place?.region,
+                          place?.postalCode,
+                          place?.country,
+                        ].filter(Boolean).join(", ");
+                        if (address) setDeliveryAddress(address);
+                      }
                     } catch { /* keep address empty, user can type it */ }
                     setGeocoding(false);
                     setShowMapPicker(false);

@@ -18,7 +18,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import {
   AddressInput,
   createAddress,
@@ -730,6 +730,7 @@ export default function SavedAddressesScreen() {
               </View>
               <MapView
                 style={styles.map}
+                provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
                 initialRegion={tempPin
                   ? { ...tempPin, latitudeDelta: 0.01, longitudeDelta: 0.01 }
                   : { latitude: 6.9271, longitude: 79.8612, latitudeDelta: 0.08, longitudeDelta: 0.08 }}

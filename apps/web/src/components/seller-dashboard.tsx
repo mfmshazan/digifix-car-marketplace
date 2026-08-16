@@ -311,9 +311,9 @@ function DeliveryStatusBadge({ status }: { status: string }) {
   );
 }
 
-// ─── Leaflet Map Picker (Delivery Location) ──────────────────────────────────
+// ─── Google Map Picker (Delivery Location) ───────────────────────────────────
 
-function LeafletMapPicker({
+function GoogleMapPicker({
   onSelect,
   initialCoordinates,
   readOnly = false,
@@ -325,114 +325,133 @@ function LeafletMapPicker({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
-  const [status, setStatus] = useState<'idle' | 'selected' | 'geocoding'>(
+  const onSelectRef = useRef(onSelect);
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
+  const initialLatitude = initialCoordinates?.lat;
+  const initialLongitude = initialCoordinates?.lng;
+  const [status, setStatus] = useState<'idle' | 'selected' | 'geocoding' | 'error'>(
     initialCoordinates ? 'selected' : 'idle'
   );
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(initialCoordinates || null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    initialCoordinates || null
+  );
 
   useEffect(() => {
-    // Inject Leaflet CSS once
-    if (!document.getElementById('leaflet-css')) {
-      const link = document.createElement('link');
-      link.id = 'leaflet-css';
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(link);
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
+
+  useEffect(() => {
+    if (!apiKey) {
+      setStatus('error');
+      return;
     }
+
+    let poll: ReturnType<typeof setInterval> | null = null;
 
     const initMap = () => {
       if (!containerRef.current || mapRef.current) return;
-      const L = (window as any).L;
-      if (!L) return;
+      const google = (window as any).google;
+      if (!google?.maps) return;
 
-      const center = initialCoordinates || { lat: 6.9271, lng: 79.8612 };
-      const map = L.map(containerRef.current, {
-        dragging: !readOnly,
-        scrollWheelZoom: !readOnly,
-        doubleClickZoom: !readOnly,
-        touchZoom: !readOnly,
-        boxZoom: !readOnly,
-        keyboard: !readOnly,
-        zoomControl: !readOnly,
-      }).setView([center.lat, center.lng], initialCoordinates ? 15 : 13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 19,
-      }).addTo(map);
+      const hasInitialCoordinates =
+        initialLatitude !== undefined && initialLongitude !== undefined;
+      const center = hasInitialCoordinates
+        ? { lat: initialLatitude, lng: initialLongitude }
+        : { lat: 6.9271, lng: 79.8612 };
+      const map = new google.maps.Map(containerRef.current, {
+        center,
+        zoom: hasInitialCoordinates ? 15 : 13,
+        disableDefaultUI: readOnly,
+        clickableIcons: false,
+        gestureHandling: readOnly ? 'none' : 'auto',
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: false,
+      });
+      const geocoder = new google.maps.Geocoder();
 
-      const handlePick = async (lat: number, lng: number) => {
+      const handlePick = (lat: number, lng: number) => {
         setCoords({ lat, lng });
         setStatus('geocoding');
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-            { headers: { 'Accept-Language': 'en' } }
-          );
-          const data = await res.json();
-          onSelect(lat, lng, data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        } catch {
-          onSelect(lat, lng, `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        }
-        setStatus('selected');
+        geocoder.geocode(
+          { location: { lat, lng } },
+          (results: any[], geocodeStatus: string) => {
+            const address = geocodeStatus === 'OK' && results?.[0]?.formatted_address
+              ? results[0].formatted_address
+              : `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            onSelectRef.current(lat, lng, address);
+            setStatus('selected');
+          }
+        );
       };
 
-      if (initialCoordinates) {
-        markerRef.current = L.marker(
-          [initialCoordinates.lat, initialCoordinates.lng],
-          { draggable: !readOnly }
-        ).addTo(map);
-      }
-
-      if (!readOnly) {
-        map.on('click', (e: any) => {
-          const { lat, lng } = e.latlng;
-          if (markerRef.current) {
-            markerRef.current.setLatLng([lat, lng]);
-          } else {
-            markerRef.current = L.marker([lat, lng], { draggable: true }).addTo(map);
-          }
-          markerRef.current.off('dragend');
-          markerRef.current.on('dragend', (de: any) => {
-            const pos = de.target.getLatLng();
-            handlePick(pos.lat, pos.lng);
+      const setMarker = (lat: number, lng: number) => {
+        if (markerRef.current) {
+          markerRef.current.setPosition({ lat, lng });
+          return;
+        }
+        markerRef.current = new google.maps.Marker({
+          map,
+          position: { lat, lng },
+          draggable: !readOnly,
+          title: readOnly ? 'Customer delivery location' : 'Delivery location',
+        });
+        if (!readOnly) {
+          markerRef.current.addListener('dragend', (event: any) => {
+            if (event.latLng) handlePick(event.latLng.lat(), event.latLng.lng());
           });
+        }
+      };
+
+      if (hasInitialCoordinates) setMarker(initialLatitude, initialLongitude);
+      if (!readOnly) {
+        map.addListener('click', (event: any) => {
+          if (!event.latLng) return;
+          const lat = event.latLng.lat();
+          const lng = event.latLng.lng();
+          setMarker(lat, lng);
           handlePick(lat, lng);
         });
       }
-
       mapRef.current = map;
     };
 
-    if ((window as any).L) {
+    if ((window as any).google?.maps) {
       initMap();
-    } else if (!document.getElementById('leaflet-js')) {
+    } else if (!document.getElementById('google-maps-js')) {
       const script = document.createElement('script');
-      script.id = 'leaflet-js';
-      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.id = 'google-maps-js';
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
+      script.async = true;
+      script.defer = true;
       script.onload = initMap;
+      script.onerror = () => setStatus('error');
       document.head.appendChild(script);
     } else {
-      // Script tag exists but may still be loading — poll briefly
-      const poll = setInterval(() => {
-        if ((window as any).L) { clearInterval(poll); initMap(); }
+      poll = setInterval(() => {
+        if ((window as any).google?.maps) {
+          if (poll) clearInterval(poll);
+          initMap();
+        }
       }, 100);
-      return () => clearInterval(poll);
     }
 
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-        markerRef.current = null;
+      if (poll) clearInterval(poll);
+      const google = (window as any).google;
+      if (mapRef.current && google?.maps) {
+        google.maps.event.clearInstanceListeners(mapRef.current);
       }
+      mapRef.current = null;
+      markerRef.current = null;
     };
-  }, []);
+  }, [apiKey, initialLatitude, initialLongitude, readOnly]);
 
   return (
     <div className="space-y-2">
       <div
         ref={containerRef}
-        className="w-full rounded-xl overflow-hidden border border-gray-200"
+        className="w-full rounded-lg overflow-hidden border border-gray-200"
         style={{ height: 260 }}
       />
       {status === 'idle' && (
@@ -442,19 +461,22 @@ function LeafletMapPicker({
       )}
       {status === 'geocoding' && (
         <p className="text-xs text-amber-600 text-center animate-pulse">
-          Fetching address…
+          Fetching address...
         </p>
       )}
       {status === 'selected' && coords && !readOnly && (
         <p className="text-xs text-green-700 font-medium text-center">
-          📍 {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)} — You can drag the pin to adjust
+          {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}. Drag the pin to adjust.
+        </p>
+      )}
+      {status === 'error' && (
+        <p className="text-xs text-red-600 text-center">
+          Google Maps could not load. Check the Maps JavaScript API key configuration.
         </p>
       )}
     </div>
   );
 }
-
-// ─── Create Delivery Request Modal ───────────────────────────────────────────
 
 interface DeliveryFormState {
   pickupLatitude: string;
@@ -870,8 +892,8 @@ function CreateDeliveryRequestModal({
               </div>
             )}
 
-            {/* Leaflet map */}
-            <LeafletMapPicker
+            {/* Google map */}
+            <GoogleMapPicker
               initialCoordinates={form.deliveryLatitude && form.deliveryLongitude
                 ? { lat: Number(form.deliveryLatitude), lng: Number(form.deliveryLongitude) }
                 : null}

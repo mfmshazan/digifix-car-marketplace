@@ -17,6 +17,7 @@ import AssignedDeliveriesScreen from './screens/AssignedDeliveriesScreen';
 import ProofOfDeliveryScreen from './screens/ProofOfDeliveryScreen';
 import JobHistoryScreen from './screens/JobHistoryScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import ProfileHubScreen from './screens/ProfileHubScreen';
 import PerformanceDashboardScreen from './screens/PerformanceDashboardScreen';
 import WalletScreen from './screens/WalletScreen';
 import RealtimeDispatchLayer from './components/RealtimeDispatchLayer';
@@ -33,6 +34,7 @@ import { fetchDriverHome } from './store/slices/homeSlice';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+const ProfileStack = createStackNavigator();
 
 const navTheme = {
     ...DefaultTheme,
@@ -45,6 +47,42 @@ const navTheme = {
         border: colors.border,
     },
 };
+
+function ProfileNavigator() {
+    return (
+        <ProfileStack.Navigator
+            screenOptions={{
+                headerStyle: styles.headerStyle,
+                headerTintColor: colors.text,
+                headerTitleStyle: styles.headerTitle,
+                headerTitleAlign: 'center',
+                headerShadowVisible: false,
+                cardStyle: { backgroundColor: colors.background },
+            }}
+        >
+            <ProfileStack.Screen
+                name="ProfileMenu"
+                component={ProfileHubScreen}
+                options={{ headerShown: false }}
+            />
+            <ProfileStack.Screen
+                name="RiderProfile"
+                component={ProfileScreen}
+                options={{ title: 'Profile' }}
+            />
+            <ProfileStack.Screen
+                name="AssignedDeliveries"
+                component={AssignedDeliveriesScreen}
+                options={{ title: 'Assigned Deliveries' }}
+            />
+            <ProfileStack.Screen
+                name="JobHistory"
+                component={JobHistoryScreen}
+                options={{ title: 'Delivery History' }}
+            />
+        </ProfileStack.Navigator>
+    );
+}
 
 function MainTabs() {
     return (
@@ -61,10 +99,6 @@ function MainTabs() {
                     let iconName;
                     if (route.name === 'Home') {
                         iconName = focused ? 'home' : 'home-outline';
-                    } else if (route.name === 'AssignedDeliveries') {
-                        iconName = focused ? 'car' : 'car-outline';
-                    } else if (route.name === 'JobHistory') {
-                        iconName = focused ? 'receipt' : 'receipt-outline';
                     } else if (route.name === 'Performance') {
                         iconName = focused ? 'analytics' : 'analytics-outline';
                     } else if (route.name === 'Wallet') {
@@ -86,16 +120,6 @@ function MainTabs() {
                 options={{ tabBarLabel: 'Home' }}
             />
             <Tab.Screen
-                name="AssignedDeliveries"
-                component={AssignedDeliveriesScreen}
-                options={{ tabBarLabel: 'Assigned' }}
-            />
-            <Tab.Screen
-                name="JobHistory"
-                component={JobHistoryScreen}
-                options={{ tabBarLabel: 'History' }}
-            />
-            <Tab.Screen
                 name="Performance"
                 component={PerformanceDashboardScreen}
                 options={{ tabBarLabel: 'Performance' }}
@@ -107,7 +131,7 @@ function MainTabs() {
             />
             <Tab.Screen
                 name="Profile"
-                component={ProfileScreen}
+                component={ProfileNavigator}
                 options={{ tabBarLabel: 'Profile' }}
             />
         </Tab.Navigator>

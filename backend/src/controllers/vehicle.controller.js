@@ -227,10 +227,16 @@ const searchVehicleByRegistration = async (req, res) => {
 
     const { vehicleModel } = registration;
 
-    // 2. Fetch all active + approved Products compatible with this vehicle model
+    // 2. Fetch all active + approved Products compatible with this vehicle model.
+    // A product matches either via its primary vehicleModelId (legacy single-model
+    // products) or via the compatibleModels many-to-many (manager selected multiple
+    // models for one listing).
     const compatibleProducts = await prisma.product.findMany({
       where: {
-        vehicleModelId: vehicleModel.id,
+        OR: [
+          { vehicleModelId: vehicleModel.id },
+          { compatibleModels: { some: { id: vehicleModel.id } } },
+        ],
         isActive: true,
         approvalStatus: 'APPROVED',
       },

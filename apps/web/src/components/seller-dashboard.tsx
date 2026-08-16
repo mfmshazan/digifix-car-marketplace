@@ -2586,6 +2586,103 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
   );
 }
 
+// ─── Multi-select dropdown (checkbox list + "All") ──────────────────────────
+// Used for Vehicle Type / Brand / Model so a manager can tag one product as
+// compatible with several vehicles instead of exactly one.
+
+function MultiSelectDropdown({
+  options,
+  selectedIds,
+  onChange,
+  placeholder,
+  disabled,
+  loading,
+}: {
+  options: { id: string; name: string }[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  placeholder: string;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const allSelected = options.length > 0 && selectedIds.length === options.length;
+
+  const toggleAll = () => {
+    onChange(allSelected ? [] : options.map(o => o.id));
+  };
+
+  const toggleOne = (id: string) => {
+    onChange(
+      selectedIds.includes(id)
+        ? selectedIds.filter(existing => existing !== id)
+        : [...selectedIds, id]
+    );
+  };
+
+  const summary = loading
+    ? 'Loading...'
+    : selectedIds.length === 0
+    ? placeholder
+    : allSelected
+    ? `All (${options.length})`
+    : `${selectedIds.length} selected`;
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(prev => !prev)}
+        disabled={disabled}
+        className="w-full px-4 py-3 border border-gray-300 rounded-xl text-left flex items-center justify-between focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <span className={selectedIds.length === 0 ? 'text-gray-400' : 'text-gray-900'}>
+          {summary}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && !disabled && (
+        <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg py-1">
+          {options.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-gray-400">No options available</div>
+          ) : (
+            <>
+              <label className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 font-medium">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} className="rounded" />
+                <span className="text-sm text-gray-900">All</span>
+              </label>
+              {options.map(opt => (
+                <label key={opt.id} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(opt.id)}
+                    onChange={() => toggleOne(opt.id)}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-gray-700">{opt.name}</span>
+                </label>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Add Product Modal (with Vehicle Types, Brands, Models) ─────────────────
 
 function AddProductModal({ onClose }: { onClose: () => void }) {
@@ -2605,10 +2702,13 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     stock: '',
     condition: 'NEW',
     categoryId: '',
-    vehicleTypeId: '',
-    vehicleBrandId: '',
-    vehicleModelId: '',
   });
+
+  // Multi-select: a product can be tagged compatible with several vehicle
+  // types/brands/models at once (each dropdown also offers an "All" option).
+  const [selectedTypeIds, setSelectedTypeIds] = useState<string[]>([]);
+  const [selectedBrandIds, setSelectedBrandIds] = useState<string[]>([]);
+  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
 
   // Load vehicle types and categories on mount
   useEffect(() => {
@@ -2627,24 +2727,31 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     loadInitialData();
   }, []);
 
-  // Load vehicle brands when vehicle type changes
+  // Load vehicle brands for the union of all selected vehicle types
   useEffect(() => {
-    if (!formData.vehicleTypeId) {
+    if (selectedTypeIds.length === 0) {
       setVehicleBrands([]);
       setVehicleModels([]);
+      setSelectedBrandIds([]);
       return;
     }
 
     const loadBrands = async () => {
       setLoadingBrands(true);
       try {
-        const res = await vehicleApi.getVehicleBrandsByType(formData.vehicleTypeId);
-        if (res.success) {
-          setVehicleBrands(res.data);
-          // Reset brand and model selections
-          setFormData(prev => ({ ...prev, vehicleBrandId: '', vehicleModelId: '' }));
-          setVehicleModels([]);
-        }
+        const results = await Promise.all(
+          selectedTypeIds.map(typeId => vehicleApi.getVehicleBrandsByType(typeId))
+        );
+        const brandMap = new Map<string, any>();
+        results.forEach(res => {
+          if (res.success) {
+            res.data.forEach((brand: any) => brandMap.set(brand.id, brand));
+          }
+        });
+        const merged = Array.from(brandMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        setVehicleBrands(merged);
+        // Drop any brand selections that no longer apply under the new type set
+        setSelectedBrandIds(prev => prev.filter(id => merged.some(b => b.id === id)));
       } catch (err) {
         console.error('Failed to load vehicle brands', err);
       } finally {
@@ -2653,25 +2760,32 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     };
 
     loadBrands();
-  }, [formData.vehicleTypeId]);
+  }, [selectedTypeIds]);
 
-  // Load vehicle models when vehicle brand changes
+  // Load vehicle models for the union of all selected vehicle brands
   useEffect(() => {
-    if (!formData.vehicleBrandId) {
+    if (selectedBrandIds.length === 0) {
       setVehicleModels([]);
-      setFormData(prev => ({ ...prev, vehicleModelId: '' }));
+      setSelectedModelIds([]);
       return;
     }
 
     const loadModels = async () => {
       setLoadingModels(true);
       try {
-        const res = await vehicleApi.getVehicleModelsByBrand(formData.vehicleBrandId);
-        if (res.success) {
-          setVehicleModels(res.data);
-          // Reset model selection
-          setFormData(prev => ({ ...prev, vehicleModelId: '' }));
-        }
+        const results = await Promise.all(
+          selectedBrandIds.map(brandId => vehicleApi.getVehicleModelsByBrand(brandId))
+        );
+        const modelMap = new Map<string, any>();
+        results.forEach(res => {
+          if (res.success) {
+            res.data.forEach((model: any) => modelMap.set(model.id, model));
+          }
+        });
+        const merged = Array.from(modelMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        setVehicleModels(merged);
+        // Drop any model selections that no longer apply under the new brand set
+        setSelectedModelIds(prev => prev.filter(id => merged.some(m => m.id === id)));
       } catch (err) {
         console.error('Failed to load vehicle models', err);
       } finally {
@@ -2680,7 +2794,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     };
 
     loadModels();
-  }, [formData.vehicleBrandId]);
+  }, [selectedBrandIds]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -2704,8 +2818,8 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     e.preventDefault();
 
     // Validate required fields
-    if (!formData.vehicleModelId) {
-      alert('Please select a vehicle model');
+    if (selectedModelIds.length === 0) {
+      alert('Please select at least one vehicle model');
       return;
     }
 
@@ -2716,6 +2830,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock),
         images: images,
+        vehicleModelIds: selectedModelIds,
       });
       alert('Product added successfully!');
       onClose();
@@ -2767,61 +2882,41 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Vehicle Type Dropdown */}
+          {/* Vehicle Type Dropdown (multi-select) */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Type *</label>
-            <select
-              title="Select vehicle type"
-              value={formData.vehicleTypeId}
-              onChange={e => setFormData({ ...formData, vehicleTypeId: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
-              required
-            >
-              <option value="">Select a vehicle type</option>
-              {vehicleTypes.map(type => (
-                <option key={type.id} value={type.id}>{type.name}</option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Type * (select one or more)</label>
+            <MultiSelectDropdown
+              options={vehicleTypes}
+              selectedIds={selectedTypeIds}
+              onChange={setSelectedTypeIds}
+              placeholder="Select vehicle type(s)"
+            />
           </div>
 
-          {/* Vehicle Brand Dropdown */}
+          {/* Vehicle Brand Dropdown (multi-select) */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Brand *</label>
-            <select
-              title="Select vehicle brand"
-              value={formData.vehicleBrandId}
-              onChange={e => setFormData({ ...formData, vehicleBrandId: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
-              disabled={!formData.vehicleTypeId || loadingBrands}
-              required
-            >
-              <option value="">
-                {loadingBrands ? 'Loading brands...' : 'Select a brand'}
-              </option>
-              {vehicleBrands.map(brand => (
-                <option key={brand.id} value={brand.id}>{brand.name}</option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Brand * (select one or more)</label>
+            <MultiSelectDropdown
+              options={vehicleBrands}
+              selectedIds={selectedBrandIds}
+              onChange={setSelectedBrandIds}
+              placeholder="Select vehicle brand(s)"
+              disabled={selectedTypeIds.length === 0}
+              loading={loadingBrands}
+            />
           </div>
 
-          {/* Vehicle Model Dropdown */}
+          {/* Vehicle Model Dropdown (multi-select) */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Model *</label>
-            <select
-              title="Select vehicle model"
-              value={formData.vehicleModelId}
-              onChange={e => setFormData({ ...formData, vehicleModelId: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
-              disabled={!formData.vehicleBrandId || loadingModels}
-              required
-            >
-              <option value="">
-                {loadingModels ? 'Loading models...' : 'Select a model'}
-              </option>
-              {vehicleModels.map(model => (
-                <option key={model.id} value={model.id}>{model.name}</option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Model * (select one or more)</label>
+            <MultiSelectDropdown
+              options={vehicleModels}
+              selectedIds={selectedModelIds}
+              onChange={setSelectedModelIds}
+              placeholder="Select vehicle model(s)"
+              disabled={selectedBrandIds.length === 0}
+              loading={loadingModels}
+            />
           </div>
 
           {/* Product Name */}
@@ -2895,7 +2990,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl transition-all">
               Cancel
             </button>
-            <button type="submit" disabled={isSubmitting || !formData.vehicleModelId} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
+            <button type="submit" disabled={isSubmitting || selectedModelIds.length === 0} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
               {isSubmitting ? 'Adding...' : 'Add Product'}
             </button>
           </div>

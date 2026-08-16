@@ -659,6 +659,7 @@ export const getCustomerOrders = async (req, res) => {
                 role: true,
                 managerId: true,
                 images: true,
+                categoryId: true,
                 salesman: {
                   select: {
                     id: true,

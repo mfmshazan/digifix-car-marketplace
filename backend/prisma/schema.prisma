@@ -129,6 +129,7 @@ model Product {
   store              Store?                 @relation(fields: [storeId], references: [id])
   vehicleModel       VehicleModel?          @relation(fields: [vehicleModelId], references: [id], onDelete: SetNull)
   compatibleVehicles VehicleCompatibility[]
+  compatibleModels   VehicleModel[]         @relation("ProductCompatibleModels")
   wishlistItems      WishlistItem[]
 
   @@index([categoryId])
@@ -558,6 +559,7 @@ model VehicleModel {
   vehicleBrand     VehicleBrand          @relation(fields: [vehicleBrandId], references: [id], onDelete: Cascade)
   vehicleType      VehicleType           @relation(fields: [vehicleTypeId], references: [id], onDelete: Cascade)
   products         Product[]
+  compatibleProducts Product[]           @relation("ProductCompatibleModels")
   registrations    VehicleRegistration[]
 
   @@unique([name, vehicleBrandId, vehicleTypeId])

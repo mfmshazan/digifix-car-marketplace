@@ -19,9 +19,11 @@ const getProducts = async (req, res) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Build where clause
+    // Build where clause. Only surface approved listings — same gate the
+    // number-plate search applies, so a REJECTED item never shows here either.
     const where = {
       isActive: true,
+      approvalStatus: 'APPROVED',
     };
 
     if (category) {
@@ -168,26 +170,33 @@ const createProduct = async (req, res) => {
       images,
       categoryId,
       vehicleModelId,
+      vehicleModelIds,
       compatibleVehicles,
     } = req.body;
 
+    // Support both the legacy single vehicleModelId and the newer multi-select
+    // vehicleModelIds array (manager can tag one product to several models).
+    const modelIds = Array.isArray(vehicleModelIds) && vehicleModelIds.length > 0
+      ? [...new Set(vehicleModelIds)]
+      : (vehicleModelId ? [vehicleModelId] : []);
+
     // Validate required fields
-    if (!name || !price || !vehicleModelId) {
+    if (!name || !price || modelIds.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Name, price, and vehicleModelId are required',
+        message: 'Name, price, and at least one vehicle model are required',
       });
     }
 
-    // Verify that the vehicleModelId exists
-    const vehicleModel = await prisma.vehicleModel.findUnique({
-      where: { id: vehicleModelId },
+    // Verify that every selected vehicle model exists
+    const matchingModels = await prisma.vehicleModel.findMany({
+      where: { id: { in: modelIds } },
     });
 
-    if (!vehicleModel) {
+    if (matchingModels.length !== modelIds.length) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid vehicleModelId',
+        message: 'One or more selected vehicle models are invalid',
       });
     }
 
@@ -207,9 +216,13 @@ const createProduct = async (req, res) => {
         stock: stock ? parseInt(stock) : 0,
         images: images || [],
         categoryId: categoryId || null,
-        vehicleModelId,
+        vehicleModelId: modelIds[0],
         salesmanId: userId,
         storeId: store?.id,
+        approvalStatus: 'APPROVED',
+        compatibleModels: {
+          connect: modelIds.map((id) => ({ id })),
+        },
         compatibleVehicles: compatibleVehicles
           ? {
               create: compatibleVehicles,
@@ -220,6 +233,12 @@ const createProduct = async (req, res) => {
         category: true,
         store: true,
         vehicleModel: {
+          include: {
+            vehicleBrand: true,
+            vehicleType: true,
+          },
+        },
+        compatibleModels: {
           include: {
             vehicleBrand: true,
             vehicleType: true,
@@ -264,16 +283,20 @@ const updateProduct = async (req, res) => {
       });
     }
 
-    // Verify vehicleModelId if provided
-    if (updateData.vehicleModelId) {
-      const vehicleModel = await prisma.vehicleModel.findUnique({
-        where: { id: updateData.vehicleModelId },
+    // Verify vehicleModelIds/vehicleModelId if provided
+    const modelIds = Array.isArray(updateData.vehicleModelIds) && updateData.vehicleModelIds.length > 0
+      ? [...new Set(updateData.vehicleModelIds)]
+      : (updateData.vehicleModelId ? [updateData.vehicleModelId] : []);
+
+    if (modelIds.length > 0) {
+      const matchingModels = await prisma.vehicleModel.findMany({
+        where: { id: { in: modelIds } },
       });
 
-      if (!vehicleModel) {
+      if (matchingModels.length !== modelIds.length) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid vehicleModelId',
+          message: 'One or more selected vehicle models are invalid',
         });
       }
     }
@@ -290,13 +313,22 @@ const updateProduct = async (req, res) => {
         stock: updateData.stock ? parseInt(updateData.stock) : undefined,
         images: updateData.images,
         categoryId: updateData.categoryId || null,
-        vehicleModelId: updateData.vehicleModelId,
+        vehicleModelId: modelIds[0] || undefined,
         isActive: updateData.isActive,
+        compatibleModels: modelIds.length > 0
+          ? { set: modelIds.map((id) => ({ id })) }
+          : undefined,
       },
       include: {
         category: true,
         store: true,
         vehicleModel: {
+          include: {
+            vehicleBrand: true,
+            vehicleType: true,
+          },
+        },
+        compatibleModels: {
           include: {
             vehicleBrand: true,
             vehicleType: true,

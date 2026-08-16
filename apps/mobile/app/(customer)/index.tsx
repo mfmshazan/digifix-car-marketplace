@@ -37,6 +37,25 @@ import {
   CompatibleProduct,
   CompatiblePartType,
 } from "../../src/api/vehicle";
+import { getProducts } from "../../src/api/products";
+import { getCustomerOrders } from "../../src/api/orders";
+
+// ─── Sample registration numbers (seeded data) — tap to try the search ───────
+const samplePlates = [
+  { reg: "ABC123", label: "Toyota Corolla" },
+  { reg: "XYZ458", label: "Toyota Camry" },
+  { reg: "QWE742", label: "Honda Civic" },
+];
+
+/** Shuffle a copy of the array (Fisher–Yates) */
+const shuffleArray = <T,>(arr: T[]): T[] => {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
 
 // ─── Promotions (shown before vehicle is identified) ─────────────────────────
 const promotions = [
@@ -104,6 +123,11 @@ export default function CustomerHomeScreen() {
   // ── wishlist ──
   const [wishlistedIds, setWishlistedIds] = useState<Set<string>>(new Set());
 
+  // ── random/featured parts (shown before a vehicle is searched) ──
+  const [featuredProducts, setFeaturedProducts] = useState<CompatibleProduct[]>([]);
+  const [loadingFeatured, setLoadingFeatured] = useState(false);
+  const [isPersonalized, setIsPersonalized] = useState(false);
+
   // ── promotion carousel ──
   const [currentPromoIdx, setCurrentPromoIdx] = useState(0);
   const promoScrollRef = useRef<FlatList>(null);
@@ -120,6 +144,7 @@ export default function CustomerHomeScreen() {
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     loadWishlist();
+    loadFeaturedProducts();
   }, []);
 
   // Sync input with stored registration
@@ -193,6 +218,52 @@ export default function CustomerHomeScreen() {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Featured / random parts (shown on the dashboard before a vehicle search)
+  // ─────────────────────────────────────────────────────────────────────────
+  const loadFeaturedProducts = async () => {
+    try {
+      setLoadingFeatured(true);
+
+      // Returning customers: recommend from the category they buy from most.
+      // Guests / new customers (no order history) fall back to a random preview.
+      let topCategoryId: string | undefined;
+      try {
+        const ordersRes = await getCustomerOrders();
+        const orders = ordersRes?.data?.orders ?? [];
+        const categoryCounts = new Map<string, number>();
+        for (const order of orders) {
+          for (const item of order.items ?? []) {
+            const categoryId = item.product?.categoryId;
+            if (categoryId) {
+              categoryCounts.set(categoryId, (categoryCounts.get(categoryId) ?? 0) + 1);
+            }
+          }
+        }
+        if (categoryCounts.size > 0) {
+          topCategoryId = [...categoryCounts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+        }
+      } catch {
+        // Not signed in / no history yet — that's fine, use the random preview.
+      }
+
+      setIsPersonalized(!!topCategoryId);
+      const response = await getProducts({ limit: 30, category: topCategoryId });
+      if (response.success && response.data) {
+        setFeaturedProducts(shuffleArray(response.data.products).slice(0, 8));
+      }
+    } catch (error) {
+      console.error("Failed to load featured products:", error);
+    } finally {
+      setLoadingFeatured(false);
+    }
+  };
+
+  const handleSamplePlatePress = (reg: string) => {
+    setRegistrationInput(reg);
+    void handleSearchFor(reg);
+  };
+
   const handleToggleWishlist = useCallback(
     async (productId: string) => {
       const wasWishlisted = wishlistedIds.has(productId);
@@ -253,8 +324,10 @@ export default function CustomerHomeScreen() {
   // ─────────────────────────────────────────────────────────────────────────
   // Vehicle Registration Search
   // ─────────────────────────────────────────────────────────────────────────
-  const handleSearch = async () => {
-    const query = registrationInput.trim().toUpperCase();
+  const handleSearch = () => handleSearchFor(registrationInput);
+
+  const handleSearchFor = async (raw: string) => {
+    const query = raw.trim().toUpperCase();
     if (!query) {
       Alert.alert(
         "Enter Registration Number",
@@ -739,6 +812,23 @@ export default function CustomerHomeScreen() {
             )}
           </TouchableOpacity>
         </View>
+
+        {/* Sample plates — tap to try the search instantly */}
+        {!vehicleData && (
+          <View style={styles.samplePlateRow}>
+            <Text style={styles.samplePlateLabel}>Try:</Text>
+            {samplePlates.map((s) => (
+              <TouchableOpacity
+                key={s.reg}
+                style={styles.samplePlateChip}
+                onPress={() => handleSamplePlatePress(s.reg)}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.samplePlateChipText}>{s.reg}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       <ScrollView
@@ -921,6 +1011,37 @@ export default function CustomerHomeScreen() {
           </View>
         )}
 
+        {/* ── Popular Parts (random preview, shown before a vehicle search) ── */}
+        {!vehicleData && (featuredProducts.length > 0 || loadingFeatured) && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>
+                {isPersonalized ? "Recommended for You" : "Popular Parts"}
+              </Text>
+              <Text style={styles.resultsCount}>
+                {isPersonalized ? "Based on your past orders" : "Browse a preview"}
+              </Text>
+            </View>
+            {loadingFeatured ? (
+              <ActivityIndicator
+                color="#00002E"
+                size="small"
+                style={{ marginVertical: 24 }}
+              />
+            ) : (
+              <FlatList
+                data={featuredProducts}
+                renderItem={renderProductCard}
+                keyExtractor={(item) => item.id}
+                numColumns={2}
+                scrollEnabled={false}
+                contentContainerStyle={styles.productGrid}
+                columnWrapperStyle={styles.productGridRow}
+              />
+            )}
+          </View>
+        )}
+
         {/* ── Default state: How it works ─────────────────────────────────── */}
         {!vehicleData && !isSearching && (
           <View style={styles.howItWorks}>
@@ -1060,6 +1181,32 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
+  },
+  samplePlateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12,
+  },
+  samplePlateLabel: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.7)",
+    marginRight: 2,
+  },
+  samplePlateChip: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 100,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+  },
+  samplePlateChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    letterSpacing: 1,
   },
 
   // ── Vehicle Identified Card ────────────────────────────────────────────────

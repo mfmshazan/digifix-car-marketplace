@@ -637,6 +637,7 @@ export const getCustomerOrders = async (req, res) => {
                 id: true,
                 name: true,
                 images: true,
+                categoryId: true,
                 salesman: {
                   select: {
                     id: true,

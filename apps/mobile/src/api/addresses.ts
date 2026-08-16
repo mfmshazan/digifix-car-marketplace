@@ -9,6 +9,8 @@ export interface CustomerAddress {
   state: string;
   postalCode: string;
   country: string;
+  latitude: number | null;
+  longitude: number | null;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -22,6 +24,8 @@ export interface AddressInput {
   state: string;
   postalCode: string;
   country: string;
+  latitude: number | null;
+  longitude: number | null;
   isDefault: boolean;
 }
 

@@ -5,6 +5,22 @@ import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
 import { resolveShopOwnerId, getShopMemberIds } from '../lib/shopAccess.js';
 import { riderQuery } from '../lib/riderDb.js';
 
+const hasValidCoordinates = (latitude, longitude) => {
+  if (latitude === null || latitude === undefined || String(latitude).trim() === '' ||
+      longitude === null || longitude === undefined || String(longitude).trim() === '') {
+    return false;
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  return Number.isFinite(lat) && lat >= -90 && lat <= 90 &&
+    Number.isFinite(lng) && lng >= -180 && lng <= 180;
+};
+
+const formatDeliveryAddress = (address) =>
+  [address?.street, address?.city, address?.state, address?.postalCode, address?.country]
+    .filter(Boolean)
+    .join(', ');
+
 /**
  * Get salesman's sales summary
  * Returns daily sales, total revenue, and product details for the salesman
@@ -768,7 +784,16 @@ export const createOrder = async (req, res) => {
         message: 'The selected delivery address is invalid. Please choose one of your saved addresses',
       });
     }
+    if (!hasValidCoordinates(address.latitude, address.longitude)) {
+      return res.status(400).json({
+        success: false,
+        message: 'The selected address needs a delivery pin. Edit the address and choose its location on the map.',
+      });
+    }
     const validAddressId = address.id;
+    const deliveryAddressSnapshot = formatDeliveryAddress(address);
+    const deliveryLatitudeSnapshot = Number(address.latitude);
+    const deliveryLongitudeSnapshot = Number(address.longitude);
 
     // Get item IDs
     const itemIds = items.map(item => item.productId);
@@ -958,6 +983,9 @@ export const createOrder = async (req, res) => {
           deliveryFee: Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0,
           paymentMethod: normalizedPaymentMethod,
           notes,
+          deliveryAddress: deliveryAddressSnapshot,
+          deliveryLatitude: deliveryLatitudeSnapshot,
+          deliveryLongitude: deliveryLongitudeSnapshot,
           status: 'PENDING',
           paymentStatus: normalizedPaymentMethod === 'WALLET' ? 'PAID' : 'PENDING', // Mark paid automatically if Wallet
           items: {

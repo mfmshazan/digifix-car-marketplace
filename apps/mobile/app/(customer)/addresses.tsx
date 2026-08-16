@@ -17,6 +17,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
+import * as Location from "expo-location";
+import MapView, { Marker } from "react-native-maps";
 import {
   AddressInput,
   createAddress,
@@ -34,6 +36,8 @@ const EMPTY_FORM: AddressInput = {
   state: "",
   postalCode: "",
   country: "Sri Lanka",
+  latitude: null,
+  longitude: null,
   isDefault: false,
 };
 
@@ -54,6 +58,13 @@ export default function SavedAddressesScreen() {
   const [editingAddress, setEditingAddress] =
     React.useState<CustomerAddress | null>(null);
   const [form, setForm] = React.useState<AddressInput>(EMPTY_FORM);
+  const [mapVisible, setMapVisible] = React.useState(false);
+  const [tempPin, setTempPin] = React.useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [isLocating, setIsLocating] = React.useState(false);
+  const [isGeocoding, setIsGeocoding] = React.useState(false);
 
   const loadAddresses = React.useCallback(async (showLoader = true) => {
     if (showLoader) setIsLoading(true);
@@ -79,6 +90,7 @@ export default function SavedAddressesScreen() {
 
   const openAddForm = () => {
     setEditingAddress(null);
+    setTempPin(null);
     setForm({
       ...EMPTY_FORM,
       isDefault: addresses.length === 0,
@@ -95,8 +107,15 @@ export default function SavedAddressesScreen() {
       state: address.state,
       postalCode: address.postalCode,
       country: address.country || "Sri Lanka",
+      latitude: address.latitude,
+      longitude: address.longitude,
       isDefault: address.isDefault,
     });
+    if (address.latitude !== null && address.longitude !== null) {
+      setTempPin({ latitude: address.latitude, longitude: address.longitude });
+    } else {
+      setTempPin(null);
+    }
     setFormVisible(true);
   };
 
@@ -105,6 +124,7 @@ export default function SavedAddressesScreen() {
     setFormVisible(false);
     setEditingAddress(null);
     setForm(EMPTY_FORM);
+    setTempPin(null);
   };
 
   const setField = <K extends keyof AddressInput>(
@@ -115,6 +135,19 @@ export default function SavedAddressesScreen() {
   };
 
   const validateForm = () => {
+    if (
+      form.latitude === null ||
+      form.longitude === null ||
+      !Number.isFinite(form.latitude) ||
+      !Number.isFinite(form.longitude)
+    ) {
+      Alert.alert(
+        "Pin Delivery Location",
+        "Use your current location or choose the exact delivery point on the map.",
+      );
+      return false;
+    }
+
     const requiredFields: [keyof AddressInput, string][] = [
       ["street", "street address"],
       ["city", "city"],
@@ -133,6 +166,76 @@ export default function SavedAddressesScreen() {
     return true;
   };
 
+  const applyPinnedLocation = async (latitude: number, longitude: number) => {
+    setForm((current) => ({ ...current, latitude, longitude }));
+    setIsGeocoding(true);
+    try {
+      const currentPermission = await Location.getForegroundPermissionsAsync();
+      const permission = currentPermission.status === "granted"
+        ? currentPermission
+        : await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") return;
+
+      const [place] = await Location.reverseGeocodeAsync({ latitude, longitude });
+      if (!place) return;
+
+      const streetParts = [place.streetNumber, place.street || place.name]
+        .filter(Boolean)
+        .filter((value, index, values) => values.indexOf(value) === index);
+      setForm((current) => ({
+        ...current,
+        latitude,
+        longitude,
+        street: streetParts.join(" ") || current.street,
+        city: place.city || place.subregion || place.district || current.city,
+        state: place.region || current.state,
+        postalCode: place.postalCode || current.postalCode,
+        country: place.country || current.country || "Sri Lanka",
+      }));
+    } catch {
+      Alert.alert(
+        "Location Pinned",
+        "The coordinates were saved, but the address text could not be filled automatically. Please enter it below.",
+      );
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
+  const useCurrentLocation = async () => {
+    setIsLocating(true);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        Alert.alert(
+          "Location Permission Required",
+          "Allow location access, or choose the delivery point on the map.",
+        );
+        return;
+      }
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const pin = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+      setTempPin(pin);
+      await applyPinnedLocation(pin.latitude, pin.longitude);
+    } catch {
+      Alert.alert("Location Error", "Could not read your current location. Please choose it on the map.");
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
+  const openMapPicker = () => {
+    if (form.latitude !== null && form.longitude !== null) {
+      setTempPin({ latitude: form.latitude, longitude: form.longitude });
+    }
+    setMapVisible(true);
+  };
+
   const handleSave = async () => {
     if (!validateForm()) return;
 
@@ -145,6 +248,8 @@ export default function SavedAddressesScreen() {
         state: form.state.trim(),
         postalCode: form.postalCode.trim(),
         country: form.country.trim() || "Sri Lanka",
+        latitude: form.latitude,
+        longitude: form.longitude,
         isDefault: form.isDefault || addresses.length === 0,
       };
 
@@ -317,6 +422,30 @@ export default function SavedAddressesScreen() {
                             <Text style={styles.defaultBadgeText}>Default</Text>
                           </View>
                         )}
+                        <View
+                          style={address.latitude !== null && address.longitude !== null
+                            ? styles.locationBadge
+                            : styles.locationMissingBadge}
+                        >
+                          <Ionicons
+                            name={address.latitude !== null && address.longitude !== null
+                              ? "location"
+                              : "alert-circle-outline"}
+                            size={12}
+                            color={address.latitude !== null && address.longitude !== null
+                              ? "#166534"
+                              : "#B45309"}
+                          />
+                          <Text
+                            style={address.latitude !== null && address.longitude !== null
+                              ? styles.locationBadgeText
+                              : styles.locationMissingBadgeText}
+                          >
+                            {address.latitude !== null && address.longitude !== null
+                              ? "Pinned"
+                              : "Pin required"}
+                          </Text>
+                        </View>
                       </View>
                       <Text style={styles.addressText}>
                         {formatAddress(address)}
@@ -440,6 +569,50 @@ export default function SavedAddressesScreen() {
               ))}
             </View>
 
+            <Text style={styles.inputLabel}>Exact delivery location</Text>
+            <View style={styles.locationPanel}>
+              <View style={styles.locationStatusRow}>
+                <View style={styles.locationStatusIcon}>
+                  <Ionicons
+                    name={form.latitude !== null ? "location" : "location-outline"}
+                    size={22}
+                    color="#00002E"
+                  />
+                </View>
+                <View style={styles.locationStatusCopy}>
+                  <Text style={styles.locationStatusTitle}>
+                    {form.latitude !== null ? "Delivery pin set" : "Pin your delivery point"}
+                  </Text>
+                  <Text style={styles.locationStatusText}>
+                    {form.latitude !== null && form.longitude !== null
+                      ? `${form.latitude.toFixed(6)}, ${form.longitude.toFixed(6)}`
+                      : "This location will be sent directly to the shop and rider."}
+                  </Text>
+                </View>
+                {(isLocating || isGeocoding) && (
+                  <ActivityIndicator size="small" color="#00002E" />
+                )}
+              </View>
+              <View style={styles.locationActions}>
+                <TouchableOpacity
+                  style={styles.locationAction}
+                  onPress={useCurrentLocation}
+                  disabled={isLocating || isGeocoding}
+                >
+                  <Ionicons name="navigate" size={18} color="#00002E" />
+                  <Text style={styles.locationActionText}>Use current</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.locationAction, styles.primaryLocationAction]}
+                  onPress={openMapPicker}
+                  disabled={isLocating || isGeocoding}
+                >
+                  <Ionicons name="map" size={18} color="#FFFFFF" />
+                  <Text style={styles.primaryLocationActionText}>Choose on map</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <AddressField
               label="Street address"
               value={form.street}
@@ -534,6 +707,70 @@ export default function SavedAddressesScreen() {
               )}
             </TouchableOpacity>
           </View>
+
+          <Modal
+            visible={mapVisible}
+            animationType="slide"
+            onRequestClose={() => setMapVisible(false)}
+          >
+            <View style={styles.mapScreen}>
+              <View style={styles.modalHeader}>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setMapVisible(false)}
+                >
+                  <Ionicons name="close" size={24} color="#111827" />
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>Pin delivery location</Text>
+                <View style={styles.headerPlaceholder} />
+              </View>
+              <View style={styles.mapHint}>
+                <Ionicons name="information-circle-outline" size={18} color="#374151" />
+                <Text style={styles.mapHintText}>Tap the map or drag the marker to the exact entrance.</Text>
+              </View>
+              <MapView
+                style={styles.map}
+                initialRegion={tempPin
+                  ? { ...tempPin, latitudeDelta: 0.01, longitudeDelta: 0.01 }
+                  : { latitude: 6.9271, longitude: 79.8612, latitudeDelta: 0.08, longitudeDelta: 0.08 }}
+                onPress={(event) => setTempPin(event.nativeEvent.coordinate)}
+              >
+                {tempPin && (
+                  <Marker
+                    coordinate={tempPin}
+                    draggable
+                    onDragEnd={(event) => setTempPin(event.nativeEvent.coordinate)}
+                    title="Delivery location"
+                  />
+                )}
+              </MapView>
+              <View style={styles.mapFooter}>
+                <Text style={styles.mapCoordinates}>
+                  {tempPin
+                    ? `${tempPin.latitude.toFixed(6)}, ${tempPin.longitude.toFixed(6)}`
+                    : "Tap the map to place a pin"}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.saveButton, (!tempPin || isGeocoding) && styles.saveButtonDisabled]}
+                  disabled={!tempPin || isGeocoding}
+                  onPress={async () => {
+                    if (!tempPin) return;
+                    await applyPinnedLocation(tempPin.latitude, tempPin.longitude);
+                    setMapVisible(false);
+                  }}
+                >
+                  {isGeocoding ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark" size={21} color="#FFFFFF" />
+                      <Text style={styles.saveButtonText}>Confirm location</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -966,5 +1203,133 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "700",
+  },
+  locationBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    backgroundColor: "#DCFCE7",
+  },
+  locationBadgeText: {
+    color: "#166534",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  locationMissingBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    backgroundColor: "#FEF3C7",
+  },
+  locationMissingBadgeText: {
+    color: "#B45309",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  locationPanel: {
+    borderWidth: 1,
+    borderColor: "#D8DAE1",
+    borderRadius: 8,
+    backgroundColor: "#FFFFFF",
+    padding: 14,
+    marginBottom: 20,
+  },
+  locationStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  locationStatusIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F0F0F7",
+    marginRight: 11,
+  },
+  locationStatusCopy: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  locationStatusTitle: {
+    color: "#111827",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  locationStatusText: {
+    color: "#6B7280",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 3,
+  },
+  locationActions: {
+    flexDirection: "row",
+    gap: 9,
+    marginTop: 13,
+  },
+  locationAction: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#C7CAD4",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  primaryLocationAction: {
+    backgroundColor: "#00002E",
+    borderColor: "#00002E",
+  },
+  locationActionText: {
+    color: "#00002E",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  primaryLocationActionText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  mapScreen: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  mapHint: {
+    minHeight: 48,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#F3F4F6",
+  },
+  mapHintText: {
+    flex: 1,
+    color: "#374151",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  map: {
+    flex: 1,
+  },
+  mapFooter: {
+    padding: 16,
+    paddingBottom: Platform.OS === "ios" ? 28 : 16,
+    borderTopWidth: 1,
+    borderTopColor: "#EAECF0",
+    backgroundColor: "#FFFFFF",
+  },
+  mapCoordinates: {
+    color: "#4B5563",
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: 10,
   },
 });

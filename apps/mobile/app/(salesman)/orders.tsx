@@ -16,7 +16,16 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import MapView, { Marker } from "react-native-maps";
-import { getSalesmanOrders, updateOrderStatus, createDeliveryRequest, getOrderDeliveryStatus, getAvailableRiders, resolveComplaint } from "../../src/api/orders";
+import {
+  getSalesmanOrders,
+  updateOrderStatus,
+  createDeliveryRequest,
+  getOrderDeliveryStatus,
+  getAvailableRiders,
+  getShopPickupLocation,
+  saveShopPickupLocation,
+  resolveComplaint,
+} from "../../src/api/orders";
 import { usePendingOrders } from "../../src/store/pendingOrdersStore";
 import { getSocket } from "../../src/lib/socket";
 import { getUser } from "../../src/api/storage";
@@ -50,6 +59,14 @@ interface AvailableRider {
   distanceToPickupKm: number | null;
 }
 
+const formatOrderAddress = (address?: Order["address"]) => [
+  address?.street,
+  address?.city,
+  address?.state,
+  address?.postalCode,
+  address?.country,
+].filter(Boolean).join(", ");
+
 // ─── Dispatch Modal ───────────────────────────────────────────────────────────
 
 function DispatchModal({
@@ -57,28 +74,85 @@ function DispatchModal({
   onClose,
   onDispatched,
 }: {
-  order: { id: string; orderNumber: string; customer?: { name?: string } };
+  order: Order;
   onClose: () => void;
   onDispatched: () => void;
 }) {
+  const savedDeliveryLatitude = order.deliveryLatitude ?? order.address?.latitude ?? null;
+  const savedDeliveryLongitude = order.deliveryLongitude ?? order.address?.longitude ?? null;
+  const hasSavedCustomerLocation =
+    savedDeliveryLatitude !== null &&
+    savedDeliveryLongitude !== null &&
+    Number.isFinite(Number(savedDeliveryLatitude)) &&
+    Number.isFinite(Number(savedDeliveryLongitude));
+  const savedDeliveryAddress = order.deliveryAddress || formatOrderAddress(order.address);
   const [pickupLat, setPickupLat] = useState("");
   const [pickupLng, setPickupLng] = useState("");
   const [pickupAddress, setPickupAddress] = useState("");
-  const [deliveryLat, setDeliveryLat] = useState("");
-  const [deliveryLng, setDeliveryLng] = useState("");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryLat, setDeliveryLat] = useState(
+    hasSavedCustomerLocation ? String(savedDeliveryLatitude) : "",
+  );
+  const [deliveryLng, setDeliveryLng] = useState(
+    hasSavedCustomerLocation ? String(savedDeliveryLongitude) : "",
+  );
+  const [deliveryAddress, setDeliveryAddress] = useState(savedDeliveryAddress);
   const [paymentType, setPaymentType] = useState<"COD" | "PREPAID">("COD");
   const [notes, setNotes] = useState("");
   const [earnings, setEarnings] = useState("");
   const [gettingGps, setGettingGps] = useState(false);
+  const [shopLocationLoading, setShopLocationLoading] = useState(true);
+  const [shopLocationSaving, setShopLocationSaving] = useState(false);
+  const [shopLocationConfigured, setShopLocationConfigured] = useState(false);
+  const [editingShopLocation, setEditingShopLocation] = useState(false);
+  const [savedShopLocation, setSavedShopLocation] = useState<{
+    latitude: number;
+    longitude: number;
+    address: string;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loadingRiders, setLoadingRiders] = useState(false);
   const [availableRiders, setAvailableRiders] = useState<AvailableRider[]>([]);
   const [selectedRiderId, setSelectedRiderId] = useState<number | null>(null);
   // Map picker state for delivery location
   const [showMapPicker, setShowMapPicker] = useState(false);
-  const [tempPin, setTempPin] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [tempPin, setTempPin] = useState<{ latitude: number; longitude: number } | null>(
+    hasSavedCustomerLocation
+      ? { latitude: Number(savedDeliveryLatitude), longitude: Number(savedDeliveryLongitude) }
+      : null,
+  );
   const [geocoding, setGeocoding] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    getShopPickupLocation()
+      .then((location) => {
+        if (!mounted) return;
+        if (location.configured && location.latitude !== null && location.longitude !== null) {
+          setPickupLat(location.latitude.toFixed(6));
+          setPickupLng(location.longitude.toFixed(6));
+          setPickupAddress(location.address || "");
+          setSavedShopLocation({
+            latitude: location.latitude,
+            longitude: location.longitude,
+            address: location.address || "",
+          });
+          setShopLocationConfigured(true);
+        } else {
+          setEditingShopLocation(true);
+        }
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setEditingShopLocation(true);
+        Alert.alert("Shop Location", error.message || "Could not load the saved shop location.");
+      })
+      .finally(() => {
+        if (mounted) setShopLocationLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const getMyLocation = async () => {
     setGettingGps(true);
@@ -91,6 +165,20 @@ function DispatchModal({
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       setPickupLat(loc.coords.latitude.toFixed(6));
       setPickupLng(loc.coords.longitude.toFixed(6));
+      if (!pickupAddress.trim()) {
+        try {
+          const [place] = await Location.reverseGeocodeAsync({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+          });
+          const address = [place?.name, place?.street, place?.city, place?.region]
+            .filter(Boolean)
+            .join(", ");
+          if (address) setPickupAddress(address);
+        } catch {
+          // Coordinates are sufficient; the salesman can enter the address.
+        }
+      }
     } catch {
       Alert.alert("Error", "Could not get location. Enter coordinates manually.");
     } finally {
@@ -98,9 +186,54 @@ function DispatchModal({
     }
   };
 
+  const saveFixedShopLocation = async () => {
+    const latitude = Number(pickupLat);
+    const longitude = Number(pickupLng);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+        !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      Alert.alert("Invalid Location", "Enter valid shop latitude and longitude values.");
+      return;
+    }
+
+    setShopLocationSaving(true);
+    try {
+      const saved = await saveShopPickupLocation({
+        latitude,
+        longitude,
+        address: pickupAddress.trim() || undefined,
+      });
+      setPickupLat(Number(saved.latitude).toFixed(6));
+      setPickupLng(Number(saved.longitude).toFixed(6));
+      setPickupAddress(saved.address || "");
+      setSavedShopLocation({
+        latitude: Number(saved.latitude),
+        longitude: Number(saved.longitude),
+        address: saved.address || "",
+      });
+      setShopLocationConfigured(true);
+      setEditingShopLocation(false);
+      setAvailableRiders([]);
+      setSelectedRiderId(null);
+      Alert.alert("Shop Location Saved", "This pickup location will be used for every delivery.");
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to save the shop location.");
+    } finally {
+      setShopLocationSaving(false);
+    }
+  };
+
+  const cancelShopLocationEdit = () => {
+    if (savedShopLocation) {
+      setPickupLat(savedShopLocation.latitude.toFixed(6));
+      setPickupLng(savedShopLocation.longitude.toFixed(6));
+      setPickupAddress(savedShopLocation.address);
+    }
+    setEditingShopLocation(false);
+  };
+
   const loadAvailableRiders = async () => {
-    if (!pickupLat || !pickupLng) {
-      Alert.alert("Missing Info", "Pickup coordinates are required before loading available riders.");
+    if (!shopLocationConfigured || editingShopLocation) {
+      Alert.alert("Shop Location Required", "Save the fixed shop location before loading riders.");
       return;
     }
 
@@ -122,8 +255,8 @@ function DispatchModal({
   };
 
   const handleSubmit = async () => {
-    if (!pickupLat || !pickupLng) {
-      Alert.alert("Missing Info", "Pickup coordinates are required. Tap 'Use My Location' or enter manually.");
+    if (!shopLocationConfigured || editingShopLocation || !pickupLat || !pickupLng) {
+      Alert.alert("Shop Location Required", "Save the fixed shop location before dispatching a rider.");
       return;
     }
     if (!deliveryLat || !deliveryLng) {
@@ -181,34 +314,115 @@ function DispatchModal({
           </Text>
 
           <Text style={dispatchStyles.label}>Pickup Location (Your Shop)</Text>
-          <TouchableOpacity style={dispatchStyles.gpsBtn} onPress={getMyLocation} disabled={gettingGps}>
-            {gettingGps ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="navigate" size={18} color="#FFF" />}
-            <Text style={dispatchStyles.gpsBtnText}>{gettingGps ? "Getting GPS…" : "Use My Current Location"}</Text>
-          </TouchableOpacity>
-          <View style={dispatchStyles.row}>
-            <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Latitude" keyboardType="decimal-pad" value={pickupLat} onChangeText={setPickupLat} />
-            <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Longitude" keyboardType="decimal-pad" value={pickupLng} onChangeText={setPickupLng} />
-          </View>
-          <TextInput style={dispatchStyles.input} placeholder="Shop address (optional)" value={pickupAddress} onChangeText={setPickupAddress} />
+          {shopLocationLoading ? (
+            <View style={dispatchStyles.shopLocationLoading}>
+              <ActivityIndicator size="small" color="#00002E" />
+              <Text style={dispatchStyles.shopLocationLoadingText}>Loading saved shop location...</Text>
+            </View>
+          ) : shopLocationConfigured && !editingShopLocation ? (
+            <View style={dispatchStyles.fixedShopCard}>
+              <View style={dispatchStyles.fixedShopIcon}>
+                <Ionicons name="storefront" size={20} color="#00002E" />
+              </View>
+              <View style={dispatchStyles.fixedShopCopy}>
+                <Text style={dispatchStyles.fixedShopTitle}>Fixed pickup location</Text>
+                <Text style={dispatchStyles.fixedShopAddress} numberOfLines={2}>
+                  {pickupAddress || "Shop location"}
+                </Text>
+                <Text style={dispatchStyles.fixedShopCoords}>
+                  {Number(pickupLat).toFixed(5)}, {Number(pickupLng).toFixed(5)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Change fixed shop location"
+                onPress={() => setEditingShopLocation(true)}
+                style={dispatchStyles.editShopBtn}
+              >
+                <Ionicons name="pencil" size={17} color="#FF6B35" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={dispatchStyles.shopSetupCard}>
+              <Text style={dispatchStyles.shopSetupTitle}>
+                {shopLocationConfigured ? "Change shop location" : "Set your shop location"}
+              </Text>
+              <Text style={dispatchStyles.shopSetupText}>
+                Save this once. It will be the pickup point for every delivery.
+              </Text>
+              <TouchableOpacity style={dispatchStyles.gpsBtn} onPress={getMyLocation} disabled={gettingGps}>
+                {gettingGps ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="navigate" size={18} color="#FFF" />}
+                <Text style={dispatchStyles.gpsBtnText}>{gettingGps ? "Getting GPS..." : "Use Current Location for Shop"}</Text>
+              </TouchableOpacity>
+              <View style={dispatchStyles.row}>
+                <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Latitude" keyboardType="decimal-pad" value={pickupLat} onChangeText={setPickupLat} />
+                <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Longitude" keyboardType="decimal-pad" value={pickupLng} onChangeText={setPickupLng} />
+              </View>
+              <TextInput style={dispatchStyles.input} placeholder="Shop address" value={pickupAddress} onChangeText={setPickupAddress} />
+              <View style={dispatchStyles.shopSetupActions}>
+                {shopLocationConfigured ? (
+                  <TouchableOpacity style={dispatchStyles.shopSetupCancel} onPress={cancelShopLocationEdit}>
+                    <Text style={dispatchStyles.shopSetupCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  style={[dispatchStyles.saveShopBtn, shopLocationSaving && { opacity: 0.6 }]}
+                  onPress={saveFixedShopLocation}
+                  disabled={shopLocationSaving}
+                >
+                  {shopLocationSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="save" size={17} color="#FFF" />}
+                  <Text style={dispatchStyles.saveShopBtnText}>{shopLocationSaving ? "Saving..." : "Save Shop Location"}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           <Text style={[dispatchStyles.label, { marginTop: 14 }]}>Customer Delivery Location</Text>
 
           {/* Map picker button / selected location display */}
           {deliveryLat && deliveryLng ? (
-            <View style={dispatchStyles.selectedLocationBox}>
-              <Ionicons name="location" size={18} color="#00002E" style={{ marginTop: 2 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={dispatchStyles.selectedLocationText} numberOfLines={2}>
-                  {deliveryAddress || `${parseFloat(deliveryLat).toFixed(5)}, ${parseFloat(deliveryLng).toFixed(5)}`}
-                </Text>
-                <Text style={dispatchStyles.selectedCoords}>
-                  {parseFloat(deliveryLat).toFixed(5)}, {parseFloat(deliveryLng).toFixed(5)}
-                </Text>
+            <>
+              <View style={dispatchStyles.selectedLocationBox}>
+                <Ionicons name="location" size={18} color="#00002E" style={{ marginTop: 2 }} />
+                <View style={{ flex: 1 }}>
+                  {hasSavedCustomerLocation && (
+                    <Text style={dispatchStyles.savedLocationLabel}>CUSTOMER SAVED LOCATION</Text>
+                  )}
+                  <Text style={dispatchStyles.selectedLocationText} numberOfLines={2}>
+                    {deliveryAddress || `${parseFloat(deliveryLat).toFixed(5)}, ${parseFloat(deliveryLng).toFixed(5)}`}
+                  </Text>
+                  <Text style={dispatchStyles.selectedCoords}>
+                    {parseFloat(deliveryLat).toFixed(5)}, {parseFloat(deliveryLng).toFixed(5)}
+                  </Text>
+                </View>
+                {!hasSavedCustomerLocation && (
+                  <TouchableOpacity onPress={() => setShowMapPicker(true)} style={dispatchStyles.changeLocBtn}>
+                    <Text style={dispatchStyles.changeLocBtnText}>Change</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              <TouchableOpacity onPress={() => setShowMapPicker(true)} style={dispatchStyles.changeLocBtn}>
-                <Text style={dispatchStyles.changeLocBtnText}>Change</Text>
-              </TouchableOpacity>
-            </View>
+              {hasSavedCustomerLocation && (
+                <MapView
+                  style={dispatchStyles.customerMapPreview}
+                  initialRegion={{
+                    latitude: Number(deliveryLat),
+                    longitude: Number(deliveryLng),
+                    latitudeDelta: 0.012,
+                    longitudeDelta: 0.012,
+                  }}
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                  rotateEnabled={false}
+                  pitchEnabled={false}
+                  toolbarEnabled={false}
+                >
+                  <Marker
+                    coordinate={{ latitude: Number(deliveryLat), longitude: Number(deliveryLng) }}
+                    title="Customer delivery location"
+                  />
+                </MapView>
+              )}
+            </>
           ) : (
             <TouchableOpacity style={dispatchStyles.mapPickerBtn} onPress={() => setShowMapPicker(true)}>
               <Ionicons name="map" size={18} color="#FFF" />
@@ -217,7 +431,7 @@ function DispatchModal({
           )}
 
           {/* Optional: editable address label after pin is set */}
-          {deliveryLat && deliveryLng && (
+          {deliveryLat && deliveryLng && !hasSavedCustomerLocation && (
             <TextInput
               style={[dispatchStyles.input, { marginTop: 8 }]}
               placeholder="Edit address label (optional)"
@@ -327,7 +541,14 @@ function DispatchModal({
 
           <View style={dispatchStyles.riderHeader}>
             <Text style={dispatchStyles.label}>Available Delivery Persons</Text>
-            <TouchableOpacity style={dispatchStyles.loadRidersBtn} onPress={loadAvailableRiders} disabled={loadingRiders}>
+            <TouchableOpacity
+              style={[
+                dispatchStyles.loadRidersBtn,
+                (!shopLocationConfigured || editingShopLocation || shopLocationLoading) && { opacity: 0.5 },
+              ]}
+              onPress={loadAvailableRiders}
+              disabled={loadingRiders || !shopLocationConfigured || editingShopLocation || shopLocationLoading}
+            >
               {loadingRiders ? <ActivityIndicator size="small" color="#00002E" /> : <Ionicons name="refresh" size={15} color="#00002E" />}
               <Text style={dispatchStyles.loadRidersText}>{loadingRiders ? "Loading" : "Load Riders"}</Text>
             </TouchableOpacity>
@@ -368,7 +589,14 @@ function DispatchModal({
           <TouchableOpacity style={dispatchStyles.cancelBtn} onPress={onClose}>
             <Text style={dispatchStyles.cancelBtnText}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[dispatchStyles.submitBtn, submitting && { opacity: 0.6 }]} onPress={handleSubmit} disabled={submitting}>
+          <TouchableOpacity
+            style={[
+              dispatchStyles.submitBtn,
+              (submitting || !shopLocationConfigured || editingShopLocation || shopLocationLoading) && { opacity: 0.6 },
+            ]}
+            onPress={handleSubmit}
+            disabled={submitting || !shopLocationConfigured || editingShopLocation || shopLocationLoading}
+          >
             {submitting ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="send" size={16} color="#FFF" />}
             <Text style={dispatchStyles.submitBtnText}>{submitting ? "Dispatching…" : "Dispatch Rider"}</Text>
           </TouchableOpacity>
@@ -403,6 +631,18 @@ interface Order {
   total: number;
   createdAt: string;
   cancellationReason?: string | null;
+  deliveryAddress?: string | null;
+  deliveryLatitude?: number | null;
+  deliveryLongitude?: number | null;
+  address?: {
+    street: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
   isComplaint?: boolean;
   customer?: {
     id: string;
@@ -1214,6 +1454,83 @@ const dispatchStyles = StyleSheet.create({
   body: { flex: 1, padding: 20 },
   orderRef: { fontSize: 13, color: "#666", marginBottom: 18 },
   label: { fontSize: 13, fontWeight: "600", color: "#1A1A2E", marginBottom: 8 },
+  shopLocationLoading: {
+    minHeight: 82,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    backgroundColor: "#F9FAFB",
+    marginBottom: 10,
+  },
+  shopLocationLoadingText: { fontSize: 13, color: "#6B7280" },
+  fixedShopCard: {
+    minHeight: 92,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: 10,
+    backgroundColor: "#EFF6FF",
+    marginBottom: 10,
+  },
+  fixedShopIcon: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    backgroundColor: "#DBEAFE",
+  },
+  fixedShopCopy: { flex: 1 },
+  fixedShopTitle: { fontSize: 13, lineHeight: 18, fontWeight: "700", color: "#111827" },
+  fixedShopAddress: { fontSize: 12, lineHeight: 17, color: "#4B5563", marginTop: 2 },
+  fixedShopCoords: { fontSize: 11, lineHeight: 16, color: "#6B7280", marginTop: 2 },
+  editShopBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    backgroundColor: "#FFF7ED",
+  },
+  shopSetupCard: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+    borderRadius: 10,
+    backgroundColor: "#FFF7ED",
+    marginBottom: 10,
+  },
+  shopSetupTitle: { fontSize: 14, lineHeight: 20, fontWeight: "700", color: "#111827" },
+  shopSetupText: { fontSize: 12, lineHeight: 18, color: "#6B7280", marginTop: 2, marginBottom: 10 },
+  shopSetupActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+  shopSetupCancel: {
+    minHeight: 42,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    backgroundColor: "#FFF",
+  },
+  shopSetupCancelText: { fontSize: 13, fontWeight: "700", color: "#4B5563" },
+  saveShopBtn: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: "#00002E",
+  },
+  saveShopBtnText: { fontSize: 13, fontWeight: "700", color: "#FFF" },
   gpsBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1344,6 +1661,13 @@ const dispatchStyles = StyleSheet.create({
   },
   selectedLocationText: { fontSize: 13, color: "#1A1A2E", fontWeight: "500" },
   selectedCoords: { fontSize: 11, color: "#6B7280", marginTop: 2 },
+  savedLocationLabel: { fontSize: 10, color: "#166534", fontWeight: "700", marginBottom: 3 },
+  customerMapPreview: {
+    width: "100%",
+    height: 170,
+    borderRadius: 8,
+    marginTop: 8,
+  },
   changeLocBtn: { paddingLeft: 6, paddingTop: 2 },
   changeLocBtnText: { fontSize: 12, fontWeight: "700", color: "#FF6B35" },
   // Full-screen map modal

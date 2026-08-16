@@ -37,6 +37,10 @@ const prisma = {
   address: {
     findFirst: vi.fn(),
   },
+  store: {
+    findUnique: vi.fn(),
+    update: vi.fn(),
+  },
   wallet: {
     findUnique: vi.fn(),
     update: vi.fn(),

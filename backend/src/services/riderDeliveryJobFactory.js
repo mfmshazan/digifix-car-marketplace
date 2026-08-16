@@ -2,6 +2,7 @@ import prisma from '../lib/prisma.js';
 import { riderQuery } from '../lib/riderDb.js';
 
 const toNumberOrNull = (value) => {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 };
@@ -13,13 +14,6 @@ const formatAddress = (address) => {
     .join(', ');
 };
 
-const getConfiguredCoordinates = () => ({
-  pickupLatitude: toNumberOrNull(process.env.RIDER_DEFAULT_PICKUP_LATITUDE),
-  pickupLongitude: toNumberOrNull(process.env.RIDER_DEFAULT_PICKUP_LONGITUDE),
-  dropoffLatitude: toNumberOrNull(process.env.RIDER_DEFAULT_DROPOFF_LATITUDE),
-  dropoffLongitude: toNumberOrNull(process.env.RIDER_DEFAULT_DROPOFF_LONGITUDE),
-});
-
 export const createRiderJobFromMarketplaceOrder = async (orderId) => {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -29,7 +23,16 @@ export const createRiderJobFromMarketplaceOrder = async (orderId) => {
         select: {
           name: true,
           phone: true,
-          store: { select: { name: true, address: true, phone: true } },
+          store: {
+            select: {
+              name: true,
+              address: true,
+              phone: true,
+              pickupAddress: true,
+              pickupLatitude: true,
+              pickupLongitude: true,
+            },
+          },
         },
       },
       address: true,
@@ -46,18 +49,36 @@ export const createRiderJobFromMarketplaceOrder = async (orderId) => {
 
   if (existingJob.rows.length) return existingJob.rows[0];
 
-  const coordinates = getConfiguredCoordinates();
-  const hasCoordinates = Object.values(coordinates).every((value) => value !== null);
+  const pickupLatitude = toNumberOrNull(order.salesman?.store?.pickupLatitude);
+  const pickupLongitude = toNumberOrNull(order.salesman?.store?.pickupLongitude);
+  const dropoffLatitude = toNumberOrNull(
+    order.deliveryLatitude ?? order.address?.latitude
+  );
+  const dropoffLongitude = toNumberOrNull(
+    order.deliveryLongitude ?? order.address?.longitude
+  );
 
-  if (!hasCoordinates) {
+  if (pickupLatitude === null || pickupLongitude === null) {
     console.warn(
-      `Skipped Rider job creation for order ${order.orderNumber}: configure RIDER_DEFAULT_PICKUP_LATITUDE, RIDER_DEFAULT_PICKUP_LONGITUDE, RIDER_DEFAULT_DROPOFF_LATITUDE, and RIDER_DEFAULT_DROPOFF_LONGITUDE.`
+      `Skipped Rider job creation for order ${order.orderNumber}: the shop pickup location is not configured.`
     );
     return null;
   }
 
-  const pickupAddress = order.salesman?.store?.address || order.salesman?.store?.name || 'Pickup location';
-  const dropoffAddress = formatAddress(order.address) || 'Customer delivery address';
+  if (dropoffLatitude === null || dropoffLongitude === null) {
+    console.warn(
+      `Skipped Rider job creation for order ${order.orderNumber}: the customer delivery address has no pinned coordinates.`
+    );
+    return null;
+  }
+
+  const pickupAddress = order.salesman?.store?.pickupAddress
+    || order.salesman?.store?.address
+    || order.salesman?.store?.name
+    || 'Pickup location';
+  const dropoffAddress = order.deliveryAddress
+    || formatAddress(order.address)
+    || 'Customer delivery address';
   const itemsDescription = order.items
     .map((item) => `${item.quantity} x ${item.itemName || item.itemType}`)
     .join(', ');
@@ -93,13 +114,13 @@ export const createRiderJobFromMarketplaceOrder = async (orderId) => {
       order.customer?.name || order.customer?.email || 'Customer',
       order.customer?.phone || '',
       pickupAddress,
-      coordinates.pickupLatitude,
-      coordinates.pickupLongitude,
+      pickupLatitude,
+      pickupLongitude,
       order.salesman?.store?.name || order.salesman?.name || null,
       order.salesman?.store?.phone || order.salesman?.phone || null,
       dropoffAddress,
-      coordinates.dropoffLatitude,
-      coordinates.dropoffLongitude,
+      dropoffLatitude,
+      dropoffLongitude,
       order.deliveryFee || order.serviceCharge || 0,
       itemsDescription || null,
       order.notes || null,

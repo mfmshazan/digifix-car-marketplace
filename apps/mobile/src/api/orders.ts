@@ -372,6 +372,50 @@ export const getOrderDeliveryStatus = async (orderId: string) => {
   }
 };
 
+export interface ShopPickupLocation {
+  configured: boolean;
+  storeName: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+export const getShopPickupLocation = async (): Promise<ShopPickupLocation> => {
+  const token = await getToken();
+  if (!token) throw new Error('Not authenticated');
+
+  const response = await fetch(`${getApiUrl()}/delivery-requests/shop-location`, {
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || result.message || 'Failed to load shop location');
+  return result.data;
+};
+
+export const saveShopPickupLocation = async (data: {
+  latitude: number;
+  longitude: number;
+  address?: string;
+}): Promise<ShopPickupLocation> => {
+  const token = await getToken();
+  if (!token) throw new Error('Not authenticated');
+
+  const response = await fetch(`${getApiUrl()}/delivery-requests/shop-location`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || result.message || 'Failed to save shop location');
+  return result.data;
+};
+
 // Create a delivery request for an order (salesman dispatches a rider from mobile)
 export const createDeliveryRequest = async (data: {
   orderId: string;

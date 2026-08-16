@@ -16,7 +16,11 @@ vi.mock('../services/riderRealtimeDispatch.js', () => ({
 import prisma from '../lib/prisma.js';
 import { riderQuery } from '../lib/riderDb.js';
 import { dispatchJobToSelectedDriver } from '../services/riderRealtimeDispatch.js';
-import { createDeliveryRequest } from '../controllers/deliveryRequest.controller.js';
+import {
+  createDeliveryRequest,
+  getShopPickupLocation,
+  updateShopPickupLocation,
+} from '../controllers/deliveryRequest.controller.js';
 
 const makeRes = () => ({
   _status: 200,
@@ -32,6 +36,16 @@ const order = {
   deliveryFee: 250,
   serviceCharge: 0,
   notes: null,
+  deliveryAddress: 'Customer saved address',
+  deliveryLatitude: 6.912345,
+  deliveryLongitude: 79.923456,
+  address: {
+    street: '10 Main Road',
+    city: 'Colombo',
+    country: 'Sri Lanka',
+    latitude: 6.9,
+    longitude: 79.9,
+  },
   customer: { name: 'Customer', phone: '0770000000', email: 'customer@example.com' },
   salesman: {
     id: 'salesman-1',
@@ -60,6 +74,15 @@ const makeReq = () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   prisma.order.findUnique.mockResolvedValue(order);
+  prisma.store.findUnique.mockResolvedValue({
+    id: 'store-1',
+    name: 'Shop A',
+    address: 'Old shop address',
+    phone: '0110000000',
+    pickupAddress: 'Fixed Shop, Colombo',
+    pickupLatitude: 6.874321,
+    pickupLongitude: 79.912345,
+  });
 });
 
 describe('createDeliveryRequest', () => {
@@ -87,7 +110,32 @@ describe('createDeliveryRequest', () => {
     expect(res._body.success).toBe(true);
     expect(dispatchJobToSelectedDriver).toHaveBeenCalledWith(73, 8);
     expect(riderQuery.mock.calls[1][0]).toContain('UPDATE "DeliveryJob"');
+    expect(riderQuery.mock.calls[1][1][4]).toBe('Fixed Shop, Colombo');
+    expect(riderQuery.mock.calls[1][1][5]).toBe(6.874321);
+    expect(riderQuery.mock.calls[1][1][6]).toBe(79.912345);
+    expect(riderQuery.mock.calls[1][1][9]).toBe('Customer saved address');
+    expect(riderQuery.mock.calls[1][1][10]).toBe(6.912345);
+    expect(riderQuery.mock.calls[1][1][11]).toBe(79.923456);
     expect(riderQuery.mock.calls.some(([sql]) => sql.includes('INSERT INTO "DeliveryJob"'))).toBe(false);
+  });
+
+  it('requires a fixed shop location before dispatching', async () => {
+    prisma.store.findUnique.mockResolvedValueOnce({
+      id: 'store-1',
+      name: 'Shop A',
+      address: 'Colombo',
+      phone: '0110000000',
+      pickupAddress: null,
+      pickupLatitude: null,
+      pickupLongitude: null,
+    });
+
+    const res = makeRes();
+    await createDeliveryRequest(makeReq(), res);
+
+    expect(res._status).toBe(409);
+    expect(res._body.code).toBe('SHOP_LOCATION_REQUIRED');
+    expect(riderQuery).not.toHaveBeenCalled();
   });
 
   it('does not overwrite a delivery that already has a rider', async () => {
@@ -101,5 +149,47 @@ describe('createDeliveryRequest', () => {
     expect(res._status).toBe(409);
     expect(res._body.message).toMatch(/no longer available/i);
     expect(dispatchJobToSelectedDriver).not.toHaveBeenCalled();
+  });
+});
+
+describe('shop pickup location', () => {
+  it('returns the fixed location shared by the shop', async () => {
+    const res = makeRes();
+    await getShopPickupLocation({ user: { id: 'salesman-1', role: 'SALESMAN' } }, res);
+
+    expect(res._body.success).toBe(true);
+    expect(res._body.data).toMatchObject({
+      configured: true,
+      address: 'Fixed Shop, Colombo',
+      latitude: 6.874321,
+      longitude: 79.912345,
+    });
+  });
+
+  it('updates the shop owner location for a salesman', async () => {
+    prisma.store.update.mockResolvedValueOnce({
+      name: 'Shop A',
+      address: 'Old shop address',
+      pickupAddress: 'New fixed shop',
+      pickupLatitude: 6.91,
+      pickupLongitude: 79.87,
+    });
+    const req = {
+      user: { id: 'salesman-1', role: 'SALESMAN' },
+      body: { latitude: 6.91, longitude: 79.87, address: 'New fixed shop' },
+    };
+    const res = makeRes();
+
+    await updateShopPickupLocation(req, res);
+
+    expect(res._body.success).toBe(true);
+    expect(prisma.store.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { ownerId: 'manager-1' },
+      data: {
+        pickupLatitude: 6.91,
+        pickupLongitude: 79.87,
+        pickupAddress: 'New fixed shop',
+      },
+    }));
   });
 });

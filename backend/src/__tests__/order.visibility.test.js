@@ -17,6 +17,17 @@ vi.mock('../lib/riderDb.js', () => ({ riderQuery: vi.fn() }));
 import prisma from '../lib/prisma.js';
 import { createOrder, getSalesmanOrders } from '../controllers/order.controller.js';
 
+const mockAddress = {
+  id: 'address-1',
+  street: '10 Main Road',
+  city: 'Colombo',
+  state: 'Western',
+  postalCode: '00100',
+  country: 'Sri Lanka',
+  latitude: 6.9271,
+  longitude: 79.8612,
+};
+
 const makeRes = () => ({
   _status: 200,
   _body: null,
@@ -76,7 +87,7 @@ describe('shop order ownership compatibility', () => {
         store: null,
       },
     };
-    prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
+    prisma.address.findFirst.mockResolvedValueOnce(mockAddress);
     prisma.product.findMany.mockResolvedValueOnce([product]);
     prisma.carPart.findMany.mockResolvedValueOnce([]);
 

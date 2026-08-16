@@ -8,7 +8,18 @@ import {
   retryJobDispatch,
 } from '../services/riderRealtimeDispatch.js';
 
-const isFiniteNumber = (value) => Number.isFinite(Number(value));
+const isCoordinateInRange = (value, min, max) => {
+  if (value === null || value === undefined || String(value).trim() === '') return false;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= min && number <= max;
+};
+const formatAddress = (address) => [
+  address?.street,
+  address?.city,
+  address?.state,
+  address?.postalCode,
+  address?.country,
+].filter(Boolean).join(', ');
 const normalizePaymentType = (value) => {
   const normalized = String(value || '').trim().toUpperCase().replace(/\s+/g, '_');
   if (['CASH_ON_DELIVERY', 'COD'].includes(normalized)) return 'COD';
@@ -18,6 +29,104 @@ const normalizePaymentType = (value) => {
 
 const buildOrderNumber = (order) =>
   order?.orderNumber || `DLV-${Date.now().toString(36).toUpperCase()}`;
+
+const findRequestShop = async (requestUser) => {
+  const ownerId = await resolveShopOwnerId(requestUser);
+  const store = await prisma.store.findUnique({
+    where: { ownerId },
+    select: {
+      id: true,
+      name: true,
+      address: true,
+      phone: true,
+      pickupAddress: true,
+      pickupLatitude: true,
+      pickupLongitude: true,
+    },
+  });
+  return { ownerId, store };
+};
+
+const serializeShopLocation = (store) => ({
+  configured: Boolean(
+    store &&
+    isCoordinateInRange(store.pickupLatitude, -90, 90) &&
+    isCoordinateInRange(store.pickupLongitude, -180, 180)
+  ),
+  storeName: store?.name || null,
+  address: store?.pickupAddress || store?.address || null,
+  latitude: store?.pickupLatitude ?? null,
+  longitude: store?.pickupLongitude ?? null,
+});
+
+export const getShopPickupLocation = async (req, res) => {
+  try {
+    const { store } = await findRequestShop(req.user);
+    if (!store) {
+      return res.status(404).json({ success: false, message: 'Shop not found for this account' });
+    }
+    return res.json({ success: true, data: serializeShopLocation(store) });
+  } catch (error) {
+    console.error('Get shop pickup location error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to load shop location',
+      error: error.message,
+    });
+  }
+};
+
+export const updateShopPickupLocation = async (req, res) => {
+  try {
+    const latitude = req.body.latitude ?? req.body.pickupLatitude;
+    const longitude = req.body.longitude ?? req.body.pickupLongitude;
+    const address = String(req.body.address ?? req.body.pickupAddress ?? '').trim();
+
+    if (
+      !isCoordinateInRange(latitude, -90, 90) ||
+      !isCoordinateInRange(longitude, -180, 180)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid shop latitude and longitude are required',
+      });
+    }
+
+    const { ownerId, store } = await findRequestShop(req.user);
+    if (!store) {
+      return res.status(404).json({ success: false, message: 'Shop not found for this account' });
+    }
+
+    const updatedStore = await prisma.store.update({
+      where: { ownerId },
+      data: {
+        pickupLatitude: Number(latitude),
+        pickupLongitude: Number(longitude),
+        pickupAddress: address || null,
+      },
+      select: {
+        name: true,
+        address: true,
+        pickupAddress: true,
+        pickupLatitude: true,
+        pickupLongitude: true,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: 'Shop location saved. It will be used for every delivery.',
+      data: serializeShopLocation(updatedStore),
+    });
+  } catch (error) {
+    console.error('Update shop pickup location error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to save shop location',
+      error: error.message,
+    });
+  }
+};
 
 export const createDeliveryRequest = async (req, res) => {
   try {
@@ -47,19 +156,6 @@ export const createDeliveryRequest = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Order ID is required' });
     }
 
-    if (
-      !isFiniteNumber(pickupLatitude) ||
-      !isFiniteNumber(pickupLongitude) ||
-      !isFiniteNumber(deliveryLatitude) ||
-      !isFiniteNumber(deliveryLongitude) ||
-      !deliveryAddress
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: 'Pickup coordinates and delivery address coordinates/text are required',
-      });
-    }
-
     const normalizedPaymentType = normalizePaymentType(paymentType);
     if (!normalizedPaymentType) {
       return res.status(400).json({
@@ -80,6 +176,7 @@ export const createDeliveryRequest = async (req, res) => {
             store: { select: { name: true, address: true, phone: true } },
           },
         },
+        address: true,
         items: true,
       },
     });
@@ -90,8 +187,13 @@ export const createDeliveryRequest = async (req, res) => {
 
     // Shop staff (salesman/manager) may only dispatch their own shop's orders.
     // Orders are recorded against the manager, so compare to the shop owner id.
+    let effectivePickupLatitude = pickupLatitude;
+    let effectivePickupLongitude = pickupLongitude;
+    let effectivePickupAddress = pickupAddress;
+    let dispatchStore = order.salesman?.store || null;
+
     if (req.user.role === 'SALESMAN' || req.user.role === 'SHOP_MANAGER') {
-      const shopOwnerId = await resolveShopOwnerId(req.user);
+      const { ownerId: shopOwnerId, store } = await findRequestShop(req.user);
       const shopMemberIds = await getShopMemberIds(shopOwnerId);
       if (!shopMemberIds.includes(order.salesmanId)) {
         return res.status(403).json({
@@ -99,7 +201,60 @@ export const createDeliveryRequest = async (req, res) => {
           message: 'You can only create delivery requests for your own orders',
         });
       }
+      if (!store) {
+        return res.status(404).json({ success: false, message: 'Shop not found for this account' });
+      }
+      const savedLocation = serializeShopLocation(store);
+      if (!savedLocation.configured) {
+        return res.status(409).json({
+          success: false,
+          code: 'SHOP_LOCATION_REQUIRED',
+          message: 'Set the fixed shop location before sending a delivery request',
+        });
+      }
+      dispatchStore = store;
+      effectivePickupLatitude = savedLocation.latitude;
+      effectivePickupLongitude = savedLocation.longitude;
+      effectivePickupAddress = savedLocation.address || store.name;
+    } else if (
+      !isCoordinateInRange(pickupLatitude, -90, 90) ||
+      !isCoordinateInRange(pickupLongitude, -180, 180)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid pickup latitude and longitude are required',
+      });
     }
+
+    const savedDeliveryLatitude = order.deliveryLatitude ?? order.address?.latitude;
+    const savedDeliveryLongitude = order.deliveryLongitude ?? order.address?.longitude;
+    const savedDeliveryAddress = order.deliveryAddress || formatAddress(order.address);
+    const hasSavedDeliveryLocation =
+      isCoordinateInRange(savedDeliveryLatitude, -90, 90) &&
+      isCoordinateInRange(savedDeliveryLongitude, -180, 180) &&
+      Boolean(savedDeliveryAddress);
+    const hasLegacyDeliveryLocation =
+      isCoordinateInRange(deliveryLatitude, -90, 90) &&
+      isCoordinateInRange(deliveryLongitude, -180, 180) &&
+      Boolean(deliveryAddress);
+
+    if (!hasSavedDeliveryLocation && !hasLegacyDeliveryLocation) {
+      return res.status(409).json({
+        success: false,
+        code: 'CUSTOMER_LOCATION_REQUIRED',
+        message: 'The customer delivery address has no pinned location. Ask the customer to update the address.',
+      });
+    }
+
+    const effectiveDeliveryLatitude = hasSavedDeliveryLocation
+      ? Number(savedDeliveryLatitude)
+      : Number(deliveryLatitude);
+    const effectiveDeliveryLongitude = hasSavedDeliveryLocation
+      ? Number(savedDeliveryLongitude)
+      : Number(deliveryLongitude);
+    const effectiveDeliveryAddress = hasSavedDeliveryLocation
+      ? savedDeliveryAddress
+      : deliveryAddress;
 
     const itemSummary = order.items
       .map((item) => `${item.quantity} x ${item.itemName || item.itemType}`)
@@ -109,14 +264,14 @@ export const createDeliveryRequest = async (req, res) => {
       buildOrderNumber(order),
       customerName || order.customer?.name || order.customer?.email || 'Customer',
       customerPhone || order.customer?.phone || '',
-      pickupAddress || order.salesman?.store?.address || order.salesman?.store?.name || 'Pickup location',
-      pickupLatitude,
-      pickupLongitude,
-      pickupContactName || order.salesman?.store?.name || order.salesman?.name || null,
-      pickupContactPhone || order.salesman?.store?.phone || order.salesman?.phone || null,
-      deliveryAddress,
-      deliveryLatitude,
-      deliveryLongitude,
+      effectivePickupAddress || dispatchStore?.address || dispatchStore?.name || 'Pickup location',
+      effectivePickupLatitude,
+      effectivePickupLongitude,
+      pickupContactName || dispatchStore?.name || order.salesman?.name || null,
+      pickupContactPhone || dispatchStore?.phone || order.salesman?.phone || null,
+      effectiveDeliveryAddress,
+      effectiveDeliveryLatitude,
+      effectiveDeliveryLongitude,
       estimatedEarnings ?? order.deliveryFee ?? order.serviceCharge ?? 0,
       packageWeight ?? null,
       packageType || null,
@@ -276,10 +431,30 @@ export const createDeliveryRequest = async (req, res) => {
 
 export const getAvailableDeliveryPartners = async (req, res) => {
   try {
-    const pickupLatitude = Number(req.query.pickupLatitude);
-    const pickupLongitude = Number(req.query.pickupLongitude);
+    let pickupLatitude = req.query.pickupLatitude;
+    let pickupLongitude = req.query.pickupLongitude;
 
-    if (!isFiniteNumber(pickupLatitude) || !isFiniteNumber(pickupLongitude)) {
+    if (req.user.role === 'SALESMAN' || req.user.role === 'SHOP_MANAGER') {
+      const { store } = await findRequestShop(req.user);
+      if (!store) {
+        return res.status(404).json({ success: false, message: 'Shop not found for this account' });
+      }
+      const savedLocation = serializeShopLocation(store);
+      if (!savedLocation.configured) {
+        return res.status(409).json({
+          success: false,
+          code: 'SHOP_LOCATION_REQUIRED',
+          message: 'Set the fixed shop location before loading available riders',
+        });
+      }
+      pickupLatitude = savedLocation.latitude;
+      pickupLongitude = savedLocation.longitude;
+    }
+
+    if (
+      !isCoordinateInRange(pickupLatitude, -90, 90) ||
+      !isCoordinateInRange(pickupLongitude, -180, 180)
+    ) {
       return res.status(400).json({
         success: false,
         message: 'Pickup latitude and longitude are required',
@@ -287,8 +462,8 @@ export const getAvailableDeliveryPartners = async (req, res) => {
     }
 
     const partners = await listEligibleDeliveryPartners({
-      pickupLatitude,
-      pickupLongitude,
+      pickupLatitude: Number(pickupLatitude),
+      pickupLongitude: Number(pickupLongitude),
     });
 
     return res.json({ success: true, data: partners });

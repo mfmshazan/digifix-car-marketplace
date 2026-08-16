@@ -84,21 +84,24 @@ model WalletTransaction {
 }
 
 model Store {
-  id           String    @id @default(cuid())
-  name         String
-  description  String?
-  logo         String?
-  banner       String?
-  address      String?
-  phone        String?
-  rating       Float     @default(0)
-  isVerified   Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  ownerId      String    @unique
-  totalReviews Int       @default(0)
-  products     Product[]
-  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  logo            String?
+  banner          String?
+  address         String?
+  pickupAddress   String?
+  pickupLatitude  Float?
+  pickupLongitude Float?
+  phone           String?
+  rating          Float     @default(0)
+  isVerified      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  ownerId         String    @unique
+  totalReviews    Int       @default(0)
+  products        Product[]
+  owner           User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
 }
@@ -170,19 +173,21 @@ model VehicleCompatibility {
 }
 
 model Address {
-  id         String   @id @default(cuid())
-  label      String?
-  street     String
-  city       String
-  state      String
+  id        String   @id @default(cuid())
+  label     String?
+  street    String
+  city      String
+  state     String
   postalCode String
-  country    String   @default("Sri Lanka")
-  isDefault  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders     Order[]
+  country   String   @default("Sri Lanka")
+  latitude  Float?
+  longitude Float?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders    Order[]
 
   @@index([userId])
 }
@@ -237,6 +242,9 @@ model Order {
   customerId         String
   salesmanId         String
   addressId          String?
+  deliveryAddress    String?
+  deliveryLatitude   Float?
+  deliveryLongitude  Float?
   cancellationReason String?
   serviceCharge      Float               @default(0)
   riderDeliveryJobs  DeliveryJob[]

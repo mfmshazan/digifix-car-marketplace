@@ -5,6 +5,22 @@ import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
 import { resolveShopOwnerId, getShopMemberIds } from '../lib/shopAccess.js';
 import { riderQuery } from '../lib/riderDb.js';
 
+const hasValidCoordinates = (latitude, longitude) => {
+  if (latitude === null || latitude === undefined || String(latitude).trim() === '' ||
+      longitude === null || longitude === undefined || String(longitude).trim() === '') {
+    return false;
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  return Number.isFinite(lat) && lat >= -90 && lat <= 90 &&
+    Number.isFinite(lng) && lng >= -180 && lng <= 180;
+};
+
+const formatDeliveryAddress = (address) =>
+  [address?.street, address?.city, address?.state, address?.postalCode, address?.country]
+    .filter(Boolean)
+    .join(', ');
+
 /**
  * Get salesman's sales summary
  * Returns daily sales, total revenue, and product details for the salesman
@@ -12,7 +28,8 @@ import { riderQuery } from '../lib/riderDb.js';
 export const getSalesmanSalesSummary = async (req, res) => {
   try {
     // Salesmen share the shop's sales figures — scope to the manager (shop owner).
-    const salesmanId = await resolveShopOwnerId(req.user);
+    const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
     const { date } = req.query;
     
     // Default to today if no date provided
@@ -23,7 +40,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
     // Get today's orders for this salesman
     const todayOrders = await prisma.order.findMany({
       where: {
-        salesmanId,
+        salesmanId: { in: shopOrderOwnerIds },
         createdAt: {
           gte: startOfDay,
           lte: endOfDay
@@ -94,7 +111,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
 
     const weekOrders = await prisma.order.findMany({
       where: {
-        salesmanId,
+        salesmanId: { in: shopOrderOwnerIds },
         createdAt: {
           gte: startOfWeek
         }
@@ -115,7 +132,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
 
     const monthOrders = await prisma.order.findMany({
       where: {
-        salesmanId,
+        salesmanId: { in: shopOrderOwnerIds },
         createdAt: {
           gte: startOfMonth
         }
@@ -134,7 +151,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
       where: {
         productId: { not: null },
         order: {
-          salesmanId,
+          salesmanId: { in: shopOrderOwnerIds },
           createdAt: {
             gte: startOfMonth
           }
@@ -157,7 +174,7 @@ export const getSalesmanSalesSummary = async (req, res) => {
       where: {
         carPartId: { not: null },
         order: {
-          salesmanId,
+          salesmanId: { in: shopOrderOwnerIds },
           createdAt: {
             gte: startOfMonth
           }
@@ -301,9 +318,10 @@ export const getSalesmanSalesSummary = async (req, res) => {
  */
 export const getSalesmanPendingCount = async (req, res) => {
   try {
-    const salesmanId = await resolveShopOwnerId(req.user);
+    const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
     const count = await prisma.order.count({
-      where: { salesmanId, status: 'PENDING' }
+      where: { salesmanId: { in: shopOrderOwnerIds }, status: 'PENDING' }
     });
     res.json({ success: true, count });
   } catch (error) {
@@ -317,12 +335,13 @@ export const getSalesmanPendingCount = async (req, res) => {
  */
 export const getSalesmanOrders = async (req, res) => {
   try {
-    // A salesman sees the shop's orders, which are recorded against the manager.
-    const salesmanId = await resolveShopOwnerId(req.user);
+    // Include legacy orders recorded against a salesman as well as manager-owned orders.
+    const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
     const { status, page = 1, limit = 20 } = req.query;
 
     const where = {
-      salesmanId
+      salesmanId: { in: shopOrderOwnerIds }
     };
 
     if (status) {
@@ -425,13 +444,14 @@ export const updateOrderStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
     // Salesmen act on behalf of their manager, so scope to the shop owner's id.
-    const salesmanId = await resolveShopOwnerId(req.user);
+    const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
 
     // Verify the order belongs to this shop
     const order = await prisma.order.findFirst({
       where: {
         id,
-        salesmanId
+        salesmanId: { in: shopOrderOwnerIds }
       }
     });
 
@@ -512,7 +532,7 @@ export const updateOrderStatus = async (req, res) => {
       if (status === 'DELIVERED' && order.status !== 'DELIVERED') {
         if (order.paymentMethod === 'Stripe' || order.paymentMethod === 'WALLET') {
           const adminWallet = await getAdminWallet(tx);
-          const salesmanWallet = await ensureWallet(salesmanId, tx);
+          const salesmanWallet = await ensureWallet(shopOwnerId, tx);
 
           await tx.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: order.total } } });
           await tx.wallet.update({ where: { id: salesmanWallet.id }, data: { balance: { increment: order.total } } });
@@ -568,7 +588,7 @@ export const updateOrderStatus = async (req, res) => {
         updatedAt: updatedOrder.updatedAt,
       });
       // Also broadcast to the manager and every salesman in the shop
-      const shopMemberIds = await getShopMemberIds(salesmanId);
+      const shopMemberIds = await getShopMemberIds(shopOwnerId);
       for (const memberId of shopMemberIds) {
         io.to(`user:${memberId}`).emit('orderStatusUpdated', {
           orderId: id,
@@ -636,6 +656,8 @@ export const getCustomerOrders = async (req, res) => {
               select: {
                 id: true,
                 name: true,
+                role: true,
+                managerId: true,
                 images: true,
                 salesman: {
                   select: {
@@ -762,7 +784,16 @@ export const createOrder = async (req, res) => {
         message: 'The selected delivery address is invalid. Please choose one of your saved addresses',
       });
     }
+    if (!hasValidCoordinates(address.latitude, address.longitude)) {
+      return res.status(400).json({
+        success: false,
+        message: 'The selected address needs a delivery pin. Edit the address and choose its location on the map.',
+      });
+    }
     const validAddressId = address.id;
+    const deliveryAddressSnapshot = formatDeliveryAddress(address);
+    const deliveryLatitudeSnapshot = Number(address.latitude);
+    const deliveryLongitudeSnapshot = Number(address.longitude);
 
     // Get item IDs
     const itemIds = items.map(item => item.productId);
@@ -777,6 +808,8 @@ export const createOrder = async (req, res) => {
           select: {
             id: true,
             name: true,
+            role: true,
+            managerId: true,
             store: {
               select: {
                 name: true
@@ -797,6 +830,8 @@ export const createOrder = async (req, res) => {
           select: {
             id: true,
             name: true,
+            role: true,
+            managerId: true,
             store: {
               select: {
                 name: true
@@ -818,7 +853,7 @@ export const createOrder = async (req, res) => {
         price: product.price,
         discountPrice: product.discountPrice,
         images: product.images,
-        sellerId: product.salesmanId,
+        sellerId: product.salesman?.managerId || product.salesmanId,
         sellerName: product.salesman?.name || 'Unknown Seller',
         storeName: product.salesman?.store?.name
       });
@@ -832,7 +867,7 @@ export const createOrder = async (req, res) => {
         price: part.price,
         discountPrice: part.discountPrice,
         images: part.images,
-        sellerId: part.sellerId,
+        sellerId: part.seller?.managerId || part.sellerId,
         sellerName: part.seller?.name || 'Unknown Seller',
         storeName: part.seller?.store?.name
       });
@@ -948,6 +983,9 @@ export const createOrder = async (req, res) => {
           deliveryFee: Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0,
           paymentMethod: normalizedPaymentMethod,
           notes,
+          deliveryAddress: deliveryAddressSnapshot,
+          deliveryLatitude: deliveryLatitudeSnapshot,
+          deliveryLongitude: deliveryLongitudeSnapshot,
           status: 'PENDING',
           paymentStatus: normalizedPaymentMethod === 'WALLET' ? 'PAID' : 'PENDING', // Mark paid automatically if Wallet
           items: {
@@ -1530,9 +1568,10 @@ export const acceptComplaint = async (req, res) => {
     const { id } = req.params;
     // Scope to the shop owner so a salesman/manager can only act on their own shop's orders.
     const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
 
     const order = await prisma.order.findFirst({
-      where: { id, salesmanId: shopOwnerId },
+      where: { id, salesmanId: { in: shopOrderOwnerIds } },
       include: {
         customer: { select: { id: true, name: true } },
         tracking: { where: { status: 'DELIVERED' }, select: { id: true }, take: 1 },
@@ -1597,9 +1636,10 @@ export const rejectComplaint = async (req, res) => {
     const { id } = req.params;
     const { message } = req.body;
     const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
 
     const order = await prisma.order.findFirst({
-      where: { id, salesmanId: shopOwnerId },
+      where: { id, salesmanId: { in: shopOrderOwnerIds } },
       include: {
         customer: { select: { id: true, name: true } },
         tracking: { where: { status: 'DELIVERED' }, select: { id: true }, take: 1 },

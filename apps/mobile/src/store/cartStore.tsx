@@ -7,8 +7,10 @@ import {
   removeCartItem,
   clearCartApi,
   BackendCartItem,
+  SessionExpiredError,
 } from '../api/cart';
 import { getToken } from '../api/storage';
+import { router } from 'expo-router';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,6 +86,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             return;
           }
         } catch (backendError) {
+          if (backendError instanceof SessionExpiredError) {
+            setItems([]);
+            await AsyncStorage.removeItem(CART_OFFLINE_KEY);
+            router.replace('/(auth)/login');
+            return;
+          }
           console.warn('🛒 Cart: Backend fetch failed, falling back to offline cache:', String(backendError).substring(0, 100));
         }
       } else {

@@ -13,3 +13,7 @@ web-build/
 
 # Local environment variables (contains machine-specific IP)
 .env
+
+# generated native folders
+/ios
+/android

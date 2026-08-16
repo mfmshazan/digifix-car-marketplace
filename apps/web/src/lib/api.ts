@@ -331,6 +331,38 @@ export const ordersApi = {
 };
 
 export const deliveryRequestsApi = {
+  getShopLocation: async () => {
+    const response = await api.get('/delivery-requests/shop-location');
+    return response.data as {
+      success: boolean;
+      data: {
+        configured: boolean;
+        storeName: string | null;
+        address: string | null;
+        latitude: number | null;
+        longitude: number | null;
+      };
+    };
+  },
+
+  updateShopLocation: async (data: {
+    latitude: number;
+    longitude: number;
+    address?: string;
+  }) => {
+    const response = await api.put('/delivery-requests/shop-location', data);
+    return response.data as {
+      success: boolean;
+      data: {
+        configured: boolean;
+        storeName: string | null;
+        address: string | null;
+        latitude: number;
+        longitude: number;
+      };
+    };
+  },
+
   // Create a delivery request for an order (salesman dispatches a rider)
   create: async (data: {
     orderId: string;

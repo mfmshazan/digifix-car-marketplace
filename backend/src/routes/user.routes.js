@@ -11,6 +11,11 @@ const router = Router();
 router.use(authenticate);
 
 const cleanText = (value) => typeof value === 'string' ? value.trim() : '';
+const isCoordinateInRange = (value, min, max) => {
+  if (value === null || value === undefined || String(value).trim() === '') return false;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= min && number <= max;
+};
 
 const validateRequiredAddressFields = ({ street, city, state, postalCode }) => {
   const missingFields = [];
@@ -41,13 +46,22 @@ router.get('/addresses', async (req, res) => {
 // Add address
 router.post('/addresses', async (req, res) => {
   try {
-    const { label, street, city, state, postalCode, country, isDefault } = req.body;
+    const { label, street, city, state, postalCode, country, latitude, longitude, isDefault } = req.body;
 
     const missingFields = validateRequiredAddressFields({ street, city, state, postalCode });
     if (missingFields.length > 0) {
       return res.status(400).json({ 
         success: false, 
         message: `Please enter ${missingFields.join(', ')}`,
+      });
+    }
+    if (
+      !isCoordinateInRange(latitude, -90, 90) ||
+      !isCoordinateInRange(longitude, -180, 180)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please pin the delivery location on the map',
       });
     }
 
@@ -73,6 +87,8 @@ router.post('/addresses', async (req, res) => {
           state: cleanText(state),
           postalCode: cleanText(postalCode),
           country: cleanText(country) || 'Sri Lanka',
+          latitude: Number(latitude),
+          longitude: Number(longitude),
           isDefault: shouldBeDefault,
         },
       });
@@ -116,6 +132,18 @@ router.patch('/addresses/:addressId', async (req, res) => {
         message: `Please enter ${missingFields.join(', ')}`,
       });
     }
+    const coordinatesWereProvided =
+      req.body.latitude !== undefined || req.body.longitude !== undefined;
+    if (
+      coordinatesWereProvided &&
+      (!isCoordinateInRange(req.body.latitude, -90, 90) ||
+        !isCoordinateInRange(req.body.longitude, -180, 180))
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please pin a valid delivery location on the map',
+      });
+    }
 
     const address = await prisma.$transaction(async (tx) => {
       if (req.body.isDefault === true) {
@@ -135,6 +163,10 @@ router.patch('/addresses/:addressId', async (req, res) => {
       if (req.body.state !== undefined) data.state = cleanText(req.body.state);
       if (req.body.postalCode !== undefined) data.postalCode = cleanText(req.body.postalCode);
       if (req.body.country !== undefined) data.country = cleanText(req.body.country) || 'Sri Lanka';
+      if (coordinatesWereProvided) {
+        data.latitude = Number(req.body.latitude);
+        data.longitude = Number(req.body.longitude);
+      }
       if (req.body.isDefault === true) data.isDefault = true;
 
       return tx.address.update({

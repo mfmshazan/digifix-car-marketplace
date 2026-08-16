@@ -121,6 +121,18 @@ interface Order {
   createdAt: string;
   cancellationReason?: string | null;
   isComplaint?: boolean;
+  deliveryAddress?: string | null;
+  deliveryLatitude?: number | null;
+  deliveryLongitude?: number | null;
+  address?: {
+    street: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
 }
 
 interface SalesSummary {
@@ -299,103 +311,147 @@ function DeliveryStatusBadge({ status }: { status: string }) {
   );
 }
 
-// ─── Leaflet Map Picker (Delivery Location) ──────────────────────────────────
+// ─── Google Map Picker (Delivery Location) ───────────────────────────────────
 
-function LeafletMapPicker({
+function GoogleMapPicker({
   onSelect,
+  initialCoordinates,
+  readOnly = false,
 }: {
   onSelect: (lat: number, lng: number, address: string) => void;
+  initialCoordinates?: { lat: number; lng: number } | null;
+  readOnly?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
-  const [status, setStatus] = useState<'idle' | 'selected' | 'geocoding'>('idle');
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const onSelectRef = useRef(onSelect);
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
+  const initialLatitude = initialCoordinates?.lat;
+  const initialLongitude = initialCoordinates?.lng;
+  const [status, setStatus] = useState<'idle' | 'selected' | 'geocoding' | 'error'>(
+    initialCoordinates ? 'selected' : 'idle'
+  );
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    initialCoordinates || null
+  );
 
   useEffect(() => {
-    // Inject Leaflet CSS once
-    if (!document.getElementById('leaflet-css')) {
-      const link = document.createElement('link');
-      link.id = 'leaflet-css';
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(link);
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
+
+  useEffect(() => {
+    if (!apiKey) {
+      setStatus('error');
+      return;
     }
+
+    let poll: ReturnType<typeof setInterval> | null = null;
 
     const initMap = () => {
       if (!containerRef.current || mapRef.current) return;
-      const L = (window as any).L;
-      if (!L) return;
+      const google = (window as any).google;
+      if (!google?.maps) return;
 
-      const map = L.map(containerRef.current).setView([6.9271, 79.8612], 13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 19,
-      }).addTo(map);
+      const hasInitialCoordinates =
+        initialLatitude !== undefined && initialLongitude !== undefined;
+      const center = hasInitialCoordinates
+        ? { lat: initialLatitude, lng: initialLongitude }
+        : { lat: 6.9271, lng: 79.8612 };
+      const map = new google.maps.Map(containerRef.current, {
+        center,
+        zoom: hasInitialCoordinates ? 15 : 13,
+        disableDefaultUI: readOnly,
+        clickableIcons: false,
+        gestureHandling: readOnly ? 'none' : 'auto',
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: false,
+      });
+      const geocoder = new google.maps.Geocoder();
 
-      const handlePick = async (lat: number, lng: number) => {
+      const handlePick = (lat: number, lng: number) => {
         setCoords({ lat, lng });
         setStatus('geocoding');
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-            { headers: { 'Accept-Language': 'en' } }
-          );
-          const data = await res.json();
-          onSelect(lat, lng, data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        } catch {
-          onSelect(lat, lng, `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        }
-        setStatus('selected');
+        geocoder.geocode(
+          { location: { lat, lng } },
+          (results: any[], geocodeStatus: string) => {
+            const address = geocodeStatus === 'OK' && results?.[0]?.formatted_address
+              ? results[0].formatted_address
+              : `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            onSelectRef.current(lat, lng, address);
+            setStatus('selected');
+          }
+        );
       };
 
-      map.on('click', (e: any) => {
-        const { lat, lng } = e.latlng;
+      const setMarker = (lat: number, lng: number) => {
         if (markerRef.current) {
-          markerRef.current.setLatLng([lat, lng]);
-        } else {
-          markerRef.current = L.marker([lat, lng], { draggable: true }).addTo(map);
-          markerRef.current.on('dragend', (de: any) => {
-            const pos = de.target.getLatLng();
-            handlePick(pos.lat, pos.lng);
+          markerRef.current.setPosition({ lat, lng });
+          return;
+        }
+        markerRef.current = new google.maps.Marker({
+          map,
+          position: { lat, lng },
+          draggable: !readOnly,
+          title: readOnly ? 'Customer delivery location' : 'Delivery location',
+        });
+        if (!readOnly) {
+          markerRef.current.addListener('dragend', (event: any) => {
+            if (event.latLng) handlePick(event.latLng.lat(), event.latLng.lng());
           });
         }
-        handlePick(lat, lng);
-      });
+      };
 
+      if (hasInitialCoordinates) setMarker(initialLatitude, initialLongitude);
+      if (!readOnly) {
+        map.addListener('click', (event: any) => {
+          if (!event.latLng) return;
+          const lat = event.latLng.lat();
+          const lng = event.latLng.lng();
+          setMarker(lat, lng);
+          handlePick(lat, lng);
+        });
+      }
       mapRef.current = map;
     };
 
-    if ((window as any).L) {
+    if ((window as any).google?.maps) {
       initMap();
-    } else if (!document.getElementById('leaflet-js')) {
+    } else if (!document.getElementById('google-maps-js')) {
       const script = document.createElement('script');
-      script.id = 'leaflet-js';
-      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.id = 'google-maps-js';
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
+      script.async = true;
+      script.defer = true;
       script.onload = initMap;
+      script.onerror = () => setStatus('error');
       document.head.appendChild(script);
     } else {
-      // Script tag exists but may still be loading — poll briefly
-      const poll = setInterval(() => {
-        if ((window as any).L) { clearInterval(poll); initMap(); }
+      poll = setInterval(() => {
+        if ((window as any).google?.maps) {
+          if (poll) clearInterval(poll);
+          initMap();
+        }
       }, 100);
-      return () => clearInterval(poll);
     }
 
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-        markerRef.current = null;
+      if (poll) clearInterval(poll);
+      const google = (window as any).google;
+      if (mapRef.current && google?.maps) {
+        google.maps.event.clearInstanceListeners(mapRef.current);
       }
+      mapRef.current = null;
+      markerRef.current = null;
     };
-  }, []);
+  }, [apiKey, initialLatitude, initialLongitude, readOnly]);
 
   return (
     <div className="space-y-2">
       <div
         ref={containerRef}
-        className="w-full rounded-xl overflow-hidden border border-gray-200"
+        className="w-full rounded-lg overflow-hidden border border-gray-200"
         style={{ height: 260 }}
       />
       {status === 'idle' && (
@@ -405,19 +461,22 @@ function LeafletMapPicker({
       )}
       {status === 'geocoding' && (
         <p className="text-xs text-amber-600 text-center animate-pulse">
-          Fetching address…
+          Fetching address...
         </p>
       )}
-      {status === 'selected' && coords && (
+      {status === 'selected' && coords && !readOnly && (
         <p className="text-xs text-green-700 font-medium text-center">
-          📍 {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)} — You can drag the pin to adjust
+          {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}. Drag the pin to adjust.
+        </p>
+      )}
+      {status === 'error' && (
+        <p className="text-xs text-red-600 text-center">
+          Google Maps could not load. Check the Maps JavaScript API key configuration.
         </p>
       )}
     </div>
   );
 }
-
-// ─── Create Delivery Request Modal ───────────────────────────────────────────
 
 interface DeliveryFormState {
   pickupLatitude: string;
@@ -442,6 +501,12 @@ interface AvailableRider {
   distanceToPickupKm: number | null;
 }
 
+interface SavedShopLocation {
+  latitude: number;
+  longitude: number;
+  address: string;
+}
+
 function CreateDeliveryRequestModal({
   order,
   onClose,
@@ -451,23 +516,79 @@ function CreateDeliveryRequestModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const savedDeliveryLatitude = order.deliveryLatitude ?? order.address?.latitude ?? null;
+  const savedDeliveryLongitude = order.deliveryLongitude ?? order.address?.longitude ?? null;
+  const hasSavedCustomerLocation =
+    savedDeliveryLatitude !== null &&
+    savedDeliveryLongitude !== null &&
+    Number.isFinite(Number(savedDeliveryLatitude)) &&
+    Number.isFinite(Number(savedDeliveryLongitude));
+  const savedDeliveryAddress = order.deliveryAddress || [
+    order.address?.street,
+    order.address?.city,
+    order.address?.state,
+    order.address?.postalCode,
+    order.address?.country,
+  ].filter(Boolean).join(', ');
   const [form, setForm] = useState<DeliveryFormState>({
     pickupLatitude: '',
     pickupLongitude: '',
     pickupAddress: '',
-    deliveryLatitude: '',
-    deliveryLongitude: '',
-    deliveryAddress: '',
+    deliveryLatitude: hasSavedCustomerLocation ? String(savedDeliveryLatitude) : '',
+    deliveryLongitude: hasSavedCustomerLocation ? String(savedDeliveryLongitude) : '',
+    deliveryAddress: savedDeliveryAddress,
     paymentType: 'COD',
     packageNotes: '',
     estimatedEarnings: '',
   });
   const [gettingLocation, setGettingLocation] = useState(false);
+  const [shopLocationLoading, setShopLocationLoading] = useState(true);
+  const [shopLocationSaving, setShopLocationSaving] = useState(false);
+  const [shopLocationConfigured, setShopLocationConfigured] = useState(false);
+  const [editingShopLocation, setEditingShopLocation] = useState(false);
+  const [savedShopLocation, setSavedShopLocation] = useState<SavedShopLocation | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loadingRiders, setLoadingRiders] = useState(false);
   const [availableRiders, setAvailableRiders] = useState<AvailableRider[]>([]);
   const [selectedRiderId, setSelectedRiderId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    deliveryRequestsApi.getShopLocation()
+      .then((response) => {
+        if (!mounted) return;
+        const location = response.data;
+        if (location.configured && location.latitude !== null && location.longitude !== null) {
+          const saved = {
+            latitude: location.latitude,
+            longitude: location.longitude,
+            address: location.address || '',
+          };
+          setSavedShopLocation(saved);
+          setShopLocationConfigured(true);
+          setForm((current) => ({
+            ...current,
+            pickupLatitude: saved.latitude.toFixed(6),
+            pickupLongitude: saved.longitude.toFixed(6),
+            pickupAddress: saved.address,
+          }));
+        } else {
+          setEditingShopLocation(true);
+        }
+      })
+      .catch((err: any) => {
+        if (!mounted) return;
+        setEditingShopLocation(true);
+        setError(err?.response?.data?.message || err?.message || 'Failed to load the shop location.');
+      })
+      .finally(() => {
+        if (mounted) setShopLocationLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -492,12 +613,66 @@ function CreateDeliveryRequestModal({
     );
   };
 
+  const saveFixedShopLocation = async () => {
+    setError(null);
+    const latitude = Number(form.pickupLatitude);
+    const longitude = Number(form.pickupLongitude);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+        !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      setError('Enter valid shop latitude and longitude values.');
+      return;
+    }
+
+    setShopLocationSaving(true);
+    try {
+      const response = await deliveryRequestsApi.updateShopLocation({
+        latitude,
+        longitude,
+        address: form.pickupAddress.trim() || undefined,
+      });
+      const location = response.data;
+      const saved = {
+        latitude: Number(location.latitude),
+        longitude: Number(location.longitude),
+        address: location.address || '',
+      };
+      setSavedShopLocation(saved);
+      setShopLocationConfigured(true);
+      setEditingShopLocation(false);
+      setAvailableRiders([]);
+      setSelectedRiderId(null);
+      setForm((current) => ({
+        ...current,
+        pickupLatitude: saved.latitude.toFixed(6),
+        pickupLongitude: saved.longitude.toFixed(6),
+        pickupAddress: saved.address,
+      }));
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Failed to save the shop location.');
+    } finally {
+      setShopLocationSaving(false);
+    }
+  };
+
+  const cancelShopLocationEdit = () => {
+    if (savedShopLocation) {
+      setForm((current) => ({
+        ...current,
+        pickupLatitude: savedShopLocation.latitude.toFixed(6),
+        pickupLongitude: savedShopLocation.longitude.toFixed(6),
+        pickupAddress: savedShopLocation.address,
+      }));
+    }
+    setEditingShopLocation(false);
+    setError(null);
+  };
+
   const loadAvailableRiders = async () => {
     setError(null);
     setSelectedRiderId(null);
 
-    if (!form.pickupLatitude || !form.pickupLongitude) {
-      setError('Pickup coordinates are required before loading available riders.');
+    if (!shopLocationConfigured || editingShopLocation) {
+      setError('Save the fixed shop location before loading available riders.');
       return;
     }
 
@@ -523,8 +698,8 @@ function CreateDeliveryRequestModal({
     setError(null);
     const { pickupLatitude, pickupLongitude, deliveryLatitude, deliveryLongitude, deliveryAddress } = form;
 
-    if (!pickupLatitude || !pickupLongitude) {
-      setError('Pickup coordinates are required. Use "Get Current Location" or enter manually.');
+    if (!shopLocationConfigured || editingShopLocation || !pickupLatitude || !pickupLongitude) {
+      setError('Save the fixed shop location before sending a delivery request.');
       return;
     }
     if (!deliveryLatitude || !deliveryLongitude || !deliveryAddress) {
@@ -596,39 +771,98 @@ function CreateDeliveryRequestModal({
               <MapPin className="w-3.5 h-3.5 inline mr-1" />
               Pickup Location (Your Shop)
             </label>
-            <button
-              onClick={useCurrentLocation}
-              disabled={gettingLocation}
-              className="w-full mb-2 flex items-center justify-center gap-2 px-3 py-2 bg-[#00002E] text-white rounded-xl text-sm font-medium hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
-            >
-              {gettingLocation ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
-              {gettingLocation ? 'Getting Location…' : 'Use My Current Location'}
-            </button>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                step="any"
-                placeholder="Latitude"
-                value={form.pickupLatitude}
-                onChange={(e) => setForm((f) => ({ ...f, pickupLatitude: e.target.value }))}
-                className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
-              />
-              <input
-                type="number"
-                step="any"
-                placeholder="Longitude"
-                value={form.pickupLongitude}
-                onChange={(e) => setForm((f) => ({ ...f, pickupLongitude: e.target.value }))}
-                className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
-              />
-            </div>
-            <input
-              type="text"
-              placeholder="Shop address (optional)"
-              value={form.pickupAddress}
-              onChange={(e) => setForm((f) => ({ ...f, pickupAddress: e.target.value }))}
-              className="mt-2 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
-            />
+            {shopLocationLoading ? (
+              <div className="min-h-[84px] flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-500">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Loading saved shop location...
+              </div>
+            ) : shopLocationConfigured && !editingShopLocation ? (
+              <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <div className="w-10 h-10 shrink-0 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <Store className="w-5 h-5 text-[#00002E]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900">Fixed pickup location</p>
+                  <p className="text-xs text-gray-600 truncate">{form.pickupAddress || 'Shop location'}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {Number(form.pickupLatitude).toFixed(5)}, {Number(form.pickupLongitude).toFixed(5)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  title="Change fixed shop location"
+                  onClick={() => setEditingShopLocation(true)}
+                  className="w-10 h-10 shrink-0 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center hover:bg-orange-100"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 space-y-2">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {shopLocationConfigured ? 'Change shop location' : 'Set your shop location'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Save this once. It will be the pickup point for every delivery.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={useCurrentLocation}
+                  disabled={gettingLocation}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#00002E] text-white rounded-lg text-sm font-medium hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
+                >
+                  {gettingLocation ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
+                  {gettingLocation ? 'Getting Location...' : 'Use Current Location for Shop'}
+                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Latitude"
+                    value={form.pickupLatitude}
+                    onChange={(e) => setForm((f) => ({ ...f, pickupLatitude: e.target.value }))}
+                    className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Longitude"
+                    value={form.pickupLongitude}
+                    onChange={(e) => setForm((f) => ({ ...f, pickupLongitude: e.target.value }))}
+                    className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+                  />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Shop address"
+                  value={form.pickupAddress}
+                  onChange={(e) => setForm((f) => ({ ...f, pickupAddress: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+                />
+                <div className="flex justify-end gap-2 pt-1">
+                  {shopLocationConfigured && (
+                    <button
+                      type="button"
+                      onClick={cancelShopLocationEdit}
+                      className="min-h-10 px-3 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={saveFixedShopLocation}
+                    disabled={shopLocationSaving}
+                    className="min-h-10 px-3 rounded-lg bg-[#00002E] text-white text-xs font-semibold inline-flex items-center gap-2 disabled:opacity-60"
+                  >
+                    {shopLocationSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+                    {shopLocationSaving ? 'Saving...' : 'Save Shop Location'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Delivery Location — map picker */}
@@ -646,6 +880,11 @@ function CreateDeliveryRequestModal({
                   <p className="text-xs font-semibold text-indigo-900 truncate">
                     {form.deliveryAddress || 'Location pinned'}
                   </p>
+                  {hasSavedCustomerLocation && (
+                    <p className="text-[10px] font-bold uppercase text-green-700 mt-0.5">
+                      Customer saved location
+                    </p>
+                  )}
                   <p className="text-xs text-indigo-500 mt-0.5">
                     {parseFloat(form.deliveryLatitude).toFixed(5)}, {parseFloat(form.deliveryLongitude).toFixed(5)}
                   </p>
@@ -653,8 +892,12 @@ function CreateDeliveryRequestModal({
               </div>
             )}
 
-            {/* Leaflet map */}
-            <LeafletMapPicker
+            {/* Google map */}
+            <GoogleMapPicker
+              initialCoordinates={form.deliveryLatitude && form.deliveryLongitude
+                ? { lat: Number(form.deliveryLatitude), lng: Number(form.deliveryLongitude) }
+                : null}
+              readOnly={hasSavedCustomerLocation}
               onSelect={(lat, lng, address) => {
                 setForm((f) => ({
                   ...f,
@@ -666,7 +909,7 @@ function CreateDeliveryRequestModal({
             />
 
             {/* Editable address label after pin */}
-            {form.deliveryLatitude && form.deliveryLongitude && (
+            {form.deliveryLatitude && form.deliveryLongitude && !hasSavedCustomerLocation && (
               <input
                 type="text"
                 placeholder="Edit address label (optional)"
@@ -726,7 +969,7 @@ function CreateDeliveryRequestModal({
               <button
                 type="button"
                 onClick={loadAvailableRiders}
-                disabled={loadingRiders}
+                disabled={loadingRiders || !shopLocationConfigured || editingShopLocation || shopLocationLoading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               >
                 {loadingRiders ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
@@ -787,7 +1030,7 @@ function CreateDeliveryRequestModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || !shopLocationConfigured || editingShopLocation || shopLocationLoading}
             className="flex-1 py-2.5 rounded-xl bg-[#00002E] text-white text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
           >
             {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

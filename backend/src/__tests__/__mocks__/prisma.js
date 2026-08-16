@@ -30,8 +30,16 @@ const prisma = {
   orderTracking: {
     create: vi.fn(),
   },
+  user: {
+    findUnique: vi.fn().mockResolvedValue(undefined),
+    findMany: vi.fn().mockResolvedValue([]),
+  },
   address: {
     findFirst: vi.fn(),
+  },
+  store: {
+    findUnique: vi.fn(),
+    update: vi.fn(),
   },
   wallet: {
     findUnique: vi.fn(),

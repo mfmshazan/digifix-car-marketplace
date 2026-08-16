@@ -6,6 +6,8 @@ import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
 import { Provider, useDispatch } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
+import { ClerkProvider, ClerkLoaded } from '@clerk/expo';
+import { tokenCache } from '@clerk/expo/token-cache';
 
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
@@ -220,10 +222,15 @@ function AppContent() {
 }
 
 export default function App() {
+    const clerkKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
     return (
-        <Provider store={store}>
-            <AppContent />
-        </Provider>
+        <ClerkProvider publishableKey={clerkKey} tokenCache={tokenCache}>
+            <ClerkLoaded>
+                <Provider store={store}>
+                    <AppContent />
+                </Provider>
+            </ClerkLoaded>
+        </ClerkProvider>
     );
 }
 

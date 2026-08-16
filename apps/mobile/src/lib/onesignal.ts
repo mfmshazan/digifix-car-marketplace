@@ -44,7 +44,7 @@ export async function initOneSignal(): Promise<void> {
   try {
     os.initialize(ONESIGNAL_APP_ID);
     // Prompt for permission; `true` falls back to system settings if already denied.
-    os.Notifications.requestPermission(true).catch(() => {});
+    os.Notifications.requestPermission(true).catch(() => { });
     initialized = true;
     console.log('[OneSignal] initialised');
     // If a login was requested before init finished, apply it now.

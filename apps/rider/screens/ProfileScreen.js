@@ -338,13 +338,13 @@ export default function ProfileScreen({ navigation }) {
                     placeholder="Select vehicle type"
                     value={formData.vehicle_type}
                     onSelect={(text) => handleChange('vehicle_type', text)}
-                    options={['Car', 'Motorcycle', 'Bicycle']}
+                    options={['Car', 'Motorcycle', 'Lorry']}
                     disabled={!editing}
                 />
                 <Input
                     label="Vehicle Number"
                     value={formData.vehicle_number}
-                    onChangeText={(text) => handleChange('vehicle_number', text)}
+                    onChangeText={(text) => handleChange('vehicle_number', text.toUpperCase().replace(/[\s-]/g, ''))}
                     editable={editing}
                 />
                 <Input

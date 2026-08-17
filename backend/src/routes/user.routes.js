@@ -92,7 +92,7 @@ router.post('/addresses', async (req, res) => {
           isDefault: shouldBeDefault,
         },
       });
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     res.status(201).json({ success: true, data: address });
   } catch (error) {
@@ -173,7 +173,7 @@ router.patch('/addresses/:addressId', async (req, res) => {
         where: { id: addressId },
         data,
       });
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     res.json({ success: true, data: address });
   } catch (error) {
@@ -225,7 +225,7 @@ router.delete('/addresses/:addressId', async (req, res) => {
           });
         }
       }
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     res.json({ success: true, message: 'Address deleted successfully' });
   } catch (error) {

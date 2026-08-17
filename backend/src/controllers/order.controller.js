@@ -576,6 +576,13 @@ export const updateOrderStatus = async (req, res) => {
       }
 
       return updated;
+    }, {
+      // Prisma's default interactive-transaction timeout is 5s. Under high DB latency
+      // (e.g. a local backend talking to a distant pooler) the update + tracking write
+      // can exceed that and abort. Give it generous headroom; it still returns as soon
+      // as the work completes.
+      maxWait: 10000,
+      timeout: 20000,
     });
 
     // 🔌 Emit real-time event to the customer so their mobile app updates instantly
@@ -656,8 +663,6 @@ export const getCustomerOrders = async (req, res) => {
               select: {
                 id: true,
                 name: true,
-                role: true,
-                managerId: true,
                 images: true,
                 categoryId: true,
                 salesman: {

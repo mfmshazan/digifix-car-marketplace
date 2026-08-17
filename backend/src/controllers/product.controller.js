@@ -172,6 +172,7 @@ const createProduct = async (req, res) => {
       vehicleModelId,
       vehicleModelIds,
       compatibleVehicles,
+      deliveryVehicleType,
     } = req.body;
 
     // Support both the legacy single vehicleModelId and the newer multi-select
@@ -185,6 +186,13 @@ const createProduct = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Name, price, and at least one vehicle model are required',
+      });
+    }
+
+    if (!deliveryVehicleType || !['MOTORBIKE', 'CAR', 'LORRY'].includes(deliveryVehicleType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid delivery vehicle (MOTORBIKE, CAR, or LORRY) is required',
       });
     }
 
@@ -220,6 +228,7 @@ const createProduct = async (req, res) => {
         salesmanId: userId,
         storeId: store?.id,
         approvalStatus: 'APPROVED',
+        deliveryVehicleType: deliveryVehicleType || null,
         compatibleModels: {
           connect: modelIds.map((id) => ({ id })),
         },
@@ -301,6 +310,13 @@ const updateProduct = async (req, res) => {
       }
     }
 
+    if (!updateData.deliveryVehicleType || !['MOTORBIKE', 'CAR', 'LORRY'].includes(updateData.deliveryVehicleType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid delivery vehicle (MOTORBIKE, CAR, or LORRY) is required',
+      });
+    }
+
     // Update product
     const product = await prisma.product.update({
       where: { id },
@@ -314,6 +330,7 @@ const updateProduct = async (req, res) => {
         images: updateData.images,
         categoryId: updateData.categoryId || null,
         vehicleModelId: modelIds[0] || undefined,
+        deliveryVehicleType: updateData.deliveryVehicleType || undefined,
         isActive: updateData.isActive,
         compatibleModels: modelIds.length > 0
           ? { set: modelIds.map((id) => ({ id })) }

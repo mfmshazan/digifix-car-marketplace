@@ -1592,6 +1592,11 @@ function ProductsTab() {
                         {product.category.name}
                       </span>
                     )}
+                    {product.deliveryVehicleType && (
+                      <span className="text-[10px] bg-teal-50 text-teal-600 font-semibold px-2 py-0.5 rounded-full">
+                        {product.deliveryVehicleType === 'MOTORBIKE' ? 'Motorbike' : product.deliveryVehicleType === 'CAR' ? 'Car' : 'Lorry'} delivery
+                      </span>
+                    )}
                   </div>
 
                   <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-50">
@@ -2497,6 +2502,7 @@ function AddProductModal({ onClose, editProduct }: { onClose: () => void; editPr
     stock: '',
     condition: 'NEW',
     categoryId: '',
+    deliveryVehicleType: '',
   });
 
   // Multi-select: a product can be tagged compatible with several vehicle
@@ -2603,6 +2609,7 @@ function AddProductModal({ onClose, editProduct }: { onClose: () => void; editPr
       stock: editProduct.stock != null ? String(editProduct.stock) : '',
       condition: editProduct.condition || 'NEW',
       categoryId: editProduct.categoryId || editProduct.category?.id || '',
+      deliveryVehicleType: editProduct.deliveryVehicleType || '',
     });
     setImages(Array.isArray(editProduct.images) ? editProduct.images : []);
     const vehicleType = editProduct.vehicleModel?.vehicleType;
@@ -2637,6 +2644,10 @@ function AddProductModal({ onClose, editProduct }: { onClose: () => void; editPr
     // Validate required fields
     if (selectedModelIds.length === 0) {
       alert('Please select at least one vehicle model');
+      return;
+    }
+    if (!formData.deliveryVehicleType) {
+      alert('Please select a delivery vehicle');
       return;
     }
 
@@ -2808,13 +2819,29 @@ function AddProductModal({ onClose, editProduct }: { onClose: () => void; editPr
             </select>
           </div>
 
+          {/* Delivery Vehicle (Required) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Vehicle *</label>
+            <select
+              title="Select the vehicle needed to deliver this product"
+              value={formData.deliveryVehicleType}
+              onChange={e => setFormData({ ...formData, deliveryVehicleType: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
+              required
+            >
+              <option value="" disabled>Select a delivery vehicle</option>
+              <option value="MOTORBIKE">Motorbike</option>
+              <option value="CAR">Car</option>
+              <option value="LORRY">Lorry</option>
+            </select>
+          </div>
 
           {/* Submit */}
           <div className="flex gap-3 pt-4">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl transition-all">
               Cancel
             </button>
-            <button type="submit" disabled={isSubmitting || selectedModelIds.length === 0} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
+            <button type="submit" disabled={isSubmitting || selectedModelIds.length === 0 || !formData.deliveryVehicleType} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
               {isEditMode ? (isSubmitting ? 'Saving...' : 'Save Changes') : (isSubmitting ? 'Adding...' : 'Add Product')}
             </button>
           </div>

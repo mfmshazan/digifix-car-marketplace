@@ -9,45 +9,45 @@ datasource db {
 }
 
 model User {
-  id               String         @id @default(cuid())
-  email            String         @unique
+  id               String       @id @default(cuid())
+  email            String       @unique
   password         String?
   name             String?
   phone            String?
   avatar           String?
-  role             UserRole       @default(CUSTOMER)
-  authProvider     AuthProvider   @default(EMAIL)
-  googleId         String?        @unique
-  isVerified       Boolean        @default(false)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  status           UserStatus     @default(ACTIVE)
-  stripeAccountId  String?        @unique
-  deliveryStatus   String?        @default("offline")
-  rating           Float          @default(5.0)
-  total_deliveries Int            @default(0)
+  role             UserRole     @default(CUSTOMER)
+  authProvider     AuthProvider @default(EMAIL)
+  googleId         String?      @unique
+  isVerified       Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  status           UserStatus   @default(ACTIVE)
+  stripeAccountId  String?      @unique
+  deliveryStatus   String?      @default("offline")
+  rating           Float        @default(5.0)
+  total_deliveries Int          @default(0)
   vehicleNumber    String?
   vehicleType      String?
-  total_reviews    Int            @default(0)
+  total_reviews    Int          @default(0)
 
   // Manager / Salesman hierarchy.
   // A SALESMAN belongs to a SHOP_MANAGER (managerId set). A SHOP_MANAGER has
   // managerId = null and is the store/catalog/wallet owner salesmen operate under.
-  managerId        String?
-  manager          User?          @relation("ManagerSalesmen", fields: [managerId], references: [id], onDelete: SetNull)
-  salesmen         User[]         @relation("ManagerSalesmen")
+  managerId String?
+  manager   User?   @relation("ManagerSalesmen", fields: [managerId], references: [id], onDelete: SetNull)
+  salesmen  User[]  @relation("ManagerSalesmen")
 
-  addresses        Address[]
-  carParts         CarPart[]      @relation("SellerCarParts")
-  cart             CartItem[]
-  orders           Order[]        @relation("CustomerOrders")
-  salesOrders      Order[]        @relation("SalesmanOrders")
-  products         Product[]      @relation("SalesmanProducts")
-  reviews          Review[]
-  reviewReplies    ReviewReply[]
-  store            Store?
-  wallet           Wallet?
-  wishlist         WishlistItem[]
+  addresses     Address[]
+  carParts      CarPart[]      @relation("SellerCarParts")
+  cart          CartItem[]
+  orders        Order[]        @relation("CustomerOrders")
+  salesOrders   Order[]        @relation("SalesmanOrders")
+  products      Product[]      @relation("SalesmanProducts")
+  reviews       Review[]
+  reviewReplies ReviewReply[]
+  store         Store?
+  wallet        Wallet?
+  wishlist      WishlistItem[]
 
   @@index([managerId])
 }
@@ -104,33 +104,34 @@ model Store {
 }
 
 model Product {
-  id                 String                 @id @default(cuid())
-  name               String
-  description        String?
-  price              Float
-  discountPrice      Float?
-  sku                String?                @unique
-  stock              Int                    @default(0)
-  images             String[]
-  isActive           Boolean                @default(true)
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
-  categoryId         String?
-  salesmanId         String
-  storeId            String?
-  vehicleModelId     String?
-  averageRating      Float                  @default(0)
-  totalReviews       Int                    @default(0)
-  approvalStatus     ItemApprovalStatus     @default(PENDING)
-  cartItems          CartItem[]
-  orderItems         OrderItem[]
-  category           Category?              @relation(fields: [categoryId], references: [id])
-  salesman           User                   @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
-  store              Store?                 @relation(fields: [storeId], references: [id])
-  vehicleModel       VehicleModel?          @relation(fields: [vehicleModelId], references: [id], onDelete: SetNull)
-  compatibleVehicles VehicleCompatibility[]
-  compatibleModels   VehicleModel[]         @relation("ProductCompatibleModels")
-  wishlistItems      WishlistItem[]
+  id                  String                 @id @default(cuid())
+  name                String
+  description         String?
+  price               Float
+  discountPrice       Float?
+  sku                 String?                @unique
+  stock               Int                    @default(0)
+  images              String[]
+  isActive            Boolean                @default(true)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  categoryId          String?
+  salesmanId          String
+  storeId             String?
+  vehicleModelId      String?
+  averageRating       Float                  @default(0)
+  totalReviews        Int                    @default(0)
+  approvalStatus      ItemApprovalStatus     @default(PENDING)
+  deliveryVehicleType DeliveryVehicleType?
+  cartItems           CartItem[]
+  orderItems          OrderItem[]
+  category            Category?              @relation(fields: [categoryId], references: [id])
+  salesman            User                   @relation("SalesmanProducts", fields: [salesmanId], references: [id], onDelete: Cascade)
+  store               Store?                 @relation(fields: [storeId], references: [id])
+  vehicleModel        VehicleModel?          @relation(fields: [vehicleModelId], references: [id], onDelete: SetNull)
+  compatibleVehicles  VehicleCompatibility[]
+  compatibleModels    VehicleModel[]         @relation("ProductCompatibleModels")
+  wishlistItems       WishlistItem[]
 
   @@index([categoryId])
   @@index([salesmanId])
@@ -530,37 +531,37 @@ model DeliveryOffer {
 }
 
 model VehicleType {
-  id             String         @id @default(cuid())
-  name           String         @unique
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  vehicleModels  VehicleModel[]
+  id            String         @id @default(cuid())
+  name          String         @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  vehicleModels VehicleModel[]
 
   @@index([name])
 }
 
 model VehicleBrand {
-  id             String         @id @default(cuid())
-  name           String         @unique
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  vehicleModels  VehicleModel[]
+  id            String         @id @default(cuid())
+  name          String         @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  vehicleModels VehicleModel[]
 
   @@index([name])
 }
 
 model VehicleModel {
-  id               String                @id @default(cuid())
-  name             String
-  vehicleBrandId   String
-  vehicleTypeId    String
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-  vehicleBrand     VehicleBrand          @relation(fields: [vehicleBrandId], references: [id], onDelete: Cascade)
-  vehicleType      VehicleType           @relation(fields: [vehicleTypeId], references: [id], onDelete: Cascade)
-  products         Product[]
-  compatibleProducts Product[]           @relation("ProductCompatibleModels")
-  registrations    VehicleRegistration[]
+  id                 String                @id @default(cuid())
+  name               String
+  vehicleBrandId     String
+  vehicleTypeId      String
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  vehicleBrand       VehicleBrand          @relation(fields: [vehicleBrandId], references: [id], onDelete: Cascade)
+  vehicleType        VehicleType           @relation(fields: [vehicleTypeId], references: [id], onDelete: Cascade)
+  products           Product[]
+  compatibleProducts Product[]             @relation("ProductCompatibleModels")
+  registrations      VehicleRegistration[]
 
   @@unique([name, vehicleBrandId, vehicleTypeId])
   @@index([vehicleBrandId])
@@ -569,12 +570,12 @@ model VehicleModel {
 }
 
 model VehicleRegistration {
-  id             String       @id @default(cuid())
-  registrationNumber String     @unique
-  vehicleModelId String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  vehicleModel   VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
+  id                 String       @id @default(cuid())
+  registrationNumber String       @unique
+  vehicleModelId     String
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  vehicleModel       VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
 
   @@index([registrationNumber])
   @@index([vehicleModelId])
@@ -667,4 +668,10 @@ enum ItemApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum DeliveryVehicleType {
+  MOTORBIKE
+  CAR
+  LORRY
 }

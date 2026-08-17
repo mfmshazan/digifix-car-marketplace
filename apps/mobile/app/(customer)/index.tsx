@@ -40,6 +40,11 @@ import {
 import { getProducts } from "../../src/api/products";
 import { getCustomerOrders } from "../../src/api/orders";
 import { formatCurrency } from "../../src/lib/currency";
+import {
+  recordVehicleSearch,
+  getSearchHistory,
+  VehicleSearchHistoryEntry,
+} from "../../src/api/searchHistory";
 
 // ─── Sample registration numbers (seeded data) — tap to try the search ───────
 const samplePlates = [
@@ -129,6 +134,13 @@ export default function CustomerHomeScreen() {
   const [loadingFeatured, setLoadingFeatured] = useState(false);
   const [isPersonalized, setIsPersonalized] = useState(false);
 
+  // ── random parts based on the customer's previous registration searches ──
+  const [searchHistoryProducts, setSearchHistoryProducts] = useState<CompatibleProduct[]>([]);
+  const [loadingSearchHistory, setLoadingSearchHistory] = useState(false);
+  const [hasSearchHistory, setHasSearchHistory] = useState(false);
+  const [searchHistoryLabel, setSearchHistoryLabel] = useState("");
+  const [recentSearches, setRecentSearches] = useState<VehicleSearchHistoryEntry[]>([]);
+
   // ── promotion carousel ──
   const [currentPromoIdx, setCurrentPromoIdx] = useState(0);
   const promoScrollRef = useRef<FlatList>(null);
@@ -146,6 +158,7 @@ export default function CustomerHomeScreen() {
   useEffect(() => {
     loadWishlist();
     loadFeaturedProducts();
+    loadSearchHistoryProducts();
   }, []);
 
   // Sync input with stored registration
@@ -260,6 +273,47 @@ export default function CustomerHomeScreen() {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Random parts based on the customer's previous registration searches
+  // ─────────────────────────────────────────────────────────────────────────
+  const loadSearchHistoryProducts = async () => {
+    try {
+      const history = await getSearchHistory();
+      setRecentSearches(history.slice(0, 5));
+      if (history.length === 0) {
+        setHasSearchHistory(false);
+        setSearchHistoryProducts([]);
+        return;
+      }
+
+      setHasSearchHistory(true);
+      setLoadingSearchHistory(true);
+
+      // Re-resolve a random sample of past searches to their (fresh) compatible
+      // products, merge them, then show a random subset.
+      const picks = shuffleArray(history).slice(0, 3);
+      const results = await Promise.all(
+        picks.map((entry) => searchVehicleByRegistration(entry.registrationNumber))
+      );
+
+      const merged = new Map<string, CompatibleProduct>();
+      results.forEach((res) => {
+        if (res.success && res.data) {
+          res.data.compatibleProducts.forEach((p) => merged.set(p.id, p));
+        }
+      });
+
+      setSearchHistoryLabel(
+        picks.map((p) => `${p.vehicleInfo.brand.name} ${p.vehicleInfo.model.name}`).join(", ")
+      );
+      setSearchHistoryProducts(shuffleArray([...merged.values()]).slice(0, 8));
+    } catch (error) {
+      console.error("Failed to load search-history-based products:", error);
+    } finally {
+      setLoadingSearchHistory(false);
+    }
+  };
+
   const handleSamplePlatePress = (reg: string) => {
     setRegistrationInput(reg);
     void handleSearchFor(reg);
@@ -347,6 +401,8 @@ export default function CustomerHomeScreen() {
 
       if (response.success && response.data) {
         setVehicleData(response.data, query);
+        void recordVehicleSearch(query, response.data.vehicleInfo);
+        void loadSearchHistoryProducts();
       } else {
         Alert.alert(
           "Vehicle Not Found",
@@ -813,6 +869,31 @@ export default function CustomerHomeScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Recent searches — tap to instantly re-search a vehicle looked up before */}
+        {!vehicleData && recentSearches.length > 0 && (
+          <View style={styles.samplePlateRow}>
+            <Ionicons
+              name="time-outline"
+              size={14}
+              color="#6B7280"
+              style={{ marginRight: 2 }}
+            />
+            <Text style={styles.samplePlateLabel}>Recent:</Text>
+            {recentSearches.map((s) => (
+              <TouchableOpacity
+                key={s.registrationNumber}
+                style={styles.samplePlateChip}
+                onPress={() => handleSamplePlatePress(s.registrationNumber)}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.samplePlateChipText}>
+                  {s.registrationNumber} · {s.vehicleInfo.model.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         {/* Sample plates — tap to try the search instantly */}
         {!vehicleData && (
           <View style={styles.samplePlateRow}>
@@ -1081,6 +1162,35 @@ export default function CustomerHomeScreen() {
                 </View>
               ))}
             </View>
+          </View>
+        )}
+
+        {/* ── Based on Your Searches (random parts from previous plate lookups) ── */}
+        {!vehicleData && !isSearching && hasSearchHistory && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Based on Your Searches</Text>
+              <Text style={styles.resultsCount}>
+                {searchHistoryLabel ? `Because you searched ${searchHistoryLabel}` : "From your recent searches"}
+              </Text>
+            </View>
+            {loadingSearchHistory ? (
+              <ActivityIndicator
+                color="#00002E"
+                size="small"
+                style={{ marginVertical: 24 }}
+              />
+            ) : searchHistoryProducts.length > 0 ? (
+              <FlatList
+                data={searchHistoryProducts}
+                renderItem={renderProductCard}
+                keyExtractor={(item) => item.id}
+                numColumns={2}
+                scrollEnabled={false}
+                contentContainerStyle={styles.productGrid}
+                columnWrapperStyle={styles.productGridRow}
+              />
+            ) : null}
           </View>
         )}
       </ScrollView>

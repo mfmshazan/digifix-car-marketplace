@@ -25,7 +25,7 @@ export async function sendNewOrderNotificationToSalesman({ salesmanId, orderNumb
     // Target the salesman by their user ID (set via OneSignal login() on the frontend)
     include_aliases: { external_id: [salesmanId] },
     target_channel: 'push',
-    headings: { en: '🛒 New Order Received!' },
+    headings: { en: 'New Order Received!' },
     contents: {
       en: `Order ${orderNumber} was just placed. Total: Rs. ${Number(total).toLocaleString()}`,
     },
@@ -80,7 +80,7 @@ export async function sendCancellationRequestToAdmin({ orderNumber, customerName
     // Targeting admins by their user ID, registered via OneSignal login() on the web dashboard
     include_aliases: { external_id: adminIds },
     target_channel: 'push',
-    headings: { en: '⚠️ Cancellation Request' },
+    headings: { en: 'Cancellation Request' },
     contents: {
       en: `${customerName} requested to cancel Order ${orderNumber}. Please review.`,
     },
@@ -124,7 +124,7 @@ export async function sendComplaintToShop({ salesmanId, orderNumber, customerNam
     app_id: process.env.ONESIGNAL_APP_ID,
     include_aliases: { external_id: [salesmanId] },
     target_channel: 'push',
-    headings: { en: '⚠️ New Product Complaint' },
+    headings: { en: 'New Product Complaint' },
     contents: {
       en: `${customerName || 'A customer'} raised a complaint on Order ${orderNumber}. Review and accept or reject the refund request.`,
     },
@@ -175,23 +175,23 @@ export async function sendOrderStatusToCustomer({ customerId, orderNumber, order
   // Statuses not in this map (e.g. PENDING) intentionally send no push.
   const STATUS_MESSAGES = {
     CONFIRMED: {
-      heading: '✅ Order Accepted',
+      heading: 'Order Accepted',
       message: `Good news! Your order ${orderNumber} has been accepted and is being prepared.`,
     },
     PROCESSING: {
-      heading: '📦 Order Processing',
+      heading: 'Order Processing',
       message: `Your order ${orderNumber} is now being processed.`,
     },
     SHIPPED: {
-      heading: '🚚 Order Shipped',
+      heading: 'Order Shipped',
       message: `Your order ${orderNumber} is on the way!`,
     },
     DELIVERED: {
-      heading: '🎉 Order Delivered',
+      heading: 'Order Delivered',
       message: `Your order ${orderNumber} has been delivered. Enjoy!`,
     },
     CANCELLED: {
-      heading: '❌ Order Cancelled',
+      heading: 'Order Cancelled',
       message: `Your order ${orderNumber} has been cancelled by the seller.`,
     },
   };
@@ -243,7 +243,7 @@ export async function sendRefundApprovedToSalesman({ salesmanId, orderNumber }) 
     app_id: process.env.ONESIGNAL_APP_ID,
     include_aliases: { external_id: [salesmanId] },
     target_channel: 'push',
-    headings: { en: '🔄 Refund Approved' },
+    headings: { en: 'Refund Approved' },
     contents: {
       en: `Refund approved for Order ${orderNumber}. Please refund the customer and stop any pending fulfillment.`,
     },
@@ -332,7 +332,7 @@ export async function sendNewJobOfferToRider({ riderId, jobId, orderNumber, pick
   const dist = distanceKm != null ? ` • ${Number(distanceKm).toFixed(1)} km` : '';
   const res = await sendPush({
     externalIds: riderId,
-    heading: '🛵 New Delivery Request',
+    heading: 'New Delivery Request',
     message: `Earn ${money}${dist}. Pickup: ${pickupAddress || 'the shop'}. Tap to accept before it expires!`,
     data: { type: 'delivery_offer', jobId, orderNumber, pickupAddress, dropoffAddress, secondsToRespond },
   });
@@ -347,7 +347,7 @@ export async function sendNewJobOfferToRider({ riderId, jobId, orderNumber, pick
 export async function sendJobAssignedToRider({ riderId, jobId, orderNumber, pickupAddress }) {
   const res = await sendPush({
     externalIds: riderId,
-    heading: '✅ Delivery Assigned',
+    heading: 'Delivery Assigned',
     message: `Head to pickup for Order ${orderNumber || ''}: ${pickupAddress || 'the shop'}.`,
     data: { type: 'delivery_assigned', jobId, orderNumber, pickupAddress },
   });
@@ -357,18 +357,18 @@ export async function sendJobAssignedToRider({ riderId, jobId, orderNumber, pick
 
 // Customer-facing messages per rider step (#3). Steps not listed send no push.
 const RIDER_STEP_CUSTOMER_MESSAGES = {
-  accepted:           { heading: '🛵 Rider Assigned',    message: (n) => `A rider is heading to the shop for your order ${n}.` },
-  arrived_at_pickup:  { heading: '🛍️ Rider at the Shop',  message: (n) => `Your rider is collecting order ${n} from the shop.` },
-  picked_up:          { heading: '📦 Order Picked Up',    message: (n) => `Your rider has order ${n} and is on the way to you.` },
-  in_transit:         { heading: '🚗 On the Way',         message: (n) => `Your order ${n} is on the way!` },
-  arrived_at_dropoff: { heading: '📍 Rider Arriving',     message: (n) => `Your rider is arriving with order ${n}. Please be ready.` },
+  accepted:           { heading: 'Rider Assigned',    message: (n) => `A rider is heading to the shop for your order ${n}.` },
+  arrived_at_pickup:  { heading: 'Rider at the Shop',  message: (n) => `Your rider is collecting order ${n} from the shop.` },
+  picked_up:          { heading: 'Order Picked Up',    message: (n) => `Your rider has order ${n} and is on the way to you.` },
+  in_transit:         { heading: 'On the Way',         message: (n) => `Your order ${n} is on the way!` },
+  arrived_at_dropoff: { heading: 'Rider Arriving',     message: (n) => `Your rider is arriving with order ${n}. Please be ready.` },
 };
 
 // Shop-facing messages for the pickup-relevant steps only (#3, "and shop").
 const RIDER_STEP_SHOP_MESSAGES = {
-  accepted:          { heading: '🛵 Rider Assigned',     message: (n) => `A rider is on the way to collect order ${n}.` },
-  arrived_at_pickup: { heading: '🛍️ Rider at Your Shop',  message: (n) => `The rider is here to collect order ${n}. Please hand it over.` },
-  picked_up:         { heading: '📦 Order Collected',    message: (n) => `The rider has collected order ${n}.` },
+  accepted:          { heading: 'Rider Assigned',     message: (n) => `A rider is on the way to collect order ${n}.` },
+  arrived_at_pickup: { heading: 'Rider at Your Shop',  message: (n) => `The rider is here to collect order ${n}. Please hand it over.` },
+  picked_up:         { heading: 'Order Collected',    message: (n) => `The rider has collected order ${n}.` },
 };
 
 /** #3 Rider progress → the customer. */
@@ -404,7 +404,7 @@ export async function sendRiderNearbyToCustomer({ customerId, orderId, orderNumb
   if (!customerId) return { success: false, reason: 'no_customer_id' };
   const res = await sendPush({
     externalIds: customerId,
-    heading: '📍 Your Rider is Nearby',
+    heading: 'Your Rider is Nearby',
     message: `Your rider is almost there with order ${orderNumber || ''}. Please be ready to receive it.`,
     data: { type: 'rider_nearby', orderId, orderNumber },
   });

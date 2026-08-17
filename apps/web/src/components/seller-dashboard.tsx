@@ -76,7 +76,7 @@ function useOneSignalPush() {
         setPermission(perm);
         if (perm === 'granted') {
           setSubscribed(true);
-          new window.Notification('✅ Notifications enabled!', {
+          new window.Notification('Notifications enabled!', {
             body: 'You will now receive alerts when customers place orders.',
             icon: '/favicon.ico',
           });
@@ -1392,7 +1392,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     // (OneSignal push notification is sent server-side by the backend)
     const handleNewOrder = (payload: { orderNumber: string; total?: number }) => {
       console.log('🆕 [CurrentOrdersTab] newOrder event received:', payload);
-      setNewOrderAlert(`🆕 New order received: ${payload.orderNumber}`);
+      setNewOrderAlert(`New order received: ${payload.orderNumber}`);
       queryClient.invalidateQueries({ queryKey: ['salesman-orders'] });
       setTimeout(() => setNewOrderAlert(null), 10000);
     };
@@ -1414,7 +1414,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     // Customer raised a post-delivery complaint — surfaced to the manager only.
     const handleComplaintRaised = (payload: { orderNumber: string }) => {
       if (!isManager) return;
-      setComplaintAlert(`⚠️ New complaint on order ${payload.orderNumber}`);
+      setComplaintAlert(`New complaint on order ${payload.orderNumber}`);
       queryClient.invalidateQueries({ queryKey: ['salesman-orders'] });
       setTimeout(() => setComplaintAlert(null), 12000);
     };
@@ -2556,10 +2556,10 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
         {/* Greeting */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">
-            {activeTab === 'orders' && '📦 Current Orders'}
-            {activeTab === 'products' && '🛒 My Products'}
-            {activeTab === 'history' && '📊 Sales History'}
-            {activeTab === 'reviews' && '⭐ Store Reviews'}
+            {activeTab === 'orders' && 'Current Orders'}
+            {activeTab === 'products' && 'My Products'}
+            {activeTab === 'history' && 'Sales History'}
+            {activeTab === 'reviews' && 'Store Reviews'}
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">
             {activeTab === 'orders' && 'Manage and update orders placed by your customers.'}

@@ -61,6 +61,7 @@ model Wallet {
   user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   receivedTransactions WalletTransaction[] @relation("ReceivedTransactions")
   sentTransactions     WalletTransaction[] @relation("SentTransactions")
+  debtReceipts         DebtReceipt[]
 }
 
 model WalletTransaction {
@@ -73,6 +74,7 @@ model WalletTransaction {
   description         String?
   createdAt           DateTime            @default(now())
   orderId             String?
+  sourceRef           String?             @unique
   order               Order?              @relation(fields: [orderId], references: [id])
   receiverWallet      Wallet?             @relation("ReceivedTransactions", fields: [receiverWalletId], references: [id])
   senderWallet        Wallet?             @relation("SentTransactions", fields: [senderWalletId], references: [id])
@@ -624,6 +626,7 @@ enum TransactionType {
   COD_PAYMENT
   COD_REMITTANCE
   REFUND_SETTLEMENT
+  DEBT_REPAYMENT
 }
 
 enum CodSettlementStatus {
@@ -675,4 +678,29 @@ enum ItemApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum ReceiptStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model DebtReceipt {
+  id              String        @id @default(cuid())
+  walletId        String
+  wallet          Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount          Float
+  fileKey         String
+  fileType        String
+  note            String?
+  status          ReceiptStatus @default(PENDING)
+  rejectionReason String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([walletId])
+  @@index([status])
 }

@@ -877,7 +877,7 @@ export const createOrder = async (req, res) => {
 
     // Service charge is the platform's revenue — calculated server-side to prevent tampering
     const SERVICE_CHARGE_RATE = 0.10;
-    // Delivery fee will be distance-based (Rs. 250/km) once GPS integration is complete
+    // Delivery fee will be distance-based ($2.50/km) once GPS integration is complete
     // For now it defaults to 0 since we don't have distance data yet
     const calculateDeliveryFee = (distanceKm = 0) => distanceKm * 250;
     const deliveryFee = calculateDeliveryFee(0);

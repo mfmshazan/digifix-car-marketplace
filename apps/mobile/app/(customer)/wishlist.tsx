@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { wishlistApi } from "../../src/api/wishlist";
 import { useCart } from "../../src/store/cartStore";
+import { formatCurrency } from "../../src/lib/currency";
 
 export default function WishlistScreen() {
   const [wishlistItems, setWishlistItems] = useState<any[]>([]);
@@ -120,11 +121,11 @@ export default function WishlistScreen() {
           <View style={styles.bottomRow}>
             <View style={styles.priceContainer}>
               <Text style={styles.price}>
-                Rs. {(part.discountPrice || part.price).toLocaleString()}
+                {formatCurrency(part.discountPrice || part.price)}
               </Text>
               {part.discountPrice && (
                 <Text style={styles.originalPrice}>
-                  Rs. {part.price.toLocaleString()}
+                  {formatCurrency(part.price)}
                 </Text>
               )}
             </View>

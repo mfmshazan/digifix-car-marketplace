@@ -188,8 +188,8 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   );
 }
 
-function formatRs(amount: number) {
-  return `Rs. ${amount.toLocaleString()}`;
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(amount || 0);
 }
 
 function timeAgo(dateStr: string) {
@@ -897,7 +897,7 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <StatusDropdown order={order} onUpdate={onUpdate} deliveryStatus={deliveryStatus} />
-          <span className="font-bold text-gray-900 text-sm">{formatRs(order.total)}</span>
+          <span className="font-bold text-gray-900 text-sm">{formatCurrency(order.total)}</span>
         </div>
       </div>
 
@@ -934,23 +934,23 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{item.product?.name ?? item.itemName ?? 'Item'}</p>
-                  <p className="text-xs text-gray-500">Qty: {item.quantity} × {formatRs(item.price)}</p>
+                  <p className="text-xs text-gray-500">Qty: {item.quantity} × {formatCurrency(item.price)}</p>
                 </div>
-                <span className="text-sm font-semibold text-gray-900 shrink-0">{formatRs(item.total)}</span>
+                <span className="text-sm font-semibold text-gray-900 shrink-0">{formatCurrency(item.total)}</span>
               </div>
             ))}
             {/* Totals */}
             <div className="pt-2 space-y-1">
               <div className="flex justify-between text-xs text-gray-500">
-                <span>Subtotal</span><span>{formatRs(order.subtotal)}</span>
+                <span>Subtotal</span><span>{formatCurrency(order.subtotal)}</span>
               </div>
               {order.deliveryFee > 0 && (
                 <div className="flex justify-between text-xs text-gray-500">
-                  <span>Delivery</span><span>{formatRs(order.deliveryFee)}</span>
+                  <span>Delivery</span><span>{formatCurrency(order.deliveryFee)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm font-bold text-gray-900 border-t border-gray-100 pt-1 mt-1">
-                <span>Total</span><span>{formatRs(order.total)}</span>
+                <span>Total</span><span>{formatCurrency(order.total)}</span>
               </div>
             </div>
           </div>
@@ -1346,21 +1346,21 @@ function SalesHistoryTab() {
   const statsCards = [
     {
       label: "Today's Revenue",
-      value: formatRs(summary?.today.totalRevenue ?? 0),
+      value: formatCurrency(summary?.today.totalRevenue ?? 0),
       sub: `${summary?.today.totalOrders ?? 0} orders today`,
       icon: DollarSign,
       color: 'from-emerald-500 to-teal-500',
     },
     {
       label: 'Weekly Revenue',
-      value: formatRs(summary?.weekly.totalRevenue ?? 0),
+      value: formatCurrency(summary?.weekly.totalRevenue ?? 0),
       sub: `${summary?.weekly.totalOrders ?? 0} orders this week`,
       icon: TrendingUp,
       color: 'from-blue-500 to-indigo-500',
     },
     {
       label: 'Monthly Revenue',
-      value: formatRs(summary?.monthly.totalRevenue ?? 0),
+      value: formatCurrency(summary?.monthly.totalRevenue ?? 0),
       sub: `${summary?.monthly.totalOrders ?? 0} orders this month`,
       icon: BarChart3,
       color: 'from-violet-500 to-purple-500',
@@ -1418,8 +1418,8 @@ function SalesHistoryTab() {
                   <p className="text-xs text-gray-500">{product.totalSold} units sold</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-sm font-bold text-gray-900">{formatRs(product.totalRevenue ?? 0)}</p>
-                  <p className="text-xs text-gray-400">{formatRs(product.price)} each</p>
+                  <p className="text-sm font-bold text-gray-900">{formatCurrency(product.totalRevenue ?? 0)}</p>
+                  <p className="text-xs text-gray-400">{formatCurrency(product.price)} each</p>
                 </div>
               </div>
             ))}
@@ -1458,7 +1458,7 @@ function SalesHistoryTab() {
                       <div className="text-xs text-gray-400">{order.customer?.email}</div>
                     </td>
                     <td className="py-3 text-gray-600">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</td>
-                    <td className="py-3 font-semibold text-gray-900">{formatRs(order.total)}</td>
+                    <td className="py-3 font-semibold text-gray-900">{formatCurrency(order.total)}</td>
                     <td className="py-3 text-gray-500 text-xs">{new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                     <td className="py-3"><StatusBadge status={order.status as OrderStatus} /></td>
                   </tr>
@@ -1545,7 +1545,7 @@ function ProductsTab() {
                 <div className="p-4 flex-1 flex flex-col">
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="font-bold text-gray-900 text-sm line-clamp-1 flex-1">{product.name}</h3>
-                    <span className="text-sm font-bold text-[#00002E] ml-2">{formatRs(product.price)}</span>
+                    <span className="text-sm font-bold text-[#00002E] ml-2">{formatCurrency(product.price)}</span>
                   </div>
                   <p className="text-xs text-gray-500 line-clamp-2 mb-2">{product.description}</p>
 
@@ -2202,7 +2202,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
                                 <span className="text-xs text-gray-400 shrink-0 ml-2">{timeAgo(notif.time.toISOString())}</span>
                               </div>
                               {notif.type === 'NEW_ORDER' ? (
-                                <p className="text-xs text-gray-600">Total: Rs. {(notif.total || 0).toLocaleString()}</p>
+                                <p className="text-xs text-gray-600">Total: {formatCurrency(notif.total || 0)}</p>
                               ) : (
                                 <p className="text-xs text-gray-600">{notif.message}</p>
                               )}
@@ -2308,7 +2308,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
               <div>
                 <h4 className="font-bold text-gray-900 text-sm">{toastNotif.type === 'REFUND_APPROVED' ? 'Refund Approved' : toastNotif.type === 'COMPLAINT' ? 'New Complaint' : 'New Order!'}</h4>
                 {toastNotif.type === 'NEW_ORDER' ? (
-                  <p className="text-xs text-gray-500 mt-0.5">Order {toastNotif.orderNumber} for Rs. {(toastNotif.total || 0).toLocaleString()}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Order {toastNotif.orderNumber} for {formatCurrency(toastNotif.total || 0)}</p>
                 ) : (
                   <p className="text-xs text-gray-500 mt-0.5">{toastNotif.message || `Order ${toastNotif.orderNumber}`}</p>
                 )}
@@ -2703,7 +2703,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
           {/* Price & Stock */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Price (Rs.) *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Price (AUD) *</label>
               <input
                 type="number"
                 value={formData.price}

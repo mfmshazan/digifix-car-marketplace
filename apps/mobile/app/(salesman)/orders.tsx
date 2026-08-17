@@ -321,7 +321,7 @@ function DispatchModal({
           </View>
 
           <View style={[dispatchStyles.row, { marginTop: 12 }]}>
-            <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Rider pay (Rs)" keyboardType="decimal-pad" value={earnings} onChangeText={setEarnings} />
+            <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Rider pay ($)" keyboardType="decimal-pad" value={earnings} onChangeText={setEarnings} />
             <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Package notes" value={notes} onChangeText={setNotes} />
           </View>
 

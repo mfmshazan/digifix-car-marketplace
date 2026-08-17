@@ -268,7 +268,7 @@ export default function AddCarPartScreen() {
         <View style={styles.rowInputs}>
           <View style={[styles.inputGroup, styles.halfInput]}>
             <Text style={styles.label}>
-              Price (Rs.) <Text style={styles.required}>*</Text>
+              Price (AUD) <Text style={styles.required}>*</Text>
             </Text>
             <TextInput
               style={styles.input}
@@ -280,7 +280,7 @@ export default function AddCarPartScreen() {
             />
           </View>
           <View style={[styles.inputGroup, styles.halfInput]}>
-            <Text style={styles.label}>Discount Price (Rs.)</Text>
+            <Text style={styles.label}>Discount Price (AUD)</Text>
             <TextInput
               style={styles.input}
               placeholder="0"

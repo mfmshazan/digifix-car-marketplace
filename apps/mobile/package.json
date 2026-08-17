@@ -3,8 +3,9 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "expo start --dev-client",
-    "start:expo-go": "expo start",
+    "start": "expo start --go",
+    "start:dev-client": "expo start --dev-client",
+    "start:expo-go": "expo start --go",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/android-dev.ps1",
     "ios": "expo run:ios",

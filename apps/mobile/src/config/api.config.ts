@@ -70,7 +70,7 @@ const extractHost = (raw: string | undefined): string | null => {
 // 1. Prioritize .env variables (EXPO_PUBLIC_API_URL, then EXPO_PUBLIC_API_HOST)
 // 2. Fallback to dynamically detecting the Expo Go host machine IP
 // 3. Last resort fallback to a hardcoded local IP
-const FALLBACK_LOCAL_IP = '10.185.114.60';
+const FALLBACK_LOCAL_IP = '10.187.39.60';
 const ENV_API_URL = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL);
 const ENV_API_HOST = process.env.EXPO_PUBLIC_API_HOST as string | undefined;
 export const LOCAL_IP: string =

@@ -8,8 +8,8 @@ export function resolveMediaUrl(path: string | null | undefined): string | null 
   const trimmed = path.trim();
   if (!trimmed) return null;
 
-  // If it's already a full URL, return as is
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  // If it's already a full URL or an inline data URI, return as is
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) return trimmed;
 
   // Extract base origin from API_BASE_URL (e.g., http://localhost:3000/api -> http://localhost:3000)
   let origin = '';

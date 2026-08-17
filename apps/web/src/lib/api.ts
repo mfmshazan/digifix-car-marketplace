@@ -8,6 +8,10 @@ export function resolveMediaUrl(path: string | null | undefined): string | null 
   const trimmed = path.trim();
   if (!trimmed) return null;
 
+  // Already-complete sources must be returned untouched — never prefix the API origin.
+  // (data: base64 images and blob: object URLs are self-contained.)
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return trimmed;
+
   // If it's already a full URL, return as is
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
 

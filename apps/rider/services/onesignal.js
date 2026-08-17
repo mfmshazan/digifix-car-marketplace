@@ -12,9 +12,15 @@
  *  - Uses the same OneSignal app as the customer app / web dashboard.
  */
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 const ONESIGNAL_APP_ID =
   process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID || 'dc1553f8-9009-4b18-93a8-646525be934d';
+
+// Expo Go ships no custom native modules, so importing react-native-onesignal there
+// throws a TurboModule invariant. Detect it up front and skip the import entirely.
+const isExpoGo =
+  Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
 
 let sdk = null;
 let initialized = false;
@@ -23,6 +29,8 @@ let pendingExternalId = null;
 /** Lazily load the native SDK. Returns null in Expo Go / web / on failure. */
 async function getSDK() {
   if (Platform.OS === 'web') return null;
+  // In Expo Go the native module doesn't exist — never attempt the import.
+  if (isExpoGo) return null;
   if (sdk) return sdk;
   try {
     const mod = await import('react-native-onesignal');

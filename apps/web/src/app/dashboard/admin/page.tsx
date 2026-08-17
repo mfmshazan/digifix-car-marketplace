@@ -374,7 +374,7 @@ function OverviewTab() {
     if (loading) return <div className="py-20 flex justify-center"><div className="animate-spin w-8 h-8 border-2 border-[#00002E] border-t-transparent rounded-full" /></div>;
 
     const kpis = [
-        { label: 'Total Revenue', value: `Rs. ${stats?.totalRevenue?.toLocaleString() || 0}`, icon: DollarSign, color: 'text-green-600', bg: 'bg-green-100' },
+        { label: 'Total Revenue', value: new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(stats?.totalRevenue || 0), icon: DollarSign, color: 'text-green-600', bg: 'bg-green-100' },
         { label: 'Active Users', value: stats?.totalActiveUsers || 0, icon: Users, color: 'text-blue-600', bg: 'bg-blue-100' },
         { label: 'Pending Orders', value: stats?.pendingOrders || 0, icon: Activity, color: 'text-amber-600', bg: 'bg-amber-100' },
         { label: 'Active Sellers', value: stats?.activeSellers || 0, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-100' },
@@ -536,7 +536,7 @@ function FinancesTab() {
         REFUNDED:'bg-rose-100 text-rose-700',
     };
 
-    const fmtCurrency = (v: number) => `Rs. ${(v || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}`;
+    const fmtCurrency = (v: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v || 0);
     const fmtDate = (d: string) => new Date(d).toLocaleString('en-LK', { dateStyle: 'medium', timeStyle: 'short' });
     const shortId = (id: string) => `TRX-${id.slice(-6).toUpperCase()}`;
 

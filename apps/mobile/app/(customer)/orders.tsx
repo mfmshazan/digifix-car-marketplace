@@ -23,6 +23,7 @@ import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../
 import { submitReviews } from "../../src/api/reviews";
 import { connectSocket } from "../../src/lib/socket";
 import { loginOneSignal } from "../../src/lib/onesignal";
+import { formatCurrency } from "../../src/lib/currency";
 import { getToken } from "../../src/api/storage";
 
 // Order badge colors are reused across the list, the tracking stepper, and socket updates.
@@ -578,7 +579,7 @@ export default function OrdersScreen() {
                   )}
                   <View style={styles.itemDetails}>
                     <Text style={styles.itemName} numberOfLines={2}>{itemName}</Text>
-                    <Text style={styles.itemPriceQty}>Qty: {orderItem.quantity} × Rs. {orderItem.price.toFixed(2)}</Text>
+                    <Text style={styles.itemPriceQty}>Qty: {orderItem.quantity} × {formatCurrency(orderItem.price)}</Text>
                   </View>
                 </View>
               );
@@ -588,7 +589,7 @@ export default function OrdersScreen() {
 
         <View style={styles.orderFooter}>
           <Text style={styles.orderItems}>{itemCount} item(s)</Text>
-          <Text style={styles.orderTotal}>Rs. {item.total.toFixed(2)}</Text>
+          <Text style={styles.orderTotal}>{formatCurrency(item.total)}</Text>
         </View>
 
         {isDelivered && (

@@ -128,7 +128,9 @@ export default function RegisterPage() {
         login(user, token);
         window.location.href =
           role === 'ADMIN' ? '/dashboard/admin'
-          : role === 'SHOP_MANAGER' ? '/dashboard/manager'
+          // A new manager first sets their shop location (used for delivery fees)
+          // and is then forwarded to the dashboard.
+          : role === 'SHOP_MANAGER' ? '/dashboard/manager/location'
           : '/dashboard/salesman';
       } else {
         setError(response.message || 'Registration failed');

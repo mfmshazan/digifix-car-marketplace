@@ -130,6 +130,10 @@ model Product {
   averageRating      Float                  @default(0)
   totalReviews       Int                    @default(0)
   approvalStatus     ItemApprovalStatus     @default(PENDING)
+  // Which delivery vehicle is needed to carry this product. Required for new
+  // products (enforced in the API/UI); nullable in the DB so existing rows are
+  // preserved. Drives which riders can be dispatched for an order.
+  deliveryVehicle    DeliveryVehicleType?
   cartItems          CartItem[]
   orderItems         OrderItem[]
   category           Category?              @relation(fields: [categoryId], references: [id])
@@ -684,6 +688,13 @@ enum ItemApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+// Delivery vehicle required to carry a product.
+enum DeliveryVehicleType {
+  MOTORBIKE
+  CAR
+  LORRY
 }
 
 enum ReceiptStatus {

@@ -2925,6 +2925,8 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     stock: '',
     condition: 'NEW',
     categoryId: '',
+    // Which delivery vehicle is required to carry this product (compulsory).
+    deliveryVehicle: '',
   });
 
   // Multi-select: a product can be tagged compatible with several vehicle
@@ -3045,6 +3047,10 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
       alert('Please select at least one vehicle model');
       return;
     }
+    if (!formData.deliveryVehicle) {
+      alert('Please select the delivery vehicle for this product');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -3140,6 +3146,36 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
               disabled={selectedBrandIds.length === 0}
               loading={loadingModels}
             />
+          </div>
+
+          {/* Delivery Vehicle (compulsory) — which vehicle is needed to carry this product */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Vehicle *</label>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { value: 'MOTORBIKE', label: 'Motorbike', icon: '🏍️' },
+                { value: 'CAR', label: 'Car', icon: '🚗' },
+                { value: 'LORRY', label: 'Lorry', icon: '🚚' },
+              ].map((option) => {
+                const selected = formData.deliveryVehicle === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, deliveryVehicle: option.value })}
+                    className={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl border-2 transition-all ${
+                      selected
+                        ? 'border-[#00002E] bg-[#00002E]/5 text-[#00002E]'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-xl">{option.icon}</span>
+                    <span className="text-sm font-semibold">{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-xs text-gray-500">The vehicle type needed to deliver this product.</p>
           </div>
 
           {/* Product Name */}

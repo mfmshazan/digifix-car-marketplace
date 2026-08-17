@@ -2074,6 +2074,7 @@ type Tab = 'orders' | 'products' | 'history' | 'reviews';
 
 export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALESMAN' | 'SHOP_MANAGER' }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user, logout, isAuthenticated, refreshProfile } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState<Tab>('orders');
@@ -2112,6 +2113,49 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
       router.push(dest);
     }
   }, [isAuthenticated, user, router, expectedRole]);
+
+  // Warm the other tabs' data in the background once we know who the user is, so the
+  // first click on Products / Sales History / Reviews is instant instead of loading.
+  // prefetchQuery respects staleTime, so this is a no-op if a tab is already cached.
+  const userId = user?.id;
+  const managerId = user?.managerId;
+  useEffect(() => {
+    if (!userId) return;
+    const salesmanId = managerId || userId;
+
+    queryClient.prefetchQuery({
+      queryKey: ['salesman-products'],
+      queryFn: async () => {
+        const res = await productsApi.getSalesmanProducts();
+        if (!res.success) return [];
+        return Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.products) ? res.data.products : [];
+      },
+    });
+
+    queryClient.prefetchQuery({
+      queryKey: ['salesman-sales-history'],
+      queryFn: async () => {
+        const [sumRes, ordersRes] = await Promise.all([
+          ordersApi.getSalesmanSummary(),
+          ordersApi.getSalesmanOrders({ status: 'DELIVERED', limit: 50 }),
+        ]);
+        return {
+          summary: (sumRes.success ? sumRes.data : null) as SalesSummary | null,
+          completedOrders: (ordersRes.success ? ordersRes.data.orders : []) as Order[],
+        };
+      },
+    });
+
+    queryClient.prefetchQuery({
+      queryKey: ['target-reviews', salesmanId],
+      queryFn: async () => {
+        const res = await reviewsApi.getTargetReviews(salesmanId);
+        return res.data || [];
+      },
+    });
+  }, [userId, managerId, queryClient]);
 
   // Sync profile data on mount to ensure mobile updates are reflected
   useEffect(() => {

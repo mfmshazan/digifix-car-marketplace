@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
-    "start": "expo start --go --port 8082",
-    "start:dev-client": "expo start --dev-client --port 8082",
-    "start:expo-go": "expo start --go --port 8082",
+    "start": "cross-env NODE_OPTIONS=--max-old-space-size=8192 expo start --go --port 8082 --max-workers 2",
+    "start:dev-client": "cross-env NODE_OPTIONS=--max-old-space-size=8192 expo start --dev-client --port 8082 --max-workers 2",
+    "start:expo-go": "cross-env NODE_OPTIONS=--max-old-space-size=8192 expo start --go --port 8082 --max-workers 2",
     "android": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/android-dev.ps1 --port 8082",
     "ios": "expo run:ios",
     "web": "expo start --web"
@@ -50,6 +50,7 @@
     "@babel/plugin-transform-private-methods": "^7.29.7",
     "@types/react": "~19.1.10",
     "babel-preset-expo": "~54.0.10",
+    "cross-env": "^10.1.0",
     "typescript": "~5.9.2"
   },
   "private": true

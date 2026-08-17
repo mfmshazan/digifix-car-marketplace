@@ -29,5 +29,8 @@ USER nodejs
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
-# Use 'prisma migrate deploy' in production when migrations are ready
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node src/index.js"]
+# The production database is already provisioned. Running `prisma db push` on every
+# start aborts the deploy whenever the live DB has columns/enums the schema doesn't
+# (data-loss guard), so we just start the server. Apply schema changes deliberately
+# with `prisma migrate deploy` / `db push` as a one-off when needed, not on boot.
+CMD ["sh", "-c", "node src/index.js"]

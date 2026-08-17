@@ -225,11 +225,14 @@ function StatusDropdown({ order, onUpdate, deliveryStatus }: { order: Order; onU
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const currentIndex = STATUS_FLOW.indexOf(order.status as OrderStatus);
+  // Show every upcoming status so the whole lifecycle is visible, plus Cancel. Only the
+  // immediate next step is actionable — the rest render locked (see per-option logic).
   const nextStatuses = STATUS_FLOW.slice(currentIndex + 1);
   const dropdownOptions = [...nextStatuses, 'CANCELLED' as OrderStatus];
 
-  // SHIPPED is allowed only once a rider has picked the order up.
+  // SHIPPED needs a rider pickup; DELIVERED needs the rider to have completed delivery.
   const canShip = deliveryStatus ? PICKED_UP_DELIVERY_STATES.includes(deliveryStatus) : false;
+  const canDeliver = deliveryStatus === 'delivered';
 
   if (order.status === 'DELIVERED' || order.status === 'CANCELLED' || order.status === 'REFUND_REQUESTED') {
     const meta = STATUS_META[order.status as OrderStatus] ?? { label: order.status, color: 'text-gray-700', bg: 'bg-gray-100', icon: Clock };
@@ -258,12 +261,31 @@ function StatusDropdown({ order, onUpdate, deliveryStatus }: { order: Order; onU
           {dropdownOptions.map(s => {
             const meta = STATUS_META[s];
             const Icon = meta.icon;
+            const flowIndex = STATUS_FLOW.indexOf(s);
+            // Only the immediate next flow status is actionable; later steps stay locked
+            // until the earlier ones complete. Cancel is available only while Pending.
+            const stepLocked = s !== 'CANCELLED' && flowIndex !== currentIndex + 1;
+            const cancelLocked = s === 'CANCELLED' && order.status !== 'PENDING';
             const shipBlocked = s === 'SHIPPED' && !canShip;
+            const deliverBlocked = s === 'DELIVERED' && !canDeliver;
+            const blocked = stepLocked || cancelLocked || shipBlocked || deliverBlocked;
+            const blockedHint =
+              stepLocked ? 'locked'
+              : shipBlocked ? 'after pickup'
+              : deliverBlocked ? 'after delivery'
+              : cancelLocked ? 'pending only'
+              : undefined;
             return (
               <button
                 key={s}
-                disabled={shipBlocked}
-                title={shipBlocked ? 'Assign a rider and wait for pickup before shipping' : undefined}
+                disabled={blocked}
+                title={
+                  stepLocked ? 'Complete the previous step first'
+                  : shipBlocked ? 'Assign a rider and wait for pickup before shipping'
+                  : deliverBlocked ? 'The rider must complete delivery before this can be marked Delivered'
+                  : cancelLocked ? 'Orders can only be cancelled while Pending'
+                  : undefined
+                }
                 onClick={async () => {
                   setOpen(false);
                   setLoading(true);
@@ -273,11 +295,11 @@ function StatusDropdown({ order, onUpdate, deliveryStatus }: { order: Order; onU
                     setLoading(false);
                   }
                 }}
-                className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 ${meta.color} ${shipBlocked ? 'opacity-40 cursor-not-allowed hover:bg-transparent' : ''}`}
+                className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 ${meta.color} ${blocked ? 'opacity-40 cursor-not-allowed hover:bg-transparent' : ''}`}
               >
                 <Icon className="w-4 h-4" />
                 Mark as {meta.label}
-                {shipBlocked && <span className="ml-auto text-[10px] text-gray-400">after pickup</span>}
+                {blockedHint && <span className="ml-auto text-[10px] text-gray-400">{blockedHint}</span>}
               </button>
             );
           })}

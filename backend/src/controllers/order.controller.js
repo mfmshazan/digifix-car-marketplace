@@ -462,6 +462,35 @@ export const updateOrderStatus = async (req, res) => {
       });
     }
 
+    // ── Enforce the order lifecycle (seller/manager driven) ──────────────────
+    // The seller advances the order ONE step at a time and cannot skip ahead:
+    //   PENDING → CONFIRMED → PROCESSING → SHIPPED → DELIVERED
+    // Cancelling is only allowed while the order is still PENDING.
+    const SELLER_STATUS_FLOW = ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
+    if (status === 'CANCELLED') {
+      if (order.status !== 'PENDING') {
+        return res.status(400).json({
+          success: false,
+          message: 'Orders can only be cancelled while they are still Pending.',
+        });
+      }
+    } else {
+      const currentIndex = SELLER_STATUS_FLOW.indexOf(order.status);
+      const targetIndex = SELLER_STATUS_FLOW.indexOf(status);
+      if (targetIndex === -1) {
+        return res.status(400).json({ success: false, message: `Invalid status: ${status}.` });
+      }
+      if (targetIndex !== currentIndex + 1) {
+        const nextAllowed = SELLER_STATUS_FLOW[currentIndex + 1];
+        return res.status(400).json({
+          success: false,
+          message: nextAllowed
+            ? `Advance the order one step at a time. From ${order.status} you can only move to ${nextAllowed}.`
+            : `The order is already ${order.status} and cannot be advanced further.`,
+        });
+      }
+    }
+
     // Gate manual SHIPPED: the seller/manager can only mark an order SHIPPED
     // once a rider has been assigned AND has physically picked up the package.
     // The rider's pickup keeps the order in PROCESSING (see syncMarketplaceOrderStatus),
@@ -487,6 +516,26 @@ export const updateOrderStatus = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: 'You can mark this order as Shipped only after the rider has picked it up.'
+        });
+      }
+    }
+
+    // Gate manual DELIVERED: only after the rider has actually completed delivery.
+    // (The rider's own "delivered" step already auto-advances the order; this stops
+    // the seller from marking Delivered before the package has arrived.)
+    if (status === 'DELIVERED' && order.status !== 'DELIVERED') {
+      const jobRes = await riderQuery(
+        `SELECT status FROM "DeliveryJob"
+           WHERE marketplace_order_id = $1
+           ORDER BY created_at DESC
+           LIMIT 1`,
+        [id]
+      );
+      const deliveryJob = jobRes.rows[0];
+      if (!deliveryJob || deliveryJob.status !== 'delivered') {
+        return res.status(400).json({
+          success: false,
+          message: 'You can mark this order as Delivered only after the rider completes the delivery.'
         });
       }
     }

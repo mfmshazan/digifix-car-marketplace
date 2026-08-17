@@ -879,11 +879,16 @@ export default function SalesmanOrdersScreen() {
     const statusColor = getStatusColor(item.status);
     const canProgress = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED"].includes(item.status);
     const isPending = item.status === "PENDING";
-    const canCancel = ["PENDING", "CONFIRMED"].includes(item.status);
+    // Cancelling is only allowed while the order is still Pending.
+    const canCancel = item.status === "PENDING";
     const deliveryStatus = deliveryStatuses[item.id];
-    // SHIPPED is only allowed once a rider has picked the order up.
+    // SHIPPED needs a rider pickup; DELIVERED needs the rider to have completed delivery.
     const canShip = deliveryStatus ? PICKED_UP_DELIVERY_STATES.includes(deliveryStatus) : false;
-    const shipBlocked = getNextStatus(item.status) === "SHIPPED" && !canShip;
+    const canDeliver = deliveryStatus === "delivered";
+    const nextStatus = getNextStatus(item.status);
+    const shipBlocked = nextStatus === "SHIPPED" && !canShip;
+    const deliverBlocked = nextStatus === "DELIVERED" && !canDeliver;
+    const progressBlocked = shipBlocked || deliverBlocked;
 
     return (
       <TouchableOpacity style={[styles.orderCard, isPending && styles.pendingOrderCard]}>
@@ -935,12 +940,19 @@ export default function SalesmanOrdersScreen() {
             )}
             {canProgress && !isPending && (
               <TouchableOpacity
-                style={[styles.actionButton, styles.progressButton, shipBlocked && { opacity: 0.4 }]}
+                style={[styles.actionButton, styles.progressButton, progressBlocked && { opacity: 0.4 }]}
                 onPress={() => {
                   if (shipBlocked) {
                     Alert.alert(
                       "Rider hasn't picked up yet",
                       "You can mark this order as Shipped only after a rider has been assigned and has collected the package."
+                    );
+                    return;
+                  }
+                  if (deliverBlocked) {
+                    Alert.alert(
+                      "Rider hasn't delivered yet",
+                      "You can mark this order as Delivered only after the rider completes the delivery."
                     );
                     return;
                   }

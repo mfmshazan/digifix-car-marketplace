@@ -88,6 +88,9 @@ model WalletTransaction {
 model Store {
   id              String    @id @default(cuid())
   name            String
+  // Human-friendly code a manager shares with their salesmen so they can
+  // self-register into this shop (resolves to the store owner = managerId).
+  joinCode        String?   @unique
   description     String?
   logo            String?
   banner          String?
@@ -607,6 +610,9 @@ enum UserStatus {
   INACTIVE
   SUSPENDED
   DEACTIVATED
+  // A salesman who self-registered with a shop join code but has not yet been
+  // approved by their manager. Cannot log in / operate until approved.
+  PENDING
 }
 
 enum AuthProvider {

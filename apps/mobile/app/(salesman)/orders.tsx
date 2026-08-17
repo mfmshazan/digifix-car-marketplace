@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   View,
   Text,
@@ -694,11 +695,8 @@ const formatDate = (dateString: string) => {
 };
 
 export default function SalesmanOrdersScreen() {
+  const queryClient = useQueryClient();
   const [selectedFilter, setSelectedFilter] = useState("All");
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const { refreshPendingCount } = usePendingOrders();
   const [dispatchingOrder, setDispatchingOrder] = useState<Order | null>(null);
   // Maps orderId → delivery status string (loaded on demand)
@@ -711,6 +709,36 @@ export default function SalesmanOrdersScreen() {
     getUser().then((u) => setIsManager(u?.role === 'SHOP_MANAGER')).catch(() => {});
   }, []);
 
+  // Orders are cached per filter via React Query: navigating away and back is instant,
+  // with a background refresh. Socket events and actions patch this cache in place.
+  const ordersKey = ['salesman-orders-mobile', selectedFilter];
+  const {
+    data: orders = [],
+    isLoading,
+    isRefetching: isRefreshing,
+    error: queryError,
+    refetch,
+  } = useQuery<Order[]>({
+    queryKey: ordersKey,
+    queryFn: async () => {
+      const statusParam = selectedFilter === "All" ? undefined : selectedFilter;
+      const response = await getSalesmanOrders(statusParam);
+      if (response.success && response.data) return response.data.orders || [];
+      throw new Error(response.message || "Failed to load orders");
+    },
+  });
+  const error = queryError ? ((queryError as any).message || "Failed to load orders") : null;
+
+  const fetchOrders = useCallback(() => { refetch(); }, [refetch]);
+
+  // Patch the currently-cached orders list in place (used by socket + action handlers).
+  const patchOrders = useCallback(
+    (updater: (prev: Order[]) => Order[]) => {
+      queryClient.setQueryData<Order[]>(['salesman-orders-mobile', selectedFilter], (prev) => updater(prev ?? []));
+    },
+    [queryClient, selectedFilter]
+  );
+
   const loadDeliveryStatus = useCallback(async (orderId: string) => {
     try {
       const res = await getOrderDeliveryStatus(orderId);
@@ -719,36 +747,6 @@ export default function SalesmanOrdersScreen() {
       }
     } catch { /* silent */ }
   }, []);
-
-  const fetchOrders = useCallback(async (showRefresh = false) => {
-    try {
-      if (showRefresh) {
-        setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
-      }
-      setError(null);
-
-      const statusParam = selectedFilter === "All" ? undefined : selectedFilter;
-      const response = await getSalesmanOrders(statusParam);
-
-      if (response.success && response.data) {
-        setOrders(response.data.orders || []);
-      } else {
-        setError(response.message || "Failed to load orders");
-      }
-    } catch (err: any) {
-      console.error("Fetch orders error:", err);
-      setError(err.message || "Failed to load orders");
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [selectedFilter]);
-
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
 
   // Listen for real-time new orders + order/delivery status updates.
   useEffect(() => {
@@ -762,7 +760,7 @@ export default function SalesmanOrdersScreen() {
     const handleStatusUpdate = (payload: { orderId: string; status?: string; riderStep?: string }) => {
       if (!payload?.orderId) return;
       if (payload.status) {
-        setOrders((prev) => prev.map((o) => (o.id === payload.orderId ? { ...o, status: payload.status as string } : o)));
+        patchOrders((prev) => prev.map((o) => (o.id === payload.orderId ? { ...o, status: payload.status as string } : o)));
       }
       if (payload.riderStep) {
         setDeliveryStatuses((prev) => ({ ...prev, [payload.orderId]: payload.riderStep as string }));
@@ -782,7 +780,7 @@ export default function SalesmanOrdersScreen() {
       socket.off('complaintRaised', handleComplaint);
       socket.off('complaintResolved', handleComplaint);
     };
-  }, [fetchOrders]);
+  }, [fetchOrders, patchOrders]);
 
   // Load delivery status for orders that already have a rider in play, so the
   // dispatch button, pickup cue and ship-gating reflect reality on first render.
@@ -1106,7 +1104,7 @@ export default function SalesmanOrdersScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
-              onRefresh={() => fetchOrders(true)}
+              onRefresh={() => refetch()}
               colors={["#00002E"]}
             />
           }

@@ -3,6 +3,7 @@ import { Stack } from "expo-router";
 import { CartProvider } from "../src/store/cartStore";
 import { PendingOrdersProvider } from "../src/store/pendingOrdersStore";
 import { ClerkAuthProvider } from "../src/config/clerk-provider";
+import { QueryProvider } from "../src/config/query-provider";
 import { initOneSignal, registerPushForToken } from "../src/lib/onesignal";
 import { getToken } from "../src/api/storage";
 
@@ -18,8 +19,9 @@ export default function RootLayout() {
 
   return (
     <ClerkAuthProvider>
-      <CartProvider>
-        <PendingOrdersProvider>
+      <QueryProvider>
+        <CartProvider>
+          <PendingOrdersProvider>
           <Stack
             screenOptions={{
               headerShown: false,
@@ -38,8 +40,9 @@ export default function RootLayout() {
               }}
             />
           </Stack>
-        </PendingOrdersProvider>
-      </CartProvider>
+          </PendingOrdersProvider>
+        </CartProvider>
+      </QueryProvider>
     </ClerkAuthProvider>
   );
 }

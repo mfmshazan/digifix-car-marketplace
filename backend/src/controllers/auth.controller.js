@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
 import { isRiderRegisterPayload, loginRiderByEmail, registerRider } from './riderAuth.controller.js';
 import { createStripeAccountForSalesman } from './stripe.controller.js';
+import { generateUniqueJoinCode } from '../lib/joinCode.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -43,7 +44,7 @@ const register = async (req, res) => {
         where: { role: 'ADMIN' },
       });
 
-      if (adminCount >= 3) {
+      if (adminCount >= 1) {
         return res.status(403).json({
           success: false,
           message: 'Maximum number of admins has been reached',
@@ -80,6 +81,27 @@ const register = async (req, res) => {
       });
     }
 
+    // A salesman may self-register into an existing shop by supplying that
+    // shop's join code. Resolve it (before creating the user) to the owning
+    // manager; such staff accounts start PENDING until the manager approves.
+    let joinManagerId = null;
+    if (role === 'SALESMAN') {
+      const joinCode = String(req.body.joinCode || '').trim().toUpperCase();
+      if (joinCode) {
+        const store = await prisma.store.findUnique({
+          where: { joinCode },
+          select: { ownerId: true },
+        });
+        if (!store) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid shop join code. Please check the code with your manager.',
+          });
+        }
+        joinManagerId = store.ownerId;
+      }
+    }
+
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
 
@@ -93,6 +115,9 @@ const register = async (req, res) => {
         phone: phone || '',
         role: role,
         authProvider: 'EMAIL',
+        // Staff joining a shop by code wait for manager approval before they can log in.
+        status: joinManagerId ? 'PENDING' : 'ACTIVE',
+        managerId: joinManagerId,
         vehicleType: role === 'DELIVERY_PARTNER' ? vehicleType : null,
         vehicleNumber: role === 'DELIVERY_PARTNER' ? vehicleNumber : null,
         deliveryStatus: role === 'DELIVERY_PARTNER' ? 'offline' : null,
@@ -104,10 +129,12 @@ const register = async (req, res) => {
     // The MANAGER owns the catalog and the wallet; a legacy self-registered SALESMAN
     // (one created without a managerId) is also treated as its own store owner.
     const setupStoreOwner = async () => {
+      const joinCode = await generateUniqueJoinCode();
       await prisma.store.create({
         data: {
           name: name ? `${name}'s Store` : 'My Store',
           ownerId: user.id,
+          joinCode,
         },
       });
 
@@ -133,19 +160,20 @@ const register = async (req, res) => {
         update: {},
         create: { userId: user.id },
       });
-    } else if (role === 'SALESMAN') {
-      // A salesman created under a manager is operational staff — no store, no wallet, no Stripe.
-      const managerId = req.body.managerId || null;
-      if (managerId) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { managerId },
-        });
-        user.managerId = managerId;
-      } else {
-        // Legacy self-registered salesman keeps its own store (backward compatibility)
-        await setupStoreOwner();
-      }
+    } else if (role === 'SALESMAN' && !joinManagerId) {
+      // Legacy self-registered salesman (no join code) keeps its own store.
+      await setupStoreOwner();
+    }
+
+    // A salesman awaiting approval is not logged in — no token is issued. They
+    // must sign in once their manager approves the account.
+    if (joinManagerId) {
+      console.log(`[Registration] Salesman ${email} created as PENDING under manager ${joinManagerId}.`);
+      return res.status(201).json({
+        success: true,
+        pendingApproval: true,
+        message: 'Account created. Your manager must approve it before you can sign in.',
+      });
     }
 
     // Generate token
@@ -285,6 +313,14 @@ const login = async (req, res) => {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password',
+      });
+    }
+
+    // A salesman awaiting manager approval cannot log in yet.
+    if (user.role === 'SALESMAN' && user.status === 'PENDING') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is awaiting approval from your manager.',
       });
     }
 

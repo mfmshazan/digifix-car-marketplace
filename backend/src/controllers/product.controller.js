@@ -1,6 +1,9 @@
 import prisma from '../lib/prisma.js';
 import { resolveShopOwnerId } from '../lib/shopAccess.js';
 
+// Delivery vehicle types a product can require (matches the Prisma enum).
+const DELIVERY_VEHICLE_TYPES = ['MOTORBIKE', 'CAR', 'LORRY'];
+
 // Get all products (with filters)
 const getProducts = async (req, res) => {
   try {
@@ -172,6 +175,7 @@ const createProduct = async (req, res) => {
       vehicleModelId,
       vehicleModelIds,
       compatibleVehicles,
+      deliveryVehicle,
     } = req.body;
 
     // Support both the legacy single vehicleModelId and the newer multi-select
@@ -185,6 +189,14 @@ const createProduct = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Name, price, and at least one vehicle model are required',
+      });
+    }
+
+    // The delivery vehicle (which rider vehicle can carry this product) is required.
+    if (!DELIVERY_VEHICLE_TYPES.includes(deliveryVehicle)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Select a delivery vehicle: Motorbike, Car, or Lorry',
       });
     }
 
@@ -217,6 +229,7 @@ const createProduct = async (req, res) => {
         images: images || [],
         categoryId: categoryId || null,
         vehicleModelId: modelIds[0],
+        deliveryVehicle,
         salesmanId: userId,
         storeId: store?.id,
         approvalStatus: 'APPROVED',
@@ -301,6 +314,15 @@ const updateProduct = async (req, res) => {
       }
     }
 
+    // If a delivery vehicle is supplied it must be valid; when omitted the
+    // existing value is kept (undefined = no change).
+    if (updateData.deliveryVehicle !== undefined && !DELIVERY_VEHICLE_TYPES.includes(updateData.deliveryVehicle)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Delivery vehicle must be Motorbike, Car, or Lorry',
+      });
+    }
+
     // Update product
     const product = await prisma.product.update({
       where: { id },
@@ -314,6 +336,7 @@ const updateProduct = async (req, res) => {
         images: updateData.images,
         categoryId: updateData.categoryId || null,
         vehicleModelId: modelIds[0] || undefined,
+        deliveryVehicle: updateData.deliveryVehicle ?? undefined,
         isActive: updateData.isActive,
         compatibleModels: modelIds.length > 0
           ? { set: modelIds.map((id) => ({ id })) }

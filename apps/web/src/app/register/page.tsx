@@ -28,6 +28,8 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState('SALESMAN');
+  const [joinCode, setJoinCode] = useState('');
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
@@ -95,17 +97,40 @@ export default function RegisterPage() {
       return;
     }
 
+    const trimmedJoinCode = joinCode.trim().toUpperCase();
+    if (role === 'SALESMAN' && !trimmedJoinCode) {
+      setError('Enter the shop join code your manager gave you');
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
-      const response = await authApi.register({ name, email, phone: formattedPhone, password, role });
+      const response = await authApi.register({
+        name,
+        email,
+        phone: formattedPhone,
+        password,
+        role,
+        ...(role === 'SALESMAN' ? { joinCode: trimmedJoinCode } : {}),
+      });
 
       if (response.success) {
+        // A salesman joining a shop is created PENDING and gets no token —
+        // show a confirmation and let them sign in once the manager approves.
+        if (response.pendingApproval) {
+          setPendingMessage(
+            response.message || 'Account created. Your manager must approve it before you can sign in.'
+          );
+          return;
+        }
         const { user, token } = response.data;
         login(user, token);
         window.location.href =
           role === 'ADMIN' ? '/dashboard/admin'
-          : role === 'SHOP_MANAGER' ? '/dashboard/manager'
+          // A new manager first sets their shop location (used for delivery fees)
+          // and is then forwarded to the dashboard.
+          : role === 'SHOP_MANAGER' ? '/dashboard/manager/location'
           : '/dashboard/salesman';
       } else {
         setError(response.message || 'Registration failed');
@@ -140,7 +165,24 @@ export default function RegisterPage() {
             <p className="text-gray-500">Join DIGIFIX to find the perfect car parts</p>
           </div>
 
+          {/* Pending approval confirmation (salesman joined a shop via code) */}
+          {pendingMessage && (
+            <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-4 rounded-xl text-sm">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="w-5 h-5 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold">Account created</p>
+                  <p className="mt-1">{pendingMessage}</p>
+                  <Link href="/login" className="mt-2 inline-block text-[#00002E] font-semibold hover:underline">
+                    Go to sign in
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Form */}
+          {!pendingMessage && (
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && error !== PASSWORD_REQUIREMENTS_ERROR && (
               <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
@@ -229,6 +271,26 @@ export default function RegisterPage() {
                 </div>
               </div>
             </div>
+
+            {role === 'SALESMAN' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Shop Join Code</label>
+                <div className="relative">
+                  <Store className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. K7QM9P"
+                    maxLength={10}
+                    className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all tracking-widest uppercase"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Ask your shop manager for the join code. Your account needs their approval before you can sign in.
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
@@ -324,6 +386,7 @@ export default function RegisterPage() {
               )}
             </button>
           </form>
+          )}
 
           {/* Google Sign Up */}
           <div className="mt-6">

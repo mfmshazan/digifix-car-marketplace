@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
+import { Animated, Text, Easing, View, StyleSheet, Platform } from 'react-native';
 import { Provider, useDispatch } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import { ClerkProvider, ClerkLoaded } from '@clerk/expo';
@@ -37,6 +37,51 @@ import { fetchDriverHome } from './store/slices/homeSlice';
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 const ProfileStack = createStackNavigator();
+
+// Branded splash loading bar dimensions (track + sweeping segment).
+const SPLASH_BAR_TRACK = 180;
+const SPLASH_BAR_SEG = 62;
+
+/**
+ * Branded loading screen — DIGIFIX RIDER wordmark with an animated horizontal
+ * bar sweeping underneath. Shown while auth/session is being restored.
+ */
+function BrandedLoader() {
+    const sweep = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        const loop = Animated.loop(
+            Animated.timing(sweep, {
+                toValue: 1,
+                duration: 900,
+                easing: Easing.inOut(Easing.ease),
+                useNativeDriver: true,
+            })
+        );
+        loop.start();
+        return () => loop.stop();
+    }, [sweep]);
+
+    const translateX = sweep.interpolate({
+        inputRange: [0, 1],
+        outputRange: [-SPLASH_BAR_SEG, SPLASH_BAR_TRACK],
+    });
+
+    return (
+        <View style={styles.splash}>
+            <StatusBar style="dark" backgroundColor="#FFFFFF" />
+            <View style={styles.splashLogoRow}>
+                <Ionicons name="cog" size={28} color={colors.secondaryDark} style={{ marginRight: 10 }} />
+                <Text style={styles.splashBrand}>DIGIFIX</Text>
+            </View>
+            <Text style={styles.splashSub}>RIDER</Text>
+            <View style={styles.loadingTrack}>
+                <Animated.View style={[styles.loadingBar, { transform: [{ translateX }] }]} />
+            </View>
+            <Text style={styles.splashTagline}>Preparing your deliveries…</Text>
+        </View>
+    );
+}
 
 const navTheme = {
     ...DefaultTheme,
@@ -177,11 +222,7 @@ function AppContent() {
     };
 
     if (isLoading) {
-        return (
-            <View style={styles.loader}>
-                <ActivityIndicator size="large" color={colors.secondary} />
-            </View>
-        );
+        return <BrandedLoader />;
     }
 
     return (
@@ -259,11 +300,47 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-    loader: {
+    splash: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: colors.background,
+        backgroundColor: '#FFFFFF',
+    },
+    splashLogoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    splashBrand: {
+        fontSize: 30,
+        fontWeight: '800',
+        letterSpacing: 4,
+        color: colors.secondaryDark,
+    },
+    splashSub: {
+        fontSize: 12,
+        fontWeight: '800',
+        letterSpacing: 6,
+        color: colors.textMuted,
+        marginTop: 6,
+    },
+    loadingTrack: {
+        width: SPLASH_BAR_TRACK,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: colors.secondarySoft,
+        overflow: 'hidden',
+        marginTop: 26,
+    },
+    loadingBar: {
+        width: SPLASH_BAR_SEG,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: colors.secondary,
+    },
+    splashTagline: {
+        fontSize: 13,
+        color: colors.textSecondary,
+        marginTop: 18,
     },
     headerStyle: {
         backgroundColor: colors.surface,

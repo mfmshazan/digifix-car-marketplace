@@ -36,10 +36,12 @@ import {
   MapPin,
   Navigation,
   Send,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
-import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi, vehicleApi } from '@/lib/api';
-import type { Review } from '@/lib/api';
+import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi, vehicleApi, managerApi } from '@/lib/api';
+import type { Review, ShopSalesman } from '@/lib/api';
 import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket';
 import { initOneSignal, loginOneSignalUser, logoutOneSignalUser, requestNotificationPermission } from '@/lib/onesignal';
 
@@ -1304,18 +1306,27 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
               )}
             </div>
           ) : (
-            <button
-              onClick={() => setShowDispatchModal(true)}
-              disabled={loadingDeliveryStatus}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-[#00002E] text-white rounded-xl text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
-            >
-              {loadingDeliveryStatus ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Truck className="w-4 h-4" />
-              )}
-              {loadingDeliveryStatus ? 'Checking...' : 'Assign Delivery'}
-            </button>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500 font-medium">Delivery Status</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">
+                  <Truck className="w-3 h-3" />
+                  Not Assigned
+                </span>
+              </div>
+              <button
+                onClick={() => setShowDispatchModal(true)}
+                disabled={loadingDeliveryStatus}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#00002E] text-white rounded-xl text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
+              >
+                {loadingDeliveryStatus ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Truck className="w-4 h-4" />
+                )}
+                {loadingDeliveryStatus ? 'Checking...' : 'Assign Delivery'}
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -2090,9 +2101,169 @@ function ReviewsTab({ salesmanId }: { salesmanId: string }) {
   );
 }
 
+// ─── Team Tab (manager only) ─────────────────────────────────────────────────
+
+function TeamTab() {
+  const queryClient = useQueryClient();
+  const [copied, setCopied] = useState(false);
+  const [actioningId, setActioningId] = useState<string | null>(null);
+
+  const { data: joinCode } = useQuery({
+    queryKey: ['manager-join-code'],
+    queryFn: async () => {
+      const res = await managerApi.getJoinCode();
+      return res.success ? res.data.joinCode : null;
+    },
+  });
+
+  const { data: salesmen = [], isLoading } = useQuery<ShopSalesman[]>({
+    queryKey: ['manager-salesmen'],
+    queryFn: async () => {
+      const res = await managerApi.getSalesmen();
+      return res.success ? res.data : [];
+    },
+  });
+
+  const pending = salesmen.filter((s) => s.status === 'PENDING');
+  const active = salesmen.filter((s) => s.status !== 'PENDING');
+
+  const copyCode = async () => {
+    if (!joinCode) return;
+    try {
+      await navigator.clipboard.writeText(joinCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard may be unavailable (insecure context) — ignore silently.
+    }
+  };
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['manager-salesmen'] });
+  };
+
+  const approve = async (id: string) => {
+    setActioningId(id);
+    try {
+      await managerApi.approveSalesman(id);
+      refresh();
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const reject = async (id: string) => {
+    if (!window.confirm('Reject this salesman request? Their account will be removed.')) return;
+    setActioningId(id);
+    try {
+      await managerApi.rejectSalesman(id);
+      refresh();
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Join code card */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <h2 className="text-lg font-bold text-gray-900">Shop Join Code</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Share this code with your salesmen so they can register into your shop. Each new salesman
+          appears below for your approval before they can sign in.
+        </p>
+        <div className="mt-4 flex items-center gap-3">
+          <div className="px-5 py-3 bg-gray-50 border border-gray-200 rounded-xl font-mono text-2xl font-bold tracking-[0.3em] text-[#00002E]">
+            {joinCode ?? '••••••'}
+          </div>
+          <button
+            onClick={copyCode}
+            disabled={!joinCode}
+            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#00002E] text-white text-sm font-semibold hover:bg-[#000050] transition-all disabled:opacity-50"
+          >
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+      </div>
+
+      {/* Pending approvals */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div className="flex items-center gap-2">
+          <Clock className="w-5 h-5 text-amber-500" />
+          <h2 className="text-lg font-bold text-gray-900">Pending Approvals</h2>
+          {pending.length > 0 && (
+            <span className="ml-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">
+              {pending.length}
+            </span>
+          )}
+        </div>
+
+        {isLoading ? (
+          <p className="text-sm text-gray-400 mt-4">Loading…</p>
+        ) : pending.length === 0 ? (
+          <p className="text-sm text-gray-400 mt-4">No salesmen waiting for approval.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {pending.map((s) => (
+              <div key={s.id} className="flex items-center justify-between gap-4 p-3 rounded-xl border border-gray-100 bg-gray-50">
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{s.name || 'Unnamed'}</p>
+                  <p className="text-sm text-gray-500 truncate">{s.email}{s.phone ? ` · ${s.phone}` : ''}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => approve(s.id)}
+                    disabled={actioningId === s.id}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition-all disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Approve
+                  </button>
+                  <button
+                    onClick={() => reject(s.id)}
+                    disabled={actioningId === s.id}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-100 transition-all disabled:opacity-50"
+                  >
+                    <X className="w-4 h-4" /> Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Active team */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div className="flex items-center gap-2">
+          <Users className="w-5 h-5 text-blue-500" />
+          <h2 className="text-lg font-bold text-gray-900">Salesmen</h2>
+        </div>
+        {active.length === 0 ? (
+          <p className="text-sm text-gray-400 mt-4">No active salesmen yet.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {active.map((s) => (
+              <div key={s.id} className="flex items-center justify-between gap-4 p-3 rounded-xl border border-gray-100">
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{s.name || 'Unnamed'}</p>
+                  <p className="text-sm text-gray-500 truncate">{s.email}{s.phone ? ` · ${s.phone}` : ''}</p>
+                </div>
+                <span className="shrink-0 px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold">
+                  {s.status === 'ACTIVE' ? 'Active' : s.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 
-type Tab = 'orders' | 'products' | 'history' | 'reviews';
+type Tab = 'orders' | 'products' | 'history' | 'reviews' | 'team';
 
 export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALESMAN' | 'SHOP_MANAGER' }) {
   const router = useRouter();
@@ -2348,6 +2519,8 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
     { id: 'products' as const, label: 'My Products', icon: Package },
     { id: 'history' as const, label: 'Sales History', icon: BarChart3 },
     { id: 'reviews' as const, label: 'Store Reviews', icon: Star },
+    // Managers own the shop and approve the salesmen who work under them.
+    ...(isManager ? [{ id: 'team' as const, label: 'Team', icon: Users }] : []),
   ];
 
 
@@ -2560,12 +2733,14 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
             {activeTab === 'products' && 'My Products'}
             {activeTab === 'history' && 'Sales History'}
             {activeTab === 'reviews' && 'Store Reviews'}
+            {activeTab === 'team' && 'Team'}
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">
             {activeTab === 'orders' && 'Manage and update orders placed by your customers.'}
             {activeTab === 'products' && 'View and manage your listed products.'}
             {activeTab === 'history' && 'Track your revenue, completed orders, and top products.'}
             {activeTab === 'reviews' && 'See what customers are saying and reply to their reviews.'}
+            {activeTab === 'team' && 'Share your join code and approve salesmen who join your shop.'}
           </p>
 
         </div>
@@ -2575,6 +2750,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
         {activeTab === 'history' && <SalesHistoryTab />}
         {/* Reviews target the shop owner (manager); a salesman scopes to their manager. */}
         {activeTab === 'reviews' && <ReviewsTab salesmanId={user.managerId || user.id} />}
+        {activeTab === 'team' && <TeamTab />}
 
       </main>
 
@@ -2749,6 +2925,8 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     stock: '',
     condition: 'NEW',
     categoryId: '',
+    // Which delivery vehicle is required to carry this product (compulsory).
+    deliveryVehicle: '',
   });
 
   // Multi-select: a product can be tagged compatible with several vehicle
@@ -2869,6 +3047,10 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
       alert('Please select at least one vehicle model');
       return;
     }
+    if (!formData.deliveryVehicle) {
+      alert('Please select the delivery vehicle for this product');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -2964,6 +3146,36 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
               disabled={selectedBrandIds.length === 0}
               loading={loadingModels}
             />
+          </div>
+
+          {/* Delivery Vehicle (compulsory) — which vehicle is needed to carry this product */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Vehicle *</label>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { value: 'MOTORBIKE', label: 'Motorbike', icon: '🏍️' },
+                { value: 'CAR', label: 'Car', icon: '🚗' },
+                { value: 'LORRY', label: 'Lorry', icon: '🚚' },
+              ].map((option) => {
+                const selected = formData.deliveryVehicle === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, deliveryVehicle: option.value })}
+                    className={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl border-2 transition-all ${
+                      selected
+                        ? 'border-[#00002E] bg-[#00002E]/5 text-[#00002E]'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-xl">{option.icon}</span>
+                    <span className="text-sm font-semibold">{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-xs text-gray-500">The vehicle type needed to deliver this product.</p>
           </div>
 
           {/* Product Name */}

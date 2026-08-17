@@ -123,6 +123,12 @@ export const productsApi = {
     const response = await api.put(`/products/${id}`, data);
     return response.data;
   },
+
+  // Delete a product
+  deleteProduct: async (id: string) => {
+    const response = await api.delete(`/products/${id}`);
+    return response.data;
+  },
 };
 
 export const vehicleApi = {
@@ -192,6 +198,12 @@ export const carPartsApi = {
   // Get all cars
   getCars: async () => {
     const response = await api.get('/car-parts/cars');
+    return response.data;
+  },
+
+  // Delete a car part
+  deleteCarPart: async (id: string) => {
+    const response = await api.delete(`/car-parts/${id}`);
     return response.data;
   },
 };

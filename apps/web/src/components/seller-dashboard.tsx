@@ -37,7 +37,7 @@ import {
   Send,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
-import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi, vehicleApi } from '@/lib/api';
+import { resolveMediaUrl, ordersApi, productsApi, carPartsApi, categoriesApi, deliveryRequestsApi, reviewsApi, vehicleApi } from '@/lib/api';
 import type { Review } from '@/lib/api';
 import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket';
 import { initOneSignal, loginOneSignalUser, logoutOneSignalUser, requestNotificationPermission } from '@/lib/onesignal';
@@ -1477,6 +1477,8 @@ function SalesHistoryTab() {
 function ProductsTab() {
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   // Only managers can edit/delete catalog items; salesmen view only.
   const isManager = useAuthStore((s) => s.user?.role) === 'SHOP_MANAGER';
 
@@ -1501,6 +1503,26 @@ function ProductsTab() {
     };
     load();
   }, []);
+
+  const handleDelete = async (product: any) => {
+    if (!confirm(`Delete "${product.name}"? This cannot be undone.`)) return;
+    setDeletingId(product.id);
+    try {
+      // Items added from the mobile salesman app live in the CarPart table (has carId);
+      // items added from this dashboard live in the Product table — route to the matching API.
+      if (product.carId) {
+        await carPartsApi.deleteCarPart(product.id);
+      } else {
+        await productsApi.deleteProduct(product.id);
+      }
+      setProducts(prev => prev.filter(p => p.id !== product.id));
+    } catch (err) {
+      console.error('Failed to delete product', err);
+      alert('Failed to delete product');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -1579,10 +1601,22 @@ function ProductsTab() {
                     </div>
                     {isManager && (
                       <div className="flex gap-1">
-                        <button title="Edit product" className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#00002E] transition-colors">
+                        <button
+                          type="button"
+                          title={product.carId ? 'Edit from the mobile app' : 'Edit product'}
+                          disabled={!!product.carId}
+                          onClick={() => setEditingProduct(product)}
+                          className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#00002E] transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                        >
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button title="Delete product" className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-red-500 transition-colors">
+                        <button
+                          type="button"
+                          title="Delete product"
+                          disabled={deletingId === product.id}
+                          onClick={() => handleDelete(product)}
+                          className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -1594,6 +1628,9 @@ function ProductsTab() {
           })
         )}
       </div>
+      {editingProduct && (
+        <AddProductModal editProduct={editingProduct} onClose={() => setEditingProduct(null)} />
+      )}
     </div>
   );
 
@@ -2442,7 +2479,8 @@ function MultiSelectDropdown({
 
 // ─── Add Product Modal (with Vehicle Types, Brands, Models) ─────────────────
 
-function AddProductModal({ onClose }: { onClose: () => void }) {
+function AddProductModal({ onClose, editProduct }: { onClose: () => void; editProduct?: any }) {
+  const isEditMode = !!editProduct;
   const [categories, setCategories] = useState<any[]>([]);
   const [vehicleTypes, setVehicleTypes] = useState<any[]>([]);
   const [vehicleBrands, setVehicleBrands] = useState<any[]>([]);
@@ -2553,6 +2591,28 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     loadModels();
   }, [selectedBrandIds]);
 
+  // Pre-fill the form when editing an existing product. Runs once the product
+  // to edit is known; the cascading type→brand→model effects above then load
+  // the right option lists and keep these pre-selected IDs since they're valid.
+  useEffect(() => {
+    if (!editProduct) return;
+    setFormData({
+      name: editProduct.name || '',
+      description: editProduct.description || '',
+      price: editProduct.price != null ? String(editProduct.price) : '',
+      stock: editProduct.stock != null ? String(editProduct.stock) : '',
+      condition: editProduct.condition || 'NEW',
+      categoryId: editProduct.categoryId || editProduct.category?.id || '',
+    });
+    setImages(Array.isArray(editProduct.images) ? editProduct.images : []);
+    const vehicleType = editProduct.vehicleModel?.vehicleType;
+    const vehicleBrand = editProduct.vehicleModel?.vehicleBrand;
+    const modelId = editProduct.vehicleModel?.id || editProduct.vehicleModelId;
+    if (vehicleType?.id) setSelectedTypeIds([vehicleType.id]);
+    if (vehicleBrand?.id) setSelectedBrandIds([vehicleBrand.id]);
+    if (modelId) setSelectedModelIds([modelId]);
+  }, [editProduct]);
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
@@ -2582,19 +2642,25 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
 
     setIsSubmitting(true);
     try {
-      await productsApi.createProduct({
+      const payload = {
         ...formData,
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock),
         images: images,
         vehicleModelIds: selectedModelIds,
-      });
-      alert('Product added successfully!');
+      };
+      if (isEditMode) {
+        await productsApi.updateProduct(editProduct.id, payload);
+        alert('Product updated successfully!');
+      } else {
+        await productsApi.createProduct(payload);
+        alert('Product added successfully!');
+      }
       onClose();
       window.location.reload();
     } catch (err) {
-      console.error('Failed to add product', err);
-      alert('Failed to add product');
+      console.error(isEditMode ? 'Failed to update product' : 'Failed to add product', err);
+      alert(isEditMode ? 'Failed to update product' : 'Failed to add product');
     } finally {
       setIsSubmitting(false);
     }
@@ -2605,7 +2671,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">Add New Product</h2>
+          <h2 className="text-xl font-bold text-gray-900">{isEditMode ? 'Edit Product' : 'Add New Product'}</h2>
           <button onClick={onClose} aria-label="Close modal" className="p-2 hover:bg-gray-100 rounded-full transition-colors">
             <X className="w-5 h-5 text-gray-500" />
           </button>
@@ -2742,13 +2808,14 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             </select>
           </div>
 
+
           {/* Submit */}
           <div className="flex gap-3 pt-4">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl transition-all">
               Cancel
             </button>
             <button type="submit" disabled={isSubmitting || selectedModelIds.length === 0} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
-              {isSubmitting ? 'Adding...' : 'Add Product'}
+              {isEditMode ? (isSubmitting ? 'Saving...' : 'Save Changes') : (isSubmitting ? 'Adding...' : 'Add Product')}
             </button>
           </div>
         </form>

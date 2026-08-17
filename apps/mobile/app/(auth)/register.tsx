@@ -45,6 +45,7 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState<"CUSTOMER" | "SALESMAN">("CUSTOMER");
+  const [joinCode, setJoinCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -218,6 +219,12 @@ export default function RegisterScreen() {
       return;
     }
 
+    const trimmedJoinCode = joinCode.trim().toUpperCase();
+    if (role === "SALESMAN" && !trimmedJoinCode) {
+      setError("Enter the shop join code your manager gave you");
+      return;
+    }
+
     setIsLoading(true);
     setError("");
 
@@ -229,7 +236,19 @@ export default function RegisterScreen() {
         phone: formattedPhone,
         password,
         role,
+        ...(role === "SALESMAN" ? { joinCode: trimmedJoinCode } : {}),
       });
+
+      // A salesman joining a shop is created pending and gets no token — they
+      // must wait for their manager to approve before they can sign in.
+      if (response.success && response.pendingApproval) {
+        Alert.alert(
+          "Account created",
+          response.message || "Your manager must approve your account before you can sign in.",
+          [{ text: "OK", onPress: () => router.replace("/(auth)/login") }]
+        );
+        return;
+      }
 
       if (response.success && response.data) {
         await saveToken(response.data.token);
@@ -257,6 +276,13 @@ export default function RegisterScreen() {
   //Google sign-up function
 
   const handleGoogleSignUp = async () => {
+    // A salesman must join a shop with a join code, which the Google flow can't
+    // collect — force them through email sign-up so approval isn't bypassed.
+    if (role === "SALESMAN") {
+      setError("Salesmen must sign up with email and a shop join code, not Google.");
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError("");
@@ -342,10 +368,10 @@ export default function RegisterScreen() {
 
 
             <View style={styles.inputContainer}>
-              <Ionicons name={role === "SALESMAN" ? "storefront-outline" : "person-outline"} size={20} color="#999" style={styles.inputIcon} />
+              <Ionicons name="person-outline" size={20} color="#999" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
-                placeholder={role === "SALESMAN" ? "Shop Name" : "Full Name"}
+                placeholder="Full Name"
                 placeholderTextColor="#999"
                 value={name}
                 onChangeText={setName}
@@ -452,12 +478,33 @@ export default function RegisterScreen() {
                         role === "SALESMAN" && styles.roleButtonTextActive,
                       ]}
                     >
-                      Shop Owner
+                      Salesman
                     </Text>
                   </Pressable>
                 </Animated.View>
               </View>
             </View>
+
+            {role === "SALESMAN" && (
+              <>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="key-outline" size={20} color="#999" style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.input, styles.joinCodeInput]}
+                    placeholder="Shop Join Code"
+                    placeholderTextColor="#999"
+                    value={joinCode}
+                    onChangeText={(text) => setJoinCode(text.toUpperCase())}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    maxLength={10}
+                  />
+                </View>
+                <Text style={styles.joinCodeHint}>
+                  Ask your shop manager for the join code. Your account needs their approval before you can sign in.
+                </Text>
+              </>
+            )}
 
             <View style={styles.inputContainer}>
               <Ionicons name="lock-closed-outline" size={20} color="#999" style={styles.inputIcon} />
@@ -735,6 +782,18 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: "#1A1A1A",
+  },
+  joinCodeInput: {
+    letterSpacing: 4,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  joinCodeHint: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: -8,
+    marginBottom: 16,
+    lineHeight: 16,
   },
   eyeIcon: {
     padding: 4,

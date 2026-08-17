@@ -61,6 +61,7 @@ model Wallet {
   user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   receivedTransactions WalletTransaction[] @relation("ReceivedTransactions")
   sentTransactions     WalletTransaction[] @relation("SentTransactions")
+  debtReceipts         DebtReceipt[]
 }
 
 model WalletTransaction {
@@ -73,6 +74,7 @@ model WalletTransaction {
   description         String?
   createdAt           DateTime            @default(now())
   orderId             String?
+  sourceRef           String?             @unique
   order               Order?              @relation(fields: [orderId], references: [id])
   receiverWallet      Wallet?             @relation("ReceivedTransactions", fields: [receiverWalletId], references: [id])
   senderWallet        Wallet?             @relation("SentTransactions", fields: [senderWalletId], references: [id])
@@ -86,6 +88,9 @@ model WalletTransaction {
 model Store {
   id              String    @id @default(cuid())
   name            String
+  // Human-friendly code a manager shares with their salesmen so they can
+  // self-register into this shop (resolves to the store owner = managerId).
+  joinCode        String?   @unique
   description     String?
   logo            String?
   banner          String?
@@ -125,6 +130,10 @@ model Product {
   averageRating      Float                  @default(0)
   totalReviews       Int                    @default(0)
   approvalStatus     ItemApprovalStatus     @default(PENDING)
+  // Which delivery vehicle is needed to carry this product. Required for new
+  // products (enforced in the API/UI); nullable in the DB so existing rows are
+  // preserved. Drives which riders can be dispatched for an order.
+  deliveryVehicle    DeliveryVehicleType?
   cartItems          CartItem[]
   orderItems         OrderItem[]
   category           Category?              @relation(fields: [categoryId], references: [id])
@@ -605,6 +614,9 @@ enum UserStatus {
   INACTIVE
   SUSPENDED
   DEACTIVATED
+  // A salesman who self-registered with a shop join code but has not yet been
+  // approved by their manager. Cannot log in / operate until approved.
+  PENDING
 }
 
 enum AuthProvider {
@@ -624,6 +636,7 @@ enum TransactionType {
   COD_PAYMENT
   COD_REMITTANCE
   REFUND_SETTLEMENT
+  DEBT_REPAYMENT
 }
 
 enum CodSettlementStatus {
@@ -675,4 +688,36 @@ enum ItemApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+// Delivery vehicle required to carry a product.
+enum DeliveryVehicleType {
+  MOTORBIKE
+  CAR
+  LORRY
+}
+
+enum ReceiptStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model DebtReceipt {
+  id              String        @id @default(cuid())
+  walletId        String
+  wallet          Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount          Float
+  fileKey         String
+  fileType        String
+  note            String?
+  status          ReceiptStatus @default(PENDING)
+  rejectionReason String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([walletId])
+  @@index([status])
 }

@@ -6,6 +6,8 @@ export interface RegisterData {
   name: string;
   phone: string;
   role?: 'CUSTOMER' | 'SALESMAN';
+  // Salesmen join an existing shop by supplying that shop's join code.
+  joinCode?: string;
 }
 
 export interface LoginData {
@@ -16,6 +18,9 @@ export interface LoginData {
 export interface AuthResponse {
   success: boolean;
   message: string;
+  // Set when a salesman registered into a shop and must wait for manager
+  // approval — no token/data is returned in that case.
+  pendingApproval?: boolean;
   data?: {
     user: {
       id: string;

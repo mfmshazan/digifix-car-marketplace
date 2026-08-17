@@ -35,10 +35,15 @@ export default function AddProductScreen() {
   const [sku, setSku] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [deliveryVehicle, setDeliveryVehicle] = useState("");
 
   const handleSubmit = () => {
     if (!productName || !price || !stock || !selectedCategory) {
       Alert.alert("Error", "Please fill in all required fields");
+      return;
+    }
+    if (!deliveryVehicle) {
+      Alert.alert("Error", "Please select the delivery vehicle for this product");
       return;
     }
 
@@ -203,6 +208,46 @@ export default function AddProductScreen() {
           </View>
         </View>
 
+        {/* Delivery Vehicle (compulsory) */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>
+            Delivery Vehicle <Text style={styles.required}>*</Text>
+          </Text>
+          <View style={styles.deliveryVehicleRow}>
+            {[
+              { value: "MOTORBIKE", label: "Motorbike", icon: "bicycle" },
+              { value: "CAR", label: "Car", icon: "car-sport" },
+              { value: "LORRY", label: "Lorry", icon: "bus" },
+            ].map((option) => {
+              const selected = deliveryVehicle === option.value;
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.deliveryVehicleOption,
+                    selected && styles.deliveryVehicleOptionSelected,
+                  ]}
+                  onPress={() => setDeliveryVehicle(option.value)}
+                >
+                  <Ionicons
+                    name={option.icon as any}
+                    size={22}
+                    color={selected ? "#FF6B35" : "#999"}
+                  />
+                  <Text
+                    style={[
+                      styles.deliveryVehicleText,
+                      selected && styles.deliveryVehicleTextSelected,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
         {/* Vehicle Compatibility */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Vehicle Compatibility</Text>
@@ -343,6 +388,33 @@ const styles = StyleSheet.create({
   halfInput: {
     flex: 1,
     marginHorizontal: 8,
+  },
+  deliveryVehicleRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  deliveryVehicleOption: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 14,
+    backgroundColor: "#F8F9FA",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#E0E0E0",
+  },
+  deliveryVehicleOptionSelected: {
+    borderColor: "#FF6B35",
+    backgroundColor: "#FFF8F5",
+  },
+  deliveryVehicleText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#999",
+  },
+  deliveryVehicleTextSelected: {
+    color: "#FF6B35",
   },
   addCompatibilityButton: {
     flexDirection: "row",

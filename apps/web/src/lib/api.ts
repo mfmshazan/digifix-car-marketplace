@@ -236,7 +236,7 @@ export const authApi = {
   },
 
   // Register
-  register: async (data: { name: string; email: string; password: string; phone: string; role?: string }) => {
+  register: async (data: { name: string; email: string; password: string; phone: string; role?: string; joinCode?: string }) => {
     const response = await api.post('/auth/register', data);
     return response.data;
   },
@@ -265,6 +265,42 @@ export const authApi = {
 
   resetPassword: async (resetToken: string, newPassword: string) => {
     const response = await api.post('/auth/reset-password', { resetToken, newPassword });
+    return response.data;
+  },
+};
+
+export interface ShopSalesman {
+  id: string;
+  name: string | null;
+  email: string;
+  phone: string | null;
+  avatar: string | null;
+  status: 'PENDING' | 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+  createdAt: string;
+}
+
+export const managerApi = {
+  // Get the shop join code the manager shares with salesmen
+  getJoinCode: async (): Promise<{ success: boolean; data: { joinCode: string } }> => {
+    const response = await api.get('/manager/join-code');
+    return response.data;
+  },
+
+  // List salesmen working under the manager (pending + active)
+  getSalesmen: async (): Promise<{ success: boolean; data: ShopSalesman[] }> => {
+    const response = await api.get('/manager/salesmen');
+    return response.data;
+  },
+
+  // Approve a pending salesman
+  approveSalesman: async (id: string) => {
+    const response = await api.post(`/manager/salesmen/${id}/approve`);
+    return response.data;
+  },
+
+  // Reject (remove) a pending salesman request
+  rejectSalesman: async (id: string) => {
+    const response = await api.post(`/manager/salesmen/${id}/reject`);
     return response.data;
   },
 };

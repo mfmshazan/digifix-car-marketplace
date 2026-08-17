@@ -94,21 +94,9 @@ export default function CustomerTabLayout() {
           ),
         }}
       />
-      {/* Wishlist is reachable from the Profile menu — not a persistent bottom tab */}
-      <Tabs.Screen
-        name="wishlist"
-        options={{
-          href: null,
-          title: "Wishlist",
-        }}
-      />
-      <Tabs.Screen
-        name="addresses"
-        options={{
-          href: null,
-          title: "Saved Addresses",
-        }}
-      />
+      {/* Wishlist and Saved Addresses are top-level stack screens (app/wishlist,
+          app/addresses) launched from the Profile menu, so the hardware/back
+          button returns to Profile instead of resetting to the Home tab. */}
       <Tabs.Screen
         name="checkout-success"
         options={{

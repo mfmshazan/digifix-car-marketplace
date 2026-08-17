@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ClerkAuthProvider } from "@/components/clerk-provider";
+import { QueryProvider } from "@/components/query-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,11 +18,13 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased font-sans bg-gray-50 text-gray-900">
         <ClerkAuthProvider>
-          <div className="flex flex-col min-h-screen">
-            <main className="flex-grow">
-              {children}
-            </main>
-          </div>
+          <QueryProvider>
+            <div className="flex flex-col min-h-screen">
+              <main className="flex-grow">
+                {children}
+              </main>
+            </div>
+          </QueryProvider>
         </ClerkAuthProvider>
       </body>
     </html>

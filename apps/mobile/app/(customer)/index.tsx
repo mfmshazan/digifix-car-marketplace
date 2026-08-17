@@ -26,6 +26,7 @@ import {
   Animated,
   Platform,
   StatusBar,
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -57,6 +58,16 @@ const shuffleArray = <T,>(arr: T[]): T[] => {
   return a;
 };
 
+// Full device width — each promo slide fills exactly one screen so only a
+// single, centered card is visible at a time (no half-card peeking).
+const SCREEN_WIDTH = Dimensions.get("window").width;
+
+// Branded splash loading bar dimensions (track + sweeping segment).
+const SPLASH_BAR_TRACK = 180;
+const SPLASH_BAR_SEG = 62;
+// Accent used on the white loading splash (logo, wordmark, progress bar).
+const SPLASH_BLUE = "#2563EB";
+
 // ─── Promotions (shown before vehicle is identified) ─────────────────────────
 const promotions = [
   {
@@ -64,12 +75,6 @@ const promotions = [
     title: "Find Parts Fast",
     description: "Enter your vehicle registration number to see only parts that fit your car",
     gradient: ["#00002E", "#001060"],
-  },
-  {
-    id: "2",
-    title: "Free Delivery",
-    description: "On orders over Rs. 5,000",
-    gradient: ["#1A1A1A", "#2D2D2D"],
   },
   {
     id: "3",
@@ -139,12 +144,48 @@ export default function CustomerHomeScreen() {
   // ── slide-in animation for vehicle card ──
   const vehicleCardAnim = useRef(new Animated.Value(0)).current;
 
+  // ── first-launch branded loading screen (login → loader → Home) ──
+  const [initializing, setInitializing] = useState(true);
+  const loaderFade = useRef(new Animated.Value(1)).current;
+  const loaderSpin = useRef(new Animated.Value(0)).current;
+
   // ─────────────────────────────────────────────────────────────────────────
   // Effects
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    loadWishlist();
-    loadFeaturedProducts();
+    // Continuously spin the loader ring while the branded splash is visible.
+    const spinLoop = Animated.loop(
+      Animated.timing(loaderSpin, {
+        toValue: 1,
+        duration: 900,
+        useNativeDriver: true,
+      })
+    );
+    spinLoop.start();
+
+    const start = Date.now();
+    const MIN_SPLASH_MS = 1400; // let the splash breathe instead of flashing
+
+    (async () => {
+      // Warm up the home screen data behind the splash so Home appears ready.
+      await Promise.allSettled([loadWishlist(), loadFeaturedProducts()]);
+
+      const elapsed = Date.now() - start;
+      if (elapsed < MIN_SPLASH_MS) {
+        await new Promise((r) => setTimeout(r, MIN_SPLASH_MS - elapsed));
+      }
+
+      Animated.timing(loaderFade, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }).start(() => {
+        spinLoop.stop();
+        setInitializing(false);
+      });
+    })();
+
+    return () => spinLoop.stop();
   }, []);
 
   // Sync input with stored registration
@@ -375,12 +416,14 @@ export default function CustomerHomeScreen() {
   // Render helpers
   // ─────────────────────────────────────────────────────────────────────────
 
-  /** Promotion banner item */
+  /** Promotion banner item — one full-width, centered card per screen */
   const renderPromoItem = ({ item }: { item: (typeof promotions)[0] }) => (
-    <View style={[styles.promoCard, { backgroundColor: item.gradient[0] }]}>
-      <View style={styles.promoCardAccent} />
-      <Text style={styles.promoTitle}>{item.title}</Text>
-      <Text style={styles.promoDesc}>{item.description}</Text>
+    <View style={styles.promoSlide}>
+      <View style={[styles.promoCard, { backgroundColor: item.gradient[0] }]}>
+        <View style={styles.promoCardAccent} />
+        <Text style={styles.promoTitle}>{item.title}</Text>
+        <Text style={styles.promoDesc}>{item.description}</Text>
+      </View>
     </View>
   );
 
@@ -899,13 +942,17 @@ export default function CustomerHomeScreen() {
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
+              getItemLayout={(_, index) => ({
+                length: SCREEN_WIDTH,
+                offset: SCREEN_WIDTH * index,
+                index,
+              })}
               onMomentumScrollEnd={(e) => {
                 const idx = Math.round(
-                  e.nativeEvent.contentOffset.x / 300
+                  e.nativeEvent.contentOffset.x / SCREEN_WIDTH
                 );
                 setCurrentPromoIdx(idx);
               }}
-              contentContainerStyle={styles.promoList}
             />
             {/* Dots */}
             <View style={styles.promoDots}>
@@ -1121,6 +1168,44 @@ export default function CustomerHomeScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* ── Branded loading splash (login → loader → Home) ─────────────────────
+          Rendered in a Modal so it sits above the bottom tab bar and blocks all
+          touches while data loads (users can't tap Profile/Orders underneath). */}
+      <Modal
+        visible={initializing}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => {}}
+      >
+        <Animated.View style={[styles.splash, { opacity: loaderFade }]}>
+          <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+          <View style={styles.splashLogoRow}>
+            <Ionicons name="cog" size={30} color={SPLASH_BLUE} style={{ marginRight: 10 }} />
+            <Text style={styles.splashBrand}>DIGIFIX</Text>
+          </View>
+          {/* Animated horizontal loading bar under the logo */}
+          <View style={styles.loadingTrack}>
+            <Animated.View
+              style={[
+                styles.loadingBar,
+                {
+                  transform: [
+                    {
+                      translateX: loaderSpin.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-SPLASH_BAR_SEG, SPLASH_BAR_TRACK],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            />
+          </View>
+          <Text style={styles.splashTagline}>Loading your parts…</Text>
+        </Animated.View>
+      </Modal>
     </View>
   );
 }
@@ -1134,6 +1219,43 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",
+  },
+
+  // ── Branded loading splash ──────────────────────────────────────────────────
+  splash: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  splashLogoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  splashBrand: {
+    fontSize: 30,
+    fontWeight: "800",
+    letterSpacing: 4,
+    color: SPLASH_BLUE,
+  },
+  loadingTrack: {
+    width: SPLASH_BAR_TRACK,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#DBEAFE",
+    overflow: "hidden",
+    marginTop: 26,
+  },
+  loadingBar: {
+    width: SPLASH_BAR_SEG,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: SPLASH_BLUE,
+  },
+  splashTagline: {
+    fontSize: 13,
+    color: "#64748B",
+    marginTop: 18,
   },
 
   // ── Search Header ──────────────────────────────────────────────────────────
@@ -1316,16 +1438,15 @@ const styles = StyleSheet.create({
   },
 
   // ── Promotions ─────────────────────────────────────────────────────────────
-  promoList: {
-    paddingHorizontal: 16,
-    gap: 12,
+  promoSlide: {
+    width: SCREEN_WIDTH,
+    alignItems: "center",
   },
   promoCard: {
-    width: 300,
+    width: SCREEN_WIDTH - 32,
     height: 150,
     borderRadius: 20,
     padding: 22,
-    marginRight: 0,
     overflow: "hidden",
     justifyContent: "center",
   },

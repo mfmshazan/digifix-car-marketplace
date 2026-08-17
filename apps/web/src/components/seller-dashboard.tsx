@@ -1304,18 +1304,27 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
               )}
             </div>
           ) : (
-            <button
-              onClick={() => setShowDispatchModal(true)}
-              disabled={loadingDeliveryStatus}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-[#00002E] text-white rounded-xl text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
-            >
-              {loadingDeliveryStatus ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Truck className="w-4 h-4" />
-              )}
-              {loadingDeliveryStatus ? 'Checking...' : 'Assign Delivery'}
-            </button>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500 font-medium">Delivery Status</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">
+                  <Truck className="w-3 h-3" />
+                  Not Assigned
+                </span>
+              </div>
+              <button
+                onClick={() => setShowDispatchModal(true)}
+                disabled={loadingDeliveryStatus}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#00002E] text-white rounded-xl text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
+              >
+                {loadingDeliveryStatus ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Truck className="w-4 h-4" />
+                )}
+                {loadingDeliveryStatus ? 'Checking...' : 'Assign Delivery'}
+              </button>
+            </div>
           )}
         </div>
       )}

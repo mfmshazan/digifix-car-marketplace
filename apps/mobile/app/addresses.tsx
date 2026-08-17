@@ -16,7 +16,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import {
@@ -27,7 +27,7 @@ import {
   getAddresses,
   setDefaultAddress,
   updateAddress,
-} from "../../src/api/addresses";
+} from "../src/api/addresses";
 
 const EMPTY_FORM: AddressInput = {
   label: "Home",
@@ -318,17 +318,31 @@ export default function SavedAddressesScreen() {
     );
   };
 
+  const screenHeader = (
+    <View style={styles.navHeader}>
+      <TouchableOpacity onPress={() => router.back()} style={styles.navBackButton}>
+        <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+      </TouchableOpacity>
+      <Text style={styles.navTitle}>Saved Addresses</Text>
+      <View style={styles.navSpacer} />
+    </View>
+  );
+
   if (isLoading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#00002E" />
-        <Text style={styles.loadingText}>Loading saved addresses...</Text>
+      <View style={styles.screen}>
+        {screenHeader}
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#00002E" />
+          <Text style={styles.loadingText}>Loading saved addresses...</Text>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.screen}>
+      {screenHeader}
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -821,6 +835,29 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: "#F6F7FB",
+  },
+  navHeader: {
+    backgroundColor: "#00002E",
+    paddingTop: 54,
+    paddingBottom: 14,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  navBackButton: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  navSpacer: {
+    width: 32,
   },
   centered: {
     flex: 1,

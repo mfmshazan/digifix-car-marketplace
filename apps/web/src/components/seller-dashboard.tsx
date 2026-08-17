@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
@@ -1332,34 +1333,33 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
 
 function CurrentOrdersTab({ userId }: { userId: string }) {
   const isManager = useAuthStore((s) => s.user?.role) === 'SHOP_MANAGER';
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
+  const queryClient = useQueryClient();
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
   const [complaintAlert, setComplaintAlert] = useState<string | null>(null);
   const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
 
-  const loadOrders = useCallback(async () => {
-    try {
+  // Orders are cached per filter. Flipping to another tab and back is instant;
+  // socket events and optimistic actions below patch this cache directly.
+  const ordersKey = ['salesman-orders', filterStatus];
+  const { data: orders = [], isLoading, dataUpdatedAt, refetch } = useQuery<Order[]>({
+    queryKey: ordersKey,
+    queryFn: async () => {
       const params: { status?: string; limit: number } = { limit: 50 };
       if (filterStatus) params.status = filterStatus;
       const res = await ordersApi.getSalesmanOrders(params);
-      if (res.success) {
-        setOrders(res.data.orders);
-        setLastRefresh(new Date());
-      }
-    } catch (err) {
-      console.error('Failed to load orders', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filterStatus]);
+      return res.success ? res.data.orders : [];
+    },
+  });
+  const lastRefresh = dataUpdatedAt ? new Date(dataUpdatedAt) : new Date();
 
-  useEffect(() => {
-    setIsLoading(true);
-    loadOrders();
-  }, [loadOrders]);
+  // Patch the currently-cached orders list in place (used by socket + action handlers).
+  const patchOrders = useCallback(
+    (updater: (prev: Order[]) => Order[]) => {
+      queryClient.setQueryData<Order[]>(['salesman-orders', filterStatus], (prev) => updater(prev ?? []));
+    },
+    [queryClient, filterStatus]
+  );
 
   // ── Real-time socket listeners ──────────────────────────────────────────────
   useEffect(() => {
@@ -1371,37 +1371,35 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     const handleNewOrder = (payload: { orderNumber: string; total?: number }) => {
       console.log('🆕 [CurrentOrdersTab] newOrder event received:', payload);
       setNewOrderAlert(`🆕 New order received: ${payload.orderNumber}`);
-      loadOrders();
+      queryClient.invalidateQueries({ queryKey: ['salesman-orders'] });
       setTimeout(() => setNewOrderAlert(null), 10000);
     };
 
     // Salesman updated status elsewhere (e.g., another tab) → update in-place
     const handleStatusUpdate = (payload: { orderId: string; status: OrderStatus }) => {
-      setOrders(prev =>
+      patchOrders(prev =>
         prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o)
       );
-      setLastRefresh(new Date());
     };
 
     // Admin approved customer cancellation/refund request
     const handleCancellationApproved = (payload: { orderId: string; status: OrderStatus }) => {
-      setOrders(prev =>
+      patchOrders(prev =>
         prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o)
       );
-      setLastRefresh(new Date());
     };
 
     // Customer raised a post-delivery complaint — surfaced to the manager only.
     const handleComplaintRaised = (payload: { orderNumber: string }) => {
       if (!isManager) return;
       setComplaintAlert(`⚠️ New complaint on order ${payload.orderNumber}`);
-      loadOrders();
+      queryClient.invalidateQueries({ queryKey: ['salesman-orders'] });
       setTimeout(() => setComplaintAlert(null), 12000);
     };
 
     // A complaint was accepted/rejected (e.g. from another tab) → refresh
     const handleComplaintResolved = () => {
-      loadOrders();
+      queryClient.invalidateQueries({ queryKey: ['salesman-orders'] });
     };
 
     socket.on('newOrder', handleNewOrder);
@@ -1417,14 +1415,14 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
       socket.off('complaintRaised', handleComplaintRaised);
       socket.off('complaintResolved', handleComplaintResolved);
     };
-  }, [userId, loadOrders]);
+  }, [userId, isManager, patchOrders, queryClient]);
 
   const handleUpdateStatus = async (id: string, status: OrderStatus) => {
     setStatusUpdateError(null);
 
     try {
       await ordersApi.updateOrderStatus(id, status);
-      setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+      patchOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
@@ -1443,7 +1441,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
       } else {
         await ordersApi.rejectComplaint(id);
       }
-      await loadOrders();
+      await queryClient.invalidateQueries({ queryKey: ['salesman-orders'] });
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
@@ -1520,7 +1518,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
           ))}
         </div>
         <button
-          onClick={() => { setIsLoading(true); loadOrders(); }}
+          onClick={() => refetch()}
           className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#00002E] transition-colors"
         >
           <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -1555,27 +1553,22 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
 // ─── Sales History Tab ───────────────────────────────────────────────────────
 
 function SalesHistoryTab() {
-  const [summary, setSummary] = useState<SalesSummary | null>(null);
-  const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [sumRes, ordersRes] = await Promise.all([
-          ordersApi.getSalesmanSummary(),
-          ordersApi.getSalesmanOrders({ status: 'DELIVERED', limit: 50 }),
-        ]);
-        if (sumRes.success) setSummary(sumRes.data);
-        if (ordersRes.success) setCompletedOrders(ordersRes.data.orders);
-      } catch (err) {
-        console.error('Failed to load summary', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
-  }, []);
+  // Cached via React Query so returning to this tab is instant.
+  const { data, isLoading } = useQuery({
+    queryKey: ['salesman-sales-history'],
+    queryFn: async () => {
+      const [sumRes, ordersRes] = await Promise.all([
+        ordersApi.getSalesmanSummary(),
+        ordersApi.getSalesmanOrders({ status: 'DELIVERED', limit: 50 }),
+      ]);
+      return {
+        summary: (sumRes.success ? sumRes.data : null) as SalesSummary | null,
+        completedOrders: (ordersRes.success ? ordersRes.data.orders : []) as Order[],
+      };
+    },
+  });
+  const summary = data?.summary ?? null;
+  const completedOrders = data?.completedOrders ?? [];
 
   if (isLoading) {
     return (
@@ -1718,32 +1711,23 @@ function SalesHistoryTab() {
 // ─── Products Tab ────────────────────────────────────────────────────────────
 
 function ProductsTab() {
-  const [products, setProducts] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   // Only managers can edit/delete catalog items; salesmen view only.
   const isManager = useAuthStore((s) => s.user?.role) === 'SHOP_MANAGER';
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await productsApi.getSalesmanProducts();
-        if (res.success) {
-          const nextProducts = Array.isArray(res.data)
-            ? res.data
-            : Array.isArray(res.data?.products)
-              ? res.data.products
-              : [];
-          setProducts(nextProducts);
-        }
-      } catch (err) {
-        console.error('Failed to load products', err);
-        setProducts([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
-  }, []);
+  // Cached via React Query: switching away and back is instant (served from cache),
+  // with a quiet background refresh. isLoading is only true on the first-ever fetch.
+  const { data: products = [], isLoading } = useQuery<any[]>({
+    queryKey: ['salesman-products'],
+    queryFn: async () => {
+      const res = await productsApi.getSalesmanProducts();
+      if (!res.success) return [];
+      return Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.products)
+          ? res.data.products
+          : [];
+    },
+  });
 
   if (isLoading) {
     return (
@@ -1974,24 +1958,20 @@ function ReviewCard({ review, onReplied }: { review: Review; onReplied: (reviewI
 }
 
 function ReviewsTab({ salesmanId }: { salesmanId: string }) {
-  const [reviews, setReviews] = React.useState<Review[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const reviewsKey = ['target-reviews', salesmanId];
 
-  const fetchReviews = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  // Cached via React Query so revisiting the Reviews tab is instant.
+  const { data: reviews = [], isLoading: loading, error: queryError } = useQuery<Review[]>({
+    queryKey: reviewsKey,
+    queryFn: async () => {
       const res = await reviewsApi.getTargetReviews(salesmanId);
-      setReviews(res.data || []);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Failed to load reviews');
-    } finally {
-      setLoading(false);
-    }
-  }, [salesmanId]);
-
-  React.useEffect(() => { fetchReviews(); }, [fetchReviews]);
+      return res.data || [];
+    },
+  });
+  const error = queryError
+    ? ((queryError as any)?.response?.data?.message || (queryError as any)?.message || 'Failed to load reviews')
+    : null;
 
   // Calculate aggregate stats
   const total = reviews.length;
@@ -2002,8 +1982,9 @@ function ReviewsTab({ salesmanId }: { salesmanId: string }) {
   }));
 
   const handleReplied = (reviewId: string, newReply: any) => {
-    setReviews(prev =>
-      prev.map(r =>
+    // Update the cached reviews in place so the reply shows immediately.
+    queryClient.setQueryData<Review[]>(reviewsKey, (prev) =>
+      (prev ?? []).map((r) =>
         r.id === reviewId ? { ...r, replies: [newReply] } : r
       )
     );
@@ -2051,7 +2032,7 @@ function ReviewsTab({ salesmanId }: { salesmanId: string }) {
             {total > 0 ? `All Reviews (${total})` : 'No reviews yet'}
           </h3>
           <button
-            onClick={fetchReviews}
+            onClick={() => queryClient.invalidateQueries({ queryKey: reviewsKey })}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Refresh

@@ -77,4 +77,10 @@ token.txt
 # Uploaded files (runtime data, not source code)
 backend/public/uploads/*
 !backend/public/uploads/.gitkeep
+
+# Dissertation deliverables (report, presentation, figures, generation scripts) — not source code
+# Kept on disk, excluded from the code repo. NOTE: the app's real assets live in apps/mobile/assets/
+/assets/
+/docs/
+.claude/
 muzny.txt

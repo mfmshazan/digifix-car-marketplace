@@ -396,14 +396,20 @@ const getSalesmanProducts = async (req, res) => {
     const userId = await resolveShopOwnerId(req.user);
     const { page = '1', limit = '20' } = req.query;
 
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    const pageNum = Number.isFinite(parseInt(page)) && parseInt(page) > 0 ? parseInt(page) : 1;
+    const limitNum = Number.isFinite(parseInt(limit)) && parseInt(limit) > 0 ? parseInt(limit) : 20;
     const skip = (pageNum - 1) * limitNum;
+    // Upper bound of rows that could appear on this page from either table. Any item in
+    // the merged page must be within the first (skip + limit) rows of its own table when
+    // both are ordered by createdAt desc — so we never need to load more than this per table.
+    const takeBound = skip + limitNum;
 
-    // Fetch both regular products and car parts
-    const [products, carParts] = await Promise.all([
+    // Fetch a bounded slice of both tables plus their totals (counts are cheap, index-only).
+    const [products, carParts, productTotal, carPartTotal] = await Promise.all([
       prisma.product.findMany({
         where: { salesmanId: userId },
+        orderBy: { createdAt: 'desc' },
+        take: takeBound,
         include: {
           category: {
             select: { id: true, name: true },
@@ -426,6 +432,8 @@ const getSalesmanProducts = async (req, res) => {
       }),
       prisma.carPart.findMany({
         where: { sellerId: userId },
+        orderBy: { createdAt: 'desc' },
+        take: takeBound,
         include: {
           category: {
             select: { id: true, name: true },
@@ -440,6 +448,8 @@ const getSalesmanProducts = async (req, res) => {
           }
         },
       }),
+      prisma.product.count({ where: { salesmanId: userId } }),
+      prisma.carPart.count({ where: { sellerId: userId } }),
     ]);
 
     // Compute status function
@@ -462,8 +472,9 @@ const getSalesmanProducts = async (req, res) => {
       (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
     );
 
-    // Paginate manually
-    const total = allItems.length;
+    // Slice the merged/sorted window down to the requested page. `allItems` holds at most
+    // (skip + limit) rows per table, which is exactly enough to fill this page correctly.
+    const total = productTotal + carPartTotal;
     const paginatedItems = allItems.slice(skip, skip + limitNum);
 
     res.json({

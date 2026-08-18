@@ -61,7 +61,7 @@ const getProducts = async (req, res) => {
             select: { id: true, name: true },
           },
           store: {
-            select: { id: true, name: true, rating: true },
+            select: { id: true, name: true, rating: true, phone: true },
           },
           vehicleModel: {
             select: {
@@ -113,7 +113,7 @@ const getProductById = async (req, res) => {
           select: { id: true, name: true, avatar: true },
         },
         store: {
-          select: { id: true, name: true, rating: true, logo: true },
+          select: { id: true, name: true, rating: true, logo: true, phone: true },
         },
         vehicleModel: {
           include: {

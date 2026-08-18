@@ -999,6 +999,20 @@ export const createOrder = async (req, res) => {
       });
     }
 
+    // Reject the order up front if any item doesn't have enough stock.
+    for (const orderItem of items) {
+      const prod = products.find(p => p.id === orderItem.productId);
+      const cp = carParts.find(c => c.id === orderItem.productId);
+      const available = prod ? prod.stock : (cp ? cp.stock : 0);
+      const itemName = prod?.name || cp?.name || orderItem.productId;
+      if (available < orderItem.quantity) {
+        return res.status(400).json({
+          success: false,
+          message: `Not enough stock for ${itemName}. Only ${available} left.`,
+        });
+      }
+    }
+
     // Group items by seller
     const groupedBySeller = {};
     items.forEach(orderItem => {
@@ -1192,10 +1206,25 @@ export const createOrder = async (req, res) => {
         orderIndex++;
       }
 
+      // Decrement stock for every ordered item now that the orders are created.
+      for (const orderItem of items) {
+        if (products.find(p => p.id === orderItem.productId)) {
+          await tx.product.update({
+            where: { id: orderItem.productId },
+            data: { stock: { decrement: orderItem.quantity } },
+          });
+        } else if (carParts.find(c => c.id === orderItem.productId)) {
+          await tx.carPart.update({
+            where: { id: orderItem.productId },
+            data: { stock: { decrement: orderItem.quantity } },
+          });
+        }
+      }
+
       return orders;
     }, {
-      timeout: 30000, 
-      maxWait: 10000 
+      timeout: 30000,
+      maxWait: 10000
     });
 
     // Format response

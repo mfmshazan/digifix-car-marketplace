@@ -27,6 +27,7 @@ import {
   Platform,
   StatusBar,
   Dimensions,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -753,11 +754,20 @@ export default function CustomerHomeScreen() {
                   </View>
                 )}
 
-                {/* Service charge note */}
-                <Text style={styles.serviceChargeNote}>
-                  + Rs.{" "}
-                  {(effectivePrice * 0.1).toFixed(0)} service charge (10%)
-                </Text>
+                {/* Shop contact — customer can tap to call the shop */}
+                {((p.store as any)?.phone || (p.salesman as any)?.phone) ? (
+                  <TouchableOpacity
+                    style={styles.sellerRow}
+                    onPress={() =>
+                      Linking.openURL(`tel:${(p.store as any)?.phone || (p.salesman as any)?.phone}`)
+                    }
+                  >
+                    <Ionicons name="call-outline" size={14} color="#2563EB" />
+                    <Text style={[styles.sellerText, { color: "#2563EB", fontWeight: "600" }]}>
+                      Call shop: {(p.store as any)?.phone || (p.salesman as any)?.phone}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             </ScrollView>
 

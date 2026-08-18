@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, StyleSheet, Text, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { formatCurrency } from '../lib/currency';
 
 interface ModalProps {
   setModalVisible: (visible: boolean) => void;
@@ -44,7 +45,7 @@ const CustomModal = ({ modalVisible, setModalVisible, onSelectMethod, walletBala
               <Text style={[styles.textStyle, !hasSufficientBalance && styles.textDisabled]}>Pay with Wallet</Text>
               {walletBalance != null && (
                 <Text style={styles.walletBalanceText}>
-                  Balance: Rs. {walletBalance.toLocaleString()}
+                  Balance: {formatCurrency(walletBalance)}
                   {!hasSufficientBalance ? ' (insufficient)' : ''}
                 </Text>
               )}

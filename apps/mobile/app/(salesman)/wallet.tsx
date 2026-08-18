@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { getMyWallet, triggerSalesmanPayout, WalletTransaction, WalletData, checkStripeAccountStatus, getStripeOnboardingLink } from '../../src/api/wallet';
 import * as WebBrowser from 'expo-web-browser';
+import { formatCurrency } from '../../src/lib/currency';
 
 const TRANSACTION_LABELS: Record<string, string> = {
   DEPOSIT: 'Deposit',
@@ -71,7 +72,7 @@ export default function SalesmanWalletScreen() {
     }
     Alert.alert(
       'Withdraw to Bank',
-      `Transfer Rs. ${wallet.balance.toLocaleString()} to your connected Stripe account?`,
+      `Transfer ${formatCurrency(wallet.balance)} to your connected Stripe account?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -132,7 +133,7 @@ export default function SalesmanWalletScreen() {
       <View style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>Available Balance</Text>
         <Text style={styles.balanceAmount}>
-          Rs. {wallet ? wallet.balance.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}
+          {formatCurrency(wallet?.balance)}
         </Text>
         {!stripeReady ? (
           <TouchableOpacity
@@ -193,7 +194,7 @@ export default function SalesmanWalletScreen() {
               <Text style={styles.txDate}>{new Date(tx.createdAt).toLocaleDateString()}</Text>
             </View>
             <Text style={[styles.txAmount, tx.direction === 'IN' ? styles.txAmountIn : styles.txAmountOut]}>
-              {tx.direction === 'IN' ? '+' : '-'}Rs. {tx.amount.toLocaleString()}
+              {tx.direction === 'IN' ? '+' : '-'}{formatCurrency(tx.amount)}
             </Text>
           </View>
         ))

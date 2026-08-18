@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowDownCircle,
   ArrowUpCircle,
+  CreditCard,
   DollarSign,
   FileText,
   Loader2,
@@ -43,12 +44,42 @@ interface WalletApiResponse {
 
 export default function WalletDashboard({ roleLabel = 'Salesman' }: { roleLabel?: string }) {
   const router = useRouter();
-  const { isAuthenticated, token } = useAuthStore();
+  const { isAuthenticated, token, user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [wallet, setWallet] = useState<WalletApiResponse | null>(null);
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
+  const [stripeReady, setStripeReady] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const hasLoadedWallet = useRef(false);
+
+  // Customers don't hold a payable wallet — only shop owners/salesmen withdraw funds,
+  // so the Stripe connect/withdraw controls are scoped to them.
+  const canPayout = user?.role === 'SALESMAN' || user?.role === 'SHOP_MANAGER';
+
+  const loadWallet = async () => {
+    try {
+      setLoading(true);
+      const requests = [api.get('/wallet/my'), api.get('/wallet/receipts/my')];
+      if (canPayout) requests.push(api.get('/stripe/account-status'));
+
+      const [walletRes, receiptRes, stripeRes] = await Promise.all(requests);
+
+      setWallet(walletRes.data?.data ?? { balance: 0, transactions: [] });
+      setReceipts(receiptRes.data?.data ?? []);
+      if (canPayout && stripeRes?.data?.success) {
+        setStripeReady(stripeRes.data.isReady);
+      }
+    } catch (err: any) {
+      console.error('Failed to load wallet:', err);
+      const msg = err?.response?.status === 401
+        ? 'Your session expired. Please sign in again.'
+        : err?.response?.data?.msg || 'Unable to load wallet details.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isAuthenticated || !token) {
@@ -59,29 +90,52 @@ export default function WalletDashboard({ roleLabel = 'Salesman' }: { roleLabel?
     if (hasLoadedWallet.current) return;
     hasLoadedWallet.current = true;
 
-    const loadWallet = async () => {
-      try {
-        setLoading(true);
-        const [walletRes, receiptRes] = await Promise.all([
-          api.get('/wallet/my'),
-          api.get('/wallet/receipts/my'),
-        ]);
-
-        setWallet(walletRes.data?.data ?? { balance: 0, transactions: [] });
-        setReceipts(receiptRes.data?.data ?? []);
-      } catch (err: any) {
-        console.error('Failed to load wallet:', err);
-        const msg = err?.response?.status === 401
-          ? 'Your session expired. Please sign in again.'
-          : err?.response?.data?.msg || 'Unable to load wallet details.';
-        setError(msg);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadWallet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, token, router]);
+
+  const handleOnboardStripe = async () => {
+    try {
+      setActionLoading(true);
+      const res = await api.post('/stripe/onboard', {
+        refreshUrl: window.location.href,
+        returnUrl: window.location.href,
+      });
+      if (res.data?.success && res.data?.onboardingUrl) {
+        window.open(res.data.onboardingUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        setError('Failed to get Stripe setup link.');
+      }
+    } catch (err) {
+      console.error('Failed to start Stripe onboarding:', err);
+      setError('Network error. Please try again.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePayout = async () => {
+    if (!wallet || wallet.balance <= 0) return;
+    const confirmed = window.confirm(
+      `Transfer LKR ${Number(wallet.balance).toLocaleString()} to your connected Stripe account?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setActionLoading(true);
+      const res = await api.post('/wallet/payout/salesman');
+      if (res.data?.success) {
+        await loadWallet();
+      } else {
+        setError(res.data?.msg || 'Withdrawal failed. Try again.');
+      }
+    } catch (err: any) {
+      console.error('Payout failed:', err);
+      setError(err?.response?.data?.msg || 'Network error. Please try again.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const totals = useMemo(() => {
     const incoming = (wallet?.transactions ?? []).reduce((sum, tx) => {
@@ -144,6 +198,40 @@ export default function WalletDashboard({ roleLabel = 'Salesman' }: { roleLabel?
                   <Wallet className="h-6 w-6 text-[#8ec5ff]" />
                 </div>
               </div>
+
+              {canPayout && (
+                !stripeReady ? (
+                  <button
+                    onClick={handleOnboardStripe}
+                    disabled={actionLoading}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#6366F1] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5457e0] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {actionLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <CreditCard className="h-4 w-4" />
+                        Complete Stripe setup
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handlePayout}
+                    disabled={actionLoading || balance <= 0}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {actionLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <ArrowUpCircle className="h-4 w-4" />
+                        Withdraw to bank
+                      </>
+                    )}
+                  </button>
+                )
+              )}
             </div>
 
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

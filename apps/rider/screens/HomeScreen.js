@@ -7,6 +7,7 @@ import {
     RefreshControl,
     ActivityIndicator,
     TouchableOpacity,
+    Image,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
@@ -26,6 +27,7 @@ import {
     selectHomeRefreshing,
     selectHomeError,
 } from '../store/slices/homeSlice';
+import { resolveMediaUrl } from '../utils/media';
 import { colors, spacing, typography, shadows, radii } from '../styles/theme';
 
 const formatStatus = (value) =>
@@ -230,7 +232,14 @@ export default function HomeScreen({ navigation }) {
                         onPress={() => navigation.navigate('Profile')}
                         activeOpacity={0.85}
                     >
-                        <Ionicons name="person-outline" size={20} color={colors.surface} />
+                        {resolveMediaUrl(profile?.profile_photo_url) ? (
+                            <Image
+                                source={{ uri: resolveMediaUrl(profile.profile_photo_url) }}
+                                style={styles.profileShortcutAvatar}
+                            />
+                        ) : (
+                            <Ionicons name="person-outline" size={20} color={colors.surface} />
+                        )}
                     </TouchableOpacity>
                 </View>
                 <Text style={styles.greeting}>{greeting}</Text>
@@ -390,6 +399,12 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.1)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.14)',
+        overflow: 'hidden',
+    },
+    profileShortcutAvatar: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 14,
     },
     greeting: {
         ...typography.bodySmall,

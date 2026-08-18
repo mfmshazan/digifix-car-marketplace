@@ -1,7 +1,81 @@
+import fs from 'fs';
+import path from 'path';
 import { riderQuery } from '../lib/riderDb.js';
 import { dispatchAvailableJobs, cancelPendingOffersForPartner } from '../services/riderRealtimeDispatch.js';
 import { recordRiderAvailability } from '../services/riderAvailability.js';
 import { hasValue, isFloatInRange, validationError } from '../utils/riderValidation.js';
+
+export const uploadRiderPhoto = async (req, res, next) => {
+  try {
+    const file = req.file || (req.files && req.files[0]);
+    if (!file) {
+      return res.status(400).json({ success: false, message: 'No photo uploaded' });
+    }
+
+    const currentRider = await riderQuery(
+      `SELECT profile_photo_url FROM "Rider" WHERE id = $1`,
+      [req.user.id]
+    );
+
+    if (currentRider.rows.length && currentRider.rows[0].profile_photo_url?.includes('/uploads/')) {
+      const oldFileName = currentRider.rows[0].profile_photo_url.split('/').pop();
+      const oldFilePath = path.join(process.cwd(), 'public/uploads', oldFileName);
+      if (fs.existsSync(oldFilePath)) {
+        try { fs.unlinkSync(oldFilePath); } catch (_) {}
+      }
+    }
+
+    const photoUrl = `/uploads/${file.filename}`;
+    const result = await riderQuery(
+      `UPDATE "Rider"
+          SET profile_photo_url = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING id, full_name, email, profile_photo_url`,
+      [photoUrl, req.user.id]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Profile photo updated successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const deleteRiderPhoto = async (req, res, next) => {
+  try {
+    const currentRider = await riderQuery(
+      `SELECT profile_photo_url FROM "Rider" WHERE id = $1`,
+      [req.user.id]
+    );
+
+    if (currentRider.rows.length && currentRider.rows[0].profile_photo_url?.includes('/uploads/')) {
+      const oldFileName = currentRider.rows[0].profile_photo_url.split('/').pop();
+      const oldFilePath = path.join(process.cwd(), 'public/uploads', oldFileName);
+      if (fs.existsSync(oldFilePath)) {
+        try { fs.unlinkSync(oldFilePath); } catch (_) {}
+      }
+    }
+
+    const result = await riderQuery(
+      `UPDATE "Rider"
+          SET profile_photo_url = NULL, updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, full_name, email, profile_photo_url`,
+      [req.user.id]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Profile photo removed successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
 
 export const getRiderProfile = async (req, res, next) => {
   try {

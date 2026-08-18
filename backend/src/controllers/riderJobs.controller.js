@@ -202,6 +202,21 @@ export const acceptRiderRequestOffer = async (req, res, next) => {
       return res.status(result.statusCode || 400).json({ success: false, message: result.message });
     }
 
+    // resolveOffer commits the rider assignment. Mirror that accepted step to
+    // the marketplace immediately so the customer sees the rider without
+    // waiting for the next checkpoint.
+    const syncClient = await getRiderClient();
+    try {
+      await syncClient.query('BEGIN');
+      await syncMarketplaceOrderStatus(syncClient, result.data.id, 'accepted');
+      await syncClient.query('COMMIT');
+    } catch (syncError) {
+      await syncClient.query('ROLLBACK');
+      console.error('Failed to sync accepted rider offer:', syncError.message);
+    } finally {
+      syncClient.release();
+    }
+
     return res.json({
       success: true,
       message: 'Incoming request accepted successfully',
@@ -765,9 +780,12 @@ export const submitRiderProof = async (req, res, next) => {
     }
 
     const job = jobCheck.rows[0];
-    if (!['assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff', 'delivered'].includes(job.status)) {
+    if (!['arrived_at_dropoff', 'delivered'].includes(job.status)) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ success: false, message: 'Proof can only be submitted when the delivery is ready to complete' });
+      return res.status(400).json({
+        success: false,
+        message: 'Confirm arrival at the customer before submitting delivery proof',
+      });
     }
 
     const proofResult = await client.query(

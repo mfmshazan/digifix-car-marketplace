@@ -27,6 +27,7 @@ const TRACKABLE_STATUSES: DeliveryStatus[] = [
     DeliveryWorkflowStatus.ARRIVED_PICKUP,
     DeliveryWorkflowStatus.PICKED_UP,
     DeliveryWorkflowStatus.IN_TRANSIT,
+    DeliveryWorkflowStatus.ARRIVED_DROPOFF,
 ];
 
 const isTrackableStatus = (status?: DeliveryStatus | null) =>
@@ -73,10 +74,6 @@ export const useLiveLocationTracking = ({
 
         void startTracking();
     }, [jobId, startTracking, status, stopTracking]);
-
-    useEffect(() => () => {
-        void stopLocationTracking();
-    }, []);
 
     return {
         isTracking: trackingState.isTracking,

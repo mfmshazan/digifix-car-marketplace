@@ -297,7 +297,7 @@ export const createDeliveryRequest = async (req, res) => {
       const existingJob = existing.rows[0];
       if (
         existingJob.partner_id ||
-        !['awaiting_dispatch', 'pending', 'available'].includes(existingJob.status)
+        !['awaiting_dispatch', 'pending', 'available', 'failed', 'cancelled'].includes(existingJob.status)
       ) {
         return res.status(409).json({
           success: false,
@@ -326,10 +326,11 @@ export const createDeliveryRequest = async (req, res) => {
                 payment_type = $17,
                 items_description = $18,
                 special_instructions = $19,
+                status = 'pending',
                 updated_at = NOW()
           WHERE id = $1
             AND partner_id IS NULL
-            AND status IN ('pending', 'available')
+            AND status IN ('pending', 'available', 'awaiting_dispatch', 'failed', 'cancelled')
           RETURNING id, order_number, status, partner_id, marketplace_order_id, created_at`,
         [existingJob.id, ...jobValues]
       );

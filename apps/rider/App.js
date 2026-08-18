@@ -4,7 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { Animated, Text, Easing, View, StyleSheet, Platform } from 'react-native';
-import { Provider, useDispatch } from 'react-redux';
+import { Provider, useDispatch, useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import { ClerkProvider, ClerkLoaded } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
@@ -33,6 +33,8 @@ import { colors, shadows } from './styles/theme';
 import store from './store';
 import { hydrateAvailability } from './store/slices/availabilitySlice';
 import { fetchDriverHome } from './store/slices/homeSlice';
+import { selectActiveDelivery } from './store/slices/homeSlice';
+import { useLiveLocationTracking } from './hooks/useLiveLocationTracking';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -185,10 +187,35 @@ function MainTabs() {
     );
 }
 
+// Own live GPS at app level instead of inside a particular screen. This keeps
+// customer tracking alive while the rider checks another tab or opens external
+// turn-by-turn navigation.
+function ActiveDeliveryLocationTracker() {
+    const activeDelivery = useSelector(selectActiveDelivery);
+
+    useLiveLocationTracking({
+        jobId: activeDelivery?.id,
+        status: activeDelivery?.status,
+        intervalMs: 7000,
+    });
+
+    return null;
+}
+
 function AppContent() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const dispatch = useDispatch();
+
+    const handleAuthenticated = React.useCallback(async () => {
+        setIsAuthenticated(true);
+        const token = await getAccessToken();
+        if (token) {
+            registerPushForToken(token);
+        }
+        dispatch(hydrateAvailability());
+        dispatch(fetchDriverHome());
+    }, [dispatch]);
 
     useEffect(() => {
         // Initialise push once at launch (no-ops in Expo Go / web).
@@ -264,16 +291,16 @@ function AppContent() {
                         component={ProofOfDeliveryScreen}
                         options={{ title: 'Proof of Delivery' }}
                     />
-                    <Stack.Screen
-                        name="Login"
-                        component={LoginScreen}
-                        options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                        name="Register"
-                        component={RegisterScreen}
-                        options={{ headerShown: false }}
-                    />
+                    <Stack.Screen name="Login" options={{ headerShown: false }}>
+                        {(props) => (
+                            <LoginScreen {...props} onAuthenticated={handleAuthenticated} />
+                        )}
+                    </Stack.Screen>
+                    <Stack.Screen name="Register" options={{ headerShown: false }}>
+                        {(props) => (
+                            <RegisterScreen {...props} onAuthenticated={handleAuthenticated} />
+                        )}
+                    </Stack.Screen>
                     <Stack.Screen
                         name="ForgotPassword"
                         component={ForgotPasswordScreen}
@@ -281,6 +308,7 @@ function AppContent() {
                     />
                 </Stack.Navigator>
             </NavigationContainer>
+            <ActiveDeliveryLocationTracker />
             <RealtimeDispatchLayer isAuthenticated={isAuthenticated} />
         </>
     );
@@ -288,6 +316,16 @@ function AppContent() {
 
 export default function App() {
     const clerkKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+    if (!clerkKey) {
+        console.warn('⚠️ EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is not set. Google Sign-In with Clerk will be disabled.');
+        return (
+            <Provider store={store}>
+                <AppContent />
+            </Provider>
+        );
+    }
+
     return (
         <ClerkProvider publishableKey={clerkKey} tokenCache={tokenCache}>
             <ClerkLoaded>

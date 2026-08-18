@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import MapView, { Marker, Polyline } from "react-native-maps";
+import MapView, { AnimatedRegion, Marker, Polyline } from "react-native-maps";
 import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../../src/api/orders";
 import { submitReviews } from "../../src/api/reviews";
 import { connectSocket } from "../../src/lib/socket";
@@ -246,6 +246,15 @@ export default function OrdersScreen() {
   const trackingMapRef = React.useRef<MapView | null>(null);
   const hasFitTrackingMap = React.useRef(false);
   const trackingOrderRef = React.useRef<Order | null>(null);
+  const animatedRiderCoordinate = React.useRef(
+    new AnimatedRegion({
+      latitude: 6.9271,
+      longitude: 79.8612,
+      latitudeDelta: 0,
+      longitudeDelta: 0,
+    })
+  ).current;
+  const hasAnimatedRiderLocation = React.useRef(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -288,10 +297,41 @@ export default function OrdersScreen() {
   const lastUpdatedLabel = lastTrackingUpdate
     ? lastTrackingUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
     : "Waiting";
+  const fallbackRouteCoordinates = React.useMemo(() => {
+    if (!riderLocation || !deliveryRoute) return [];
+
+    const nextStop = ["accepted", "arrived_at_pickup"].includes(activeDeliveryStatus)
+      ? deliveryRoute.pickup
+      : deliveryRoute.dropoff;
+
+    return [riderLocation, nextStop];
+  }, [activeDeliveryStatus, deliveryRoute, riderLocation]);
 
   useEffect(() => {
     trackingOrderRef.current = trackingOrder;
   }, [trackingOrder]);
+
+  useEffect(() => {
+    if (!riderLocation) return;
+
+    if (!hasAnimatedRiderLocation.current) {
+      animatedRiderCoordinate.setValue({
+        latitude: riderLocation.latitude,
+        longitude: riderLocation.longitude,
+        latitudeDelta: 0,
+        longitudeDelta: 0,
+      });
+      hasAnimatedRiderLocation.current = true;
+      return;
+    }
+
+    (animatedRiderCoordinate.timing as any)({
+      latitude: riderLocation.latitude,
+      longitude: riderLocation.longitude,
+      duration: 2500,
+      useNativeDriver: false,
+    }).start();
+  }, [animatedRiderCoordinate, riderLocation]);
 
   // Poll rider's GPS every few seconds while the tracking modal is open.
   useEffect(() => {
@@ -304,6 +344,7 @@ export default function OrdersScreen() {
       setLiveRiderStep(null);
       setLastTrackingUpdate(null);
       hasFitTrackingMap.current = false;
+      hasAnimatedRiderLocation.current = false;
       return;
     }
 
@@ -434,13 +475,14 @@ export default function OrdersScreen() {
               o.id === payload.orderId ? { ...o, status: payload.status } : o
             )
           );
-          // If the tracking modal is open for this order, update the detailed label
-          if (payload.riderStep) {
-            setLiveRiderStep(payload.riderStep);
-          }
-          // Also update the live status shown in the tracking panel
-          if (payload.status) {
-            setLiveDeliveryStatus(payload.status);
+          // Only change the open tracking panel when this event belongs to it.
+          if (trackingOrderRef.current?.id === payload.orderId) {
+            if (payload.riderStep) {
+              setLiveRiderStep(payload.riderStep);
+            }
+            if (payload.status) {
+              setLiveDeliveryStatus(payload.status);
+            }
           }
         };
 
@@ -814,6 +856,16 @@ export default function OrdersScreen() {
                     lineJoin="round"
                   />
                 )}
+                {!roadRoute && fallbackRouteCoordinates.length >= 2 && (
+                  <Polyline
+                    coordinates={fallbackRouteCoordinates}
+                    strokeColor="#FF6B35"
+                    strokeWidth={4}
+                    lineDashPattern={[10, 7]}
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                )}
                 <Marker
                   coordinate={deliveryRoute.pickup}
                   title="Pickup"
@@ -829,15 +881,15 @@ export default function OrdersScreen() {
               </>
             )}
             {riderLocation && (
-              <Marker
-                coordinate={{ latitude: riderLocation.latitude, longitude: riderLocation.longitude }}
+              <Marker.Animated
+                coordinate={animatedRiderCoordinate as any}
                 title="Rider Location"
                 description={`ETA ${etaLabel}`}
               >
                 <View style={styles.markerContainer}>
                   <Ionicons name="bicycle" size={24} color="#FFF" />
                 </View>
-              </Marker>
+              </Marker.Animated>
             )}
           </MapView>
 

@@ -40,6 +40,7 @@ const ACTION_ORDER: readonly DeliveryWorkflowAction[] = [
     DeliveryWorkflowAction.ARRIVE_PICKUP,
     DeliveryWorkflowAction.PICK_UP,
     DeliveryWorkflowAction.START_TRANSIT,
+    DeliveryWorkflowAction.ARRIVE_DROPOFF,
     DeliveryWorkflowAction.COMPLETE_DELIVERY,
 ];
 
@@ -52,6 +53,7 @@ const ACTION_VARIANTS: Record<
     [DeliveryWorkflowAction.ARRIVE_PICKUP]: 'primary',
     [DeliveryWorkflowAction.PICK_UP]: 'primary',
     [DeliveryWorkflowAction.START_TRANSIT]: 'primary',
+    [DeliveryWorkflowAction.ARRIVE_DROPOFF]: 'primary',
     [DeliveryWorkflowAction.COMPLETE_DELIVERY]: 'danger',
     [DeliveryWorkflowAction.CANCEL]: 'danger',
 };

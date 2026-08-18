@@ -165,9 +165,45 @@ export const partnerAPI = {
     updateProfile: (data) => api.put('/partner/profile', data),
     deleteProfile: () => api.delete('/partner/profile'),
     updateStatus: (status) => api.put('/partner/status', { status }),
-
     updateLocation: (latitude, longitude) =>
         api.put('/partner/location', { latitude, longitude }),
+    uploadPhoto: async (photoUri) => {
+        const formData = new FormData();
+        const photoFile = {
+            uri: photoUri,
+            type: 'image/jpeg',
+            name: 'rider-profile-photo.jpg',
+        };
+        formData.append('photo', photoFile);
+
+        const token = await getAccessToken();
+        if (!token) {
+            throw new Error('Session expired. Please sign in again.');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/partner/profile/photo`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            body: formData,
+        });
+
+        const responseText = await response.text();
+        let result = {};
+        try {
+            result = responseText ? JSON.parse(responseText) : {};
+        } catch {
+            result = {};
+        }
+
+        if (!response.ok) {
+            throw new Error(result.message || 'Failed to upload photo');
+        }
+
+        return { data: result };
+    },
+    removePhoto: () => api.delete('/partner/profile/photo'),
 };
 
 export const performanceAPI = {

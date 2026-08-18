@@ -6,9 +6,12 @@ export interface User {
   id: string;
   email: string;
   name: string | null;
-  role: 'CUSTOMER' | 'SALESMAN' | 'ADMIN';
+  role: 'CUSTOMER' | 'SALESMAN' | 'SHOP_MANAGER' | 'ADMIN';
   avatar: string | null;
   phone: string | null;
+  // For a SALESMAN, the id of the SHOP_MANAGER they work under (the shop owner
+  // who owns the catalog, orders and reviews). Null for managers/others.
+  managerId?: string | null;
   store?: {
     id: string;
     name: string;

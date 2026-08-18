@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -33,11 +33,33 @@ export default function CartScreen() {
   const [isLoadingAddress, setIsLoadingAddress] = useState(false);
   
   const subtotal = getTotalPrice();
-  // We mirror the backend fee here so the customer sees the same checkout
-  // amount before placing the order.
-  const serviceCharge = parseFloat((subtotal * 0.10).toFixed(2));
-  // Delivery is intentionally left out for now because it depends on distance.
-  const total = subtotal + serviceCharge;
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  // Ask the backend for the distance/vehicle based delivery fee whenever the cart or the
+  // selected address changes, so the customer sees the exact amount before paying by Stripe.
+  useEffect(() => {
+    const estimate = async () => {
+      if (!selectedAddressId || items.length === 0) { setDeliveryFee(0); return; }
+      try {
+        const token = await getToken();
+        const res = await fetch(`${getApiUrl()}/orders/delivery-estimate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+            addressId: selectedAddressId,
+          }),
+        });
+        const json = await res.json();
+        setDeliveryFee(json?.data?.deliveryFee ?? 0);
+      } catch {
+        setDeliveryFee(0);
+      }
+    };
+    estimate();
+  }, [selectedAddressId, items]);
+  // The 10% service charge is the platform's commission taken from the manager, not the
+  // customer. The customer pays product subtotal + delivery.
+  const total = subtotal + deliveryFee;
   const selectedAddress =
     addresses.find((address) => address.id === selectedAddressId) ||
     addresses.find((address) => address.isDefault) ||
@@ -432,8 +454,10 @@ export default function CartScreen() {
               <Text style={styles.summaryValue}>Rs. {subtotal.toLocaleString()}</Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Service Charge (10%)</Text>
-              <Text style={styles.summaryValue}>Rs. {serviceCharge.toLocaleString()}</Text>
+              <Text style={styles.summaryLabel}>Delivery</Text>
+              <Text style={styles.summaryValue}>
+                {selectedAddressId ? `Rs. ${deliveryFee.toLocaleString()}` : "Select address"}
+              </Text>
             </View>
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={styles.totalLabel}>Total</Text>

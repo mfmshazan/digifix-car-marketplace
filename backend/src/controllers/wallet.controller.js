@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import Stripe from 'stripe';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
+import { resolveShopOwnerId } from '../lib/shopAccess.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -8,11 +9,14 @@ class WalletController {
 
     /**
      * GET /wallet/my
-     * Returns the authenticated user's wallet + last 30 transactions.
+     * Returns the wallet + last 30 transactions for the authenticated user's shop.
+     * Salesmen share their manager's wallet — order earnings are credited there
+     * (see resolveShopOwnerId), so a salesman's "my wallet" must resolve the same
+     * way or it always shows zero even after real sales.
      */
     getMyWallet = async (req, res) => {
         try {
-            const userId = req.user.id;
+            const userId = await resolveShopOwnerId(req.user);
             let wallet = await prisma.wallet.findUnique({
                 where: { userId },
                 include: {
@@ -265,7 +269,8 @@ class WalletController {
      */
     triggerPayout = async (req, res) => {
         try {
-            const userId = req.user?.id || req.body.userId;
+            // Salesmen share their manager's wallet — see getMyWallet for why.
+            const userId = req.user ? await resolveShopOwnerId(req.user) : req.body.userId;
 
             // Get wallet + stripeAccountId in one query
             const wallet = await prisma.wallet.findUnique({

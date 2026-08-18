@@ -133,7 +133,10 @@ model Product {
   // Which delivery vehicle is needed to carry this product. Required for new
   // products (enforced in the API/UI); nullable in the DB so existing rows are
   // preserved. Drives which riders can be dispatched for an order.
-  deliveryVehicle    DeliveryVehicleType?
+  // Column in the live DB is named "deliveryVehicleType" (created before this
+  // field was renamed in the schema) — @map keeps the two in sync without a
+  // migration, since it already holds real data on existing products.
+  deliveryVehicle    DeliveryVehicleType?   @map("deliveryVehicleType")
   cartItems          CartItem[]
   orderItems         OrderItem[]
   category           Category?              @relation(fields: [categoryId], references: [id])

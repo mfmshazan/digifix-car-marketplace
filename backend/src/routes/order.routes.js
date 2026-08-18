@@ -9,7 +9,9 @@ import {
   createOrder,
   requestCancellation,
   approveCancellation,
-  rejectCancellation
+  rejectCancellation,
+  acceptComplaint,
+  rejectComplaint
 } from '../controllers/order.controller.js';
 
 const router = Router();
@@ -32,5 +34,10 @@ router.get('/salesman/summary', authorize('SALESMAN'), getSalesmanSalesSummary);
 router.get('/salesman/pending-count', authorize('SALESMAN'), getSalesmanPendingCount);
 router.get('/salesman/orders', authorize('SALESMAN'), getSalesmanOrders);
 router.put('/:id/status', authorize('SALESMAN'), updateOrderStatus);
+
+// Shop routes — manager or salesman review a post-delivery complaint (scoped
+// to their own shop's orders inside the controller via resolveShopOwnerId).
+router.post('/:id/accept-complaint', authorize('SALESMAN', 'SHOP_MANAGER'), acceptComplaint);
+router.post('/:id/reject-complaint', authorize('SALESMAN', 'SHOP_MANAGER'), rejectComplaint);
 
 export default router;

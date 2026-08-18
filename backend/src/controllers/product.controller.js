@@ -71,9 +71,6 @@ const getProducts = async (req, res) => {
               vehicleType: { select: { id: true, name: true } },
             },
           },
-          _count: {
-            select: { reviews: true },
-          },
         },
       }),
       prisma.product.count({ where }),
@@ -122,18 +119,6 @@ const getProductById = async (req, res) => {
           },
         },
         compatibleVehicles: true,
-        reviews: {
-          include: {
-            user: {
-              select: { id: true, name: true, avatar: true },
-            },
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-        },
-        _count: {
-          select: { reviews: true },
-        },
       },
     });
 

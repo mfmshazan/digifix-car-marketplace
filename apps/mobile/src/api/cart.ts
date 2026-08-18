@@ -1,4 +1,4 @@
-import { API_URL } from '../config/api.config';
+import { getApiUrl } from '../config/api.config';
 import { clearAuthData, getToken } from './storage';
 import { router } from 'expo-router';
 
@@ -75,7 +75,7 @@ const getAuthHeaders = async (): Promise<HeadersInit> => {
 export const fetchCart = async (): Promise<CartResponse> => {
   try {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_URL}/cart`, { method: 'GET', headers });
+    const response = await fetch(`${getApiUrl()}/cart`, { method: 'GET', headers });
     return await requireSuccessfulResponse(response);
   } catch (error) {
     console.error('Fetch cart error:', error);
@@ -93,7 +93,7 @@ export const addItemToCart = async (
 ): Promise<{ success: boolean; message?: string; data?: BackendCartItem }> => {
   try {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_URL}/cart`, {
+    const response = await fetch(`${getApiUrl()}/cart`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ productId, quantity, itemType }),
@@ -112,7 +112,7 @@ export const updateCartItemQty = async (
 ): Promise<{ success: boolean; message?: string }> => {
   try {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_URL}/cart/${cartItemId}`, {
+    const response = await fetch(`${getApiUrl()}/cart/${cartItemId}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify({ quantity }),
@@ -130,7 +130,7 @@ export const removeCartItem = async (
 ): Promise<{ success: boolean; message?: string }> => {
   try {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_URL}/cart/${cartItemId}`, {
+    const response = await fetch(`${getApiUrl()}/cart/${cartItemId}`, {
       method: 'DELETE',
       headers,
     });
@@ -145,7 +145,7 @@ export const removeCartItem = async (
 export const clearCartApi = async (): Promise<{ success: boolean; message?: string }> => {
   try {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_URL}/cart`, {
+    const response = await fetch(`${getApiUrl()}/cart`, {
       method: 'DELETE',
       headers,
     });

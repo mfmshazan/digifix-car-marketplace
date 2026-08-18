@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, router } from 'expo-router';
-import { getMyWallet, triggerSalesmanPayout, WalletTransaction, WalletData, checkStripeAccountStatus, getStripeOnboardingLink } from '../../src/api/wallet';
+import { getMyWallet, WalletTransaction, WalletData, checkStripeAccountStatus, getStripeOnboardingLink } from '../../src/api/wallet';
 import * as WebBrowser from 'expo-web-browser';
 
 const TRANSACTION_LABELS: Record<string, string> = {
@@ -64,40 +64,6 @@ export default function SalesmanWalletScreen() {
     }, [fetchWallet])
   );
 
-  const handlePayout = async () => {
-    if (!wallet || wallet.balance <= 0) {
-      Alert.alert('No Balance', 'You have no funds available to withdraw.');
-      return;
-    }
-    Alert.alert(
-      'Withdraw to Bank',
-      `Transfer Rs. ${wallet.balance.toLocaleString()} to your connected Stripe account?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Withdraw',
-          style: 'default',
-          onPress: async () => {
-            setPayingOut(true);
-            try {
-              const result = await triggerSalesmanPayout();
-              if (result.success) {
-                Alert.alert('Success', result.msg);
-                fetchWallet();
-              } else {
-                Alert.alert('Failed', result.msg || 'Withdrawal failed. Try again.');
-              }
-            } catch (err) {
-              Alert.alert('Error', 'Network error. Please try again.');
-            } finally {
-              setPayingOut(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const handleOnboardStripe = async () => {
     try {
       setPayingOut(true);
@@ -134,7 +100,7 @@ export default function SalesmanWalletScreen() {
         <Text style={styles.balanceAmount}>
           Rs. {wallet ? wallet.balance.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}
         </Text>
-        {!stripeReady ? (
+        {!stripeReady && (
           <TouchableOpacity
             style={[styles.payoutButton, { backgroundColor: '#6366F1' }, payingOut && styles.payoutButtonDisabled]}
             onPress={handleOnboardStripe}
@@ -146,21 +112,6 @@ export default function SalesmanWalletScreen() {
               <>
                 <Ionicons name="card-outline" size={18} color="#fff" />
                 <Text style={styles.payoutButtonText}>Complete Stripe Setup</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.payoutButton, (payingOut || !wallet || wallet.balance <= 0) && styles.payoutButtonDisabled]}
-            onPress={handlePayout}
-            disabled={payingOut || !wallet || wallet.balance <= 0}
-          >
-            {payingOut ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="arrow-up-circle-outline" size={18} color="#fff" />
-                <Text style={styles.payoutButtonText}>Withdraw to Bank</Text>
               </>
             )}
           </TouchableOpacity>

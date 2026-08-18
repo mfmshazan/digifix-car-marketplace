@@ -13,7 +13,7 @@ export default function WalletScreen() {
     setLoading(true);
     try {
       const res = await getMyWallet();
-      if (res.success) {
+      if (res.success && res.data) {
         setBalance(res.data.balance);
         setTransactions(res.data.transactions);
       }

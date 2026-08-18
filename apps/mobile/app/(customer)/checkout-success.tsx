@@ -18,14 +18,6 @@ export default function SuccessScreen() {
   
   const [status, setStatus] = useState<'verifying' | 'success' | 'failed'>('verifying'); 
 
-  useEffect(() => {
-    if (sessionId) {
-      verifyPayment(sessionId);
-    } else {
-      setStatus('failed');
-    }
-  }, [sessionId, verifyPayment]);
-
   const verifyPayment = useCallback(async (id: string) => {
     try {
       const token = await getToken();
@@ -45,6 +37,14 @@ export default function SuccessScreen() {
       setStatus('failed');
     }
   }, [clearCart]);
+
+  useEffect(() => {
+    if (sessionId) {
+      verifyPayment(sessionId);
+    } else {
+      setStatus('failed');
+    }
+  }, [sessionId, verifyPayment]);
 
   return (
     <View style={styles.container}>

@@ -14,9 +14,11 @@ import RegisterScreen from './screens/RegisterScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import HomeScreen from './screens/HomeScreen';
 import DeliveryDetailsScreen from './screens/DeliveryDetailsScreen';
+import AvailableJobsScreen from './screens/AvailableJobsScreen';
 import ActiveDeliveryScreen from './screens/ActiveDeliveryScreen';
 import AssignedDeliveriesScreen from './screens/AssignedDeliveriesScreen';
 import ProofOfDeliveryScreen from './screens/ProofOfDeliveryScreen';
+import ReceiptUploadScreen from './screens/ReceiptUploadScreen';
 import JobHistoryScreen from './screens/JobHistoryScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import ProfileHubScreen from './screens/ProfileHubScreen';
@@ -255,6 +257,11 @@ function AppContent() {
                         options={{ title: 'Delivery Details' }}
                     />
                     <Stack.Screen
+                        name="AvailableJobs"
+                        component={AvailableJobsScreen}
+                        options={{ title: 'Available Jobs' }}
+                    />
+                    <Stack.Screen
                         name="ActiveDelivery"
                         component={ActiveDeliveryScreen}
                         options={{ title: 'Active Delivery' }}
@@ -263,6 +270,11 @@ function AppContent() {
                         name="ProofOfDelivery"
                         component={ProofOfDeliveryScreen}
                         options={{ title: 'Proof of Delivery' }}
+                    />
+                    <Stack.Screen
+                        name="ReceiptUpload"
+                        component={ReceiptUploadScreen}
+                        options={{ title: 'Upload Repayment Receipt' }}
                     />
                     <Stack.Screen
                         name="Login"

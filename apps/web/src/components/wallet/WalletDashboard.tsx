@@ -42,7 +42,14 @@ interface WalletApiResponse {
   transactions?: WalletTransaction[];
 }
 
-export default function WalletDashboard({ roleLabel = 'Salesman' }: { roleLabel?: string }) {
+export default function WalletDashboard({
+  roleLabel = 'Salesman',
+  onUploadReceiptClick,
+}: {
+  roleLabel?: string;
+  /** When embedded in a tabbed dashboard, switch tabs in place instead of navigating away. */
+  onUploadReceiptClick?: () => void;
+}) {
   const router = useRouter();
   const { isAuthenticated, token, user } = useAuthStore();
   const [loading, setLoading] = useState(true);
@@ -114,29 +121,6 @@ export default function WalletDashboard({ roleLabel = 'Salesman' }: { roleLabel?
     }
   };
 
-  const handlePayout = async () => {
-    if (!wallet || wallet.balance <= 0) return;
-    const confirmed = window.confirm(
-      `Transfer LKR ${Number(wallet.balance).toLocaleString()} to your connected Stripe account?`
-    );
-    if (!confirmed) return;
-
-    try {
-      setActionLoading(true);
-      const res = await api.post('/wallet/payout/salesman');
-      if (res.data?.success) {
-        await loadWallet();
-      } else {
-        setError(res.data?.msg || 'Withdrawal failed. Try again.');
-      }
-    } catch (err: any) {
-      console.error('Payout failed:', err);
-      setError(err?.response?.data?.msg || 'Network error. Please try again.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const totals = useMemo(() => {
     const incoming = (wallet?.transactions ?? []).reduce((sum, tx) => {
       if (tx.direction === 'IN' || tx.amount >= 0) return sum + Math.abs(tx.amount || 0);
@@ -165,7 +149,7 @@ export default function WalletDashboard({ roleLabel = 'Salesman' }: { roleLabel?
 
         <div className="flex gap-3">
           <button
-            onClick={() => router.push('/dashboard/salesman/receipts')}
+            onClick={() => onUploadReceiptClick ? onUploadReceiptClick() : router.push('/dashboard/salesman/receipts')}
             className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:border-gray-300 hover:bg-gray-50"
           >
             <Receipt className="h-4 w-4" />
@@ -199,38 +183,21 @@ export default function WalletDashboard({ roleLabel = 'Salesman' }: { roleLabel?
                 </div>
               </div>
 
-              {canPayout && (
-                !stripeReady ? (
-                  <button
-                    onClick={handleOnboardStripe}
-                    disabled={actionLoading}
-                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#6366F1] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5457e0] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {actionLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        <CreditCard className="h-4 w-4" />
-                        Complete Stripe setup
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handlePayout}
-                    disabled={actionLoading || balance <= 0}
-                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {actionLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        <ArrowUpCircle className="h-4 w-4" />
-                        Withdraw to bank
-                      </>
-                    )}
-                  </button>
-                )
+              {canPayout && !stripeReady && (
+                <button
+                  onClick={handleOnboardStripe}
+                  disabled={actionLoading}
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#6366F1] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5457e0] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {actionLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <CreditCard className="h-4 w-4" />
+                      Complete Stripe setup
+                    </>
+                  )}
+                </button>
               )}
             </div>
 

@@ -867,7 +867,9 @@ export const createOrder = async (req, res) => {
             managerId: true,
             store: {
               select: {
-                name: true
+                name: true,
+                pickupLatitude: true,
+                pickupLongitude: true
               }
             }
           }
@@ -889,7 +891,9 @@ export const createOrder = async (req, res) => {
             managerId: true,
             store: {
               select: {
-                name: true
+                name: true,
+                pickupLatitude: true,
+                pickupLongitude: true
               }
             }
           }
@@ -910,7 +914,10 @@ export const createOrder = async (req, res) => {
         images: product.images,
         sellerId: product.salesman?.managerId || product.salesmanId,
         sellerName: product.salesman?.name || 'Unknown Seller',
-        storeName: product.salesman?.store?.name
+        storeName: product.salesman?.store?.name,
+        deliveryVehicle: product.deliveryVehicle || null,
+        pickupLat: product.salesman?.store?.pickupLatitude ?? null,
+        pickupLng: product.salesman?.store?.pickupLongitude ?? null
       });
     });
 
@@ -924,7 +931,10 @@ export const createOrder = async (req, res) => {
         images: part.images,
         sellerId: part.seller?.managerId || part.sellerId,
         sellerName: part.seller?.name || 'Unknown Seller',
-        storeName: part.seller?.store?.name
+        storeName: part.seller?.store?.name,
+        deliveryVehicle: part.deliveryVehicle || null,
+        pickupLat: part.seller?.store?.pickupLatitude ?? null,
+        pickupLng: part.seller?.store?.pickupLongitude ?? null
       });
     });
 
@@ -966,10 +976,47 @@ export const createOrder = async (req, res) => {
 
     // Service charge is the platform's revenue — calculated server-side to prevent tampering
     const SERVICE_CHARGE_RATE = 0.10;
-    // Delivery fee will be distance-based (Rs. 250/km) once GPS integration is complete
-    // For now it defaults to 0 since we don't have distance data yet
-    const calculateDeliveryFee = (distanceKm = 0) => distanceKm * 250;
-    const deliveryFee = calculateDeliveryFee(0);
+
+    // Distance-based delivery fee. The per-km rate depends on the vehicle the order needs;
+    // an order uses the largest vehicle any of its items requires (LORRY > CAR > MOTORBIKE).
+    //   MOTORBIKE Rs.50/km, CAR Rs.70/km, LORRY Rs.30/km.
+    const VEHICLE_RATE_PER_KM = { MOTORBIKE: 50, CAR: 70, LORRY: 30 };
+    const VEHICLE_RANK = { MOTORBIKE: 1, CAR: 2, LORRY: 3 };
+
+    const haversineKm = (lat1, lon1, lat2, lon2) => {
+      const toRad = (v) => (Number(v) * Math.PI) / 180;
+      const R = 6371; // km
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    // Pick the largest required vehicle and the shop pickup point from the ordered items.
+    const orderedItems = items
+      .map((oi) => allItems.find((i) => i.id === oi.productId))
+      .filter(Boolean);
+    let vehicle = 'MOTORBIKE';
+    let pickup = null;
+    for (const it of orderedItems) {
+      if (it.deliveryVehicle && VEHICLE_RANK[it.deliveryVehicle] > VEHICLE_RANK[vehicle]) {
+        vehicle = it.deliveryVehicle;
+      }
+      if (pickup === null && it.pickupLat != null && it.pickupLng != null) {
+        pickup = { lat: Number(it.pickupLat), lng: Number(it.pickupLng) };
+      }
+    }
+
+    // Only chargeable once we know both the shop pickup and the customer delivery point.
+    let deliveryFee = 0;
+    if (pickup && hasValidCoordinates(pickup.lat, pickup.lng)) {
+      const distanceKm = haversineKm(
+        pickup.lat, pickup.lng, deliveryLatitudeSnapshot, deliveryLongitudeSnapshot
+      );
+      deliveryFee = Math.round(distanceKm * VEHICLE_RATE_PER_KM[vehicle]);
+    }
+
     let grandTotal = 0;
     
     Object.values(groupedBySeller).forEach(sellerGroup => {

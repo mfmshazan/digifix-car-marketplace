@@ -915,7 +915,7 @@ export const createOrder = async (req, res) => {
         sellerId: product.salesman?.managerId || product.salesmanId,
         sellerName: product.salesman?.name || 'Unknown Seller',
         storeName: product.salesman?.store?.name,
-        deliveryVehicle: product.deliveryVehicle || null,
+        deliveryVehicleType: product.deliveryVehicleType || null,
         pickupLat: product.salesman?.store?.pickupLatitude ?? null,
         pickupLng: product.salesman?.store?.pickupLongitude ?? null
       });
@@ -932,7 +932,7 @@ export const createOrder = async (req, res) => {
         sellerId: part.seller?.managerId || part.sellerId,
         sellerName: part.seller?.name || 'Unknown Seller',
         storeName: part.seller?.store?.name,
-        deliveryVehicle: part.deliveryVehicle || null,
+        deliveryVehicleType: part.deliveryVehicleType || null,
         pickupLat: part.seller?.store?.pickupLatitude ?? null,
         pickupLng: part.seller?.store?.pickupLongitude ?? null
       });
@@ -1000,8 +1000,8 @@ export const createOrder = async (req, res) => {
     let vehicle = 'MOTORBIKE';
     let pickup = null;
     for (const it of orderedItems) {
-      if (it.deliveryVehicle && VEHICLE_RANK[it.deliveryVehicle] > VEHICLE_RANK[vehicle]) {
-        vehicle = it.deliveryVehicle;
+      if (it.deliveryVehicleType && VEHICLE_RANK[it.deliveryVehicleType] > VEHICLE_RANK[vehicle]) {
+        vehicle = it.deliveryVehicleType;
       }
       if (pickup === null && it.pickupLat != null && it.pickupLng != null) {
         pickup = { lat: Number(it.pickupLat), lng: Number(it.pickupLng) };

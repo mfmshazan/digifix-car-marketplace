@@ -12,6 +12,17 @@ RUN npm install
 # Copy source code
 COPY . .
 
+# NEXT_PUBLIC_* vars are inlined into the client bundle at BUILD time, so they must be
+# present during `next build`. Coolify passes them as build args when the env vars are
+# marked "Available at Buildtime". Without the Clerk key, prerendering throws and the
+# build fails.
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+
 # Build the app
 RUN npm run build
 

@@ -6,9 +6,9 @@ module.exports = ({ config }) => {
   const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
 
   if (!googleMapsApiKey) {
-    throw new Error(
-      'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY is required to build the Rider Android map.'
-    );
+    // EAS secrets are not available when EAS CLI reads this config locally.
+    // The real key is injected from EAS secrets during the cloud build.
+    console.warn('⚠️  EXPO_PUBLIC_GOOGLE_MAPS_API_KEY is not set locally — expected to be injected by EAS secrets during cloud build.');
   }
 
   return {

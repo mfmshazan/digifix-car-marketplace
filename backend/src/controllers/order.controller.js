@@ -806,6 +806,57 @@ export const getCustomerOrders = async (req, res) => {
  * Supports both Product and CarPart items
  * Dedcuts wallet balance upfront if paymentMethod === 'WALLET'
  */
+/**
+ * Estimate the delivery fee for the current cart + selected address, so the customer
+ * sees the same distance/vehicle based fee in the cart before paying with Stripe.
+ * Body: { items: [{ productId, quantity }], addressId }
+ */
+export const estimateDelivery = async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const { items, addressId } = req.body;
+    if (!items?.length || !addressId) {
+      return res.status(400).json({ success: false, message: 'items and addressId are required' });
+    }
+    const address = await prisma.address.findFirst({ where: { id: addressId, userId: customerId } });
+    if (!address || !hasValidCoordinates(address.latitude, address.longitude)) {
+      return res.status(400).json({ success: false, message: 'The selected address needs a delivery pin.' });
+    }
+    const itemIds = items.map((i) => i.productId);
+    const [products, carParts] = await Promise.all([
+      prisma.product.findMany({ where: { id: { in: itemIds } }, select: { deliveryVehicleType: true, salesman: { select: { store: { select: { pickupLatitude: true, pickupLongitude: true } } } } } }),
+      prisma.carPart.findMany({ where: { id: { in: itemIds } }, select: { seller: { select: { store: { select: { pickupLatitude: true, pickupLongitude: true } } } } } }),
+    ]);
+    const all = [
+      ...products.map((p) => ({ v: p.deliveryVehicleType, lat: p.salesman?.store?.pickupLatitude, lng: p.salesman?.store?.pickupLongitude })),
+      ...carParts.map((p) => ({ v: p.deliveryVehicleType, lat: p.seller?.store?.pickupLatitude, lng: p.seller?.store?.pickupLongitude })),
+    ];
+    const RATE = { MOTORBIKE: 50, CAR: 70, LORRY: 30 };
+    const RANK = { MOTORBIKE: 1, CAR: 2, LORRY: 3 };
+    const haversineKm = (a, b, c, d) => {
+      const r = (x) => (Number(x) * Math.PI) / 180, R = 6371;
+      const dLat = r(c - a), dLon = r(d - b);
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    };
+    let vehicle = 'MOTORBIKE';
+    let pickup = null;
+    for (const it of all) {
+      if (it.v && RANK[it.v] > RANK[vehicle]) vehicle = it.v;
+      if (pickup === null && it.lat != null && it.lng != null) pickup = { lat: Number(it.lat), lng: Number(it.lng) };
+    }
+    let deliveryFee = 0;
+    if (pickup && hasValidCoordinates(pickup.lat, pickup.lng)) {
+      const km = haversineKm(pickup.lat, pickup.lng, Number(address.latitude), Number(address.longitude));
+      deliveryFee = Math.round(km * RATE[vehicle]);
+    }
+    return res.json({ success: true, data: { deliveryFee, vehicle } });
+  } catch (e) {
+    console.error('estimateDelivery error:', e);
+    return res.status(500).json({ success: false, message: 'Failed to estimate delivery' });
+  }
+};
+
 export const createOrder = async (req, res) => {
   try {
     const customerId = req.user.id;

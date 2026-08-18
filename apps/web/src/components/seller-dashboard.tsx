@@ -1780,10 +1780,6 @@ function ProductsTab() {
           </div>
         ) : (
           products.map(product => {
-            const status = product.computedStatus || 'IN_STORE';
-            const statusLabel = status === 'IN_STORE' ? 'In Store' : (STATUS_META[status as OrderStatus]?.label || status);
-            const statusBg = status === 'IN_STORE' ? 'bg-emerald-100' : (STATUS_META[status as OrderStatus]?.bg || 'bg-gray-100');
-            const statusColor = status === 'IN_STORE' ? 'text-emerald-700' : (STATUS_META[status as OrderStatus]?.color || 'text-gray-700');
 
             return (
               <div key={product.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
@@ -1832,11 +1828,7 @@ function ProductsTab() {
                     )}
                   </div>
 
-                  <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-50">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Status</span>
-                      <span className={`text-xs font-semibold ${statusColor}`}>{statusLabel}</span>
-                    </div>
+                  <div className="mt-auto flex items-center justify-end pt-4 border-t border-gray-50">
                     {isManager && (
                       <div className="flex gap-1">
                         <button title="Edit product" className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#00002E] transition-colors">

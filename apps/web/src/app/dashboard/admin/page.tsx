@@ -11,7 +11,6 @@ import {
     DollarSign,
     LayoutDashboard,
     LogOut,
-    ShoppingBag,
     ShieldCheck,
     TrendingUp,
     Activity,
@@ -26,14 +25,15 @@ import {
     Filter,
     ChevronLeft,
     ChevronRight,
-    Check,
-    Slash
+    Truck,
+    Bike,
+    PackageCheck,
 } from 'lucide-react';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
 
 
 
-type AdminTab = 'overview' | 'users' | 'finances' | 'catalog' | 'reviews';
+type AdminTab = 'overview' | 'users' | 'finances' | 'riders' | 'reviews';
 
 interface AdminCancellationNotification {
     id: string;
@@ -164,7 +164,7 @@ export default function AdminDashboard() {
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
         { id: 'users', label: 'User Management', icon: Users },
         { id: 'finances', label: 'System Finances', icon: DollarSign },
-        { id: 'catalog', label: 'Global Catalog', icon: ShoppingBag },
+        { id: 'riders', label: 'Rider & Delivery Ops', icon: Truck },
         { id: 'reviews', label: 'Reviews Moderation', icon: ShieldAlert },
     ];
 
@@ -335,14 +335,14 @@ export default function AdminDashboard() {
                         {activeTab === 'overview' && 'System Overview'}
                         {activeTab === 'users' && 'User Management'}
                         {activeTab === 'finances' && 'Platform Finances'}
-                        {activeTab === 'catalog' && 'Global Catalog'}
+                        {activeTab === 'riders' && 'Rider & Delivery Ops'}
                         {activeTab === 'reviews' && 'Reviews Moderation'}
                     </h1>
                     <p className="text-gray-500 text-sm mt-0.5">
                         {activeTab === 'overview' && 'Monitor key platform metrics and recent activities.'}
                         {activeTab === 'users' && 'Manage customers, salesmen, and account statuses.'}
                         {activeTab === 'finances' && 'Track platform fees, total revenue, and system wallets.'}
-                        {activeTab === 'catalog' && 'View all products, categories, and active car parts.'}
+                        {activeTab === 'riders' && 'Oversee active riders and delivery job performance.'}
                         {activeTab === 'reviews' && 'Moderate flagged and pending reviews.'}
                     </p>
                 </div>
@@ -351,7 +351,7 @@ export default function AdminDashboard() {
                 {activeTab === 'overview' && <OverviewTab />}
                 {activeTab === 'users' && <UsersTab />}
                 {activeTab === 'finances' && <FinancesTab />}
-                {activeTab === 'catalog' && <CatalogTab />}
+                {activeTab === 'riders' && <RiderOpsTab />}
                 {activeTab === 'reviews' && <ReviewsModerationTab />}
             </main>
         </div>
@@ -360,23 +360,94 @@ export default function AdminDashboard() {
 
 // ─── Sub-Components ──────────
 
+type AnalyticsPoint = { key: string; label: string; orders: number; revenue: number };
+type RangeOption = '14d' | '1m' | '1y' | 'custom';
+
+// Dependency-free SVG bar chart — small enough not to warrant pulling in a
+// charting library just for two sparklines on the overview page. Clicking a
+// bar selects that period; the caller renders its exact orders/revenue in a
+// detail card, since relying on hover alone doesn't work on touch devices.
+function MiniBarChart({ points, valueKey, formatValue, barColor, selectedKey, onSelect }: {
+    points: AnalyticsPoint[];
+    valueKey: 'orders' | 'revenue';
+    formatValue: (v: number) => string;
+    barColor: string;
+    selectedKey: string | null;
+    onSelect: (key: string) => void;
+}) {
+    const max = Math.max(1, ...points.map((p) => p[valueKey] || 0));
+    const width = 600;
+    const height = 170;
+    const bottomGutter = 26;
+    const barGap = points.length > 40 ? 1 : 3;
+    const barWidth = points.length > 0 ? width / points.length - barGap : 0;
+    const labelStride = Math.max(1, Math.ceil(points.length / 10));
+
+    return (
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-44" preserveAspectRatio="none">
+            {points.map((p, i) => {
+                const value = p[valueKey] || 0;
+                const barHeight = (value / max) * (height - bottomGutter - 6);
+                const x = i * (barWidth + barGap);
+                const y = height - bottomGutter - barHeight;
+                const isSelected = p.key === selectedKey;
+                return (
+                    <g key={p.key} onClick={() => onSelect(p.key)} className="cursor-pointer">
+                        {/* Full-height invisible hit target so short bars are still easy to click */}
+                        <rect x={x} y={0} width={Math.max(barWidth, 1)} height={height - bottomGutter} fill="transparent" />
+                        <rect
+                            x={x}
+                            y={y}
+                            width={Math.max(barWidth, 1)}
+                            height={Math.max(barHeight, 1)}
+                            rx={2}
+                            fill={barColor}
+                            opacity={isSelected || !selectedKey ? 1 : 0.35}
+                            stroke={isSelected ? '#00002E' : 'none'}
+                            strokeWidth={isSelected ? 2 : 0}
+                        >
+                            <title>{`${p.label}: ${formatValue(value)}`}</title>
+                        </rect>
+                        {i % labelStride === 0 && (
+                            <text x={x + barWidth / 2} y={height - bottomGutter + 12} fontSize={8} textAnchor="middle" fill={isSelected ? '#00002E' : '#9CA3AF'} fontWeight={isSelected ? 700 : 400}>
+                                {p.label.length > 9 ? p.label.slice(-5) : p.label}
+                            </text>
+                        )}
+                    </g>
+                );
+            })}
+        </svg>
+    );
+}
+
 function OverviewTab() {
     const [stats, setStats] = useState<any>(null);
+    const [analytics, setAnalytics] = useState<AnalyticsPoint[]>([]);
     const [loading, setLoading] = useState(true);
+    const [chartLoading, setChartLoading] = useState(false);
+    const [range, setRange] = useState<RangeOption>('14d');
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const [customFrom, setCustomFrom] = useState(todayStr);
+    const [customTo, setCustomTo] = useState(todayStr);
+    const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchStats = async () => {
-            try {
-                const res = await adminApi.getStats();
-                if (res.success) setStats(res.data);
-            } catch (error) {
-                console.error('Failed to fetch stats', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchStats();
+        adminApi.getStats()
+            .then((res) => { if (res.success) setStats(res.data); })
+            .catch((error) => console.error('Failed to fetch stats', error))
+            .finally(() => setLoading(false));
     }, []);
+
+    useEffect(() => {
+        if (range === 'custom' && (!customFrom || !customTo || customFrom > customTo)) return;
+        setChartLoading(true);
+        setSelectedKey(null);
+        const params = range === 'custom' ? { range, from: customFrom, to: customTo } : { range };
+        adminApi.getAnalytics(params)
+            .then((res) => { if (res.success) setAnalytics(res.data); })
+            .catch((error) => console.error('Failed to fetch analytics', error))
+            .finally(() => setChartLoading(false));
+    }, [range, customFrom, customTo]);
 
     if (loading) return <div className="py-20 flex justify-center"><div className="animate-spin w-8 h-8 border-2 border-[#00002E] border-t-transparent rounded-full" /></div>;
 
@@ -386,6 +457,11 @@ function OverviewTab() {
         { label: 'Pending Orders', value: stats?.pendingOrders || 0, icon: Activity, color: 'text-amber-600', bg: 'bg-amber-100' },
         { label: 'Active Sellers', value: stats?.activeSellers || 0, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-100' },
     ];
+
+    const fmtCurrency = (v: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v || 0);
+    const totalOrders = analytics.reduce((sum, p) => sum + p.orders, 0);
+    const totalRevenue = analytics.reduce((sum, p) => sum + p.revenue, 0);
+    const rangeLabels: Record<RangeOption, string> = { '14d': 'Last 14 Days', '1m': 'Last Month', '1y': 'Last Year', custom: 'Custom Range' };
 
     return (
         <div className="space-y-6">
@@ -400,9 +476,138 @@ function OverviewTab() {
                     </div>
                 ))}
             </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-64 flex items-center justify-center">
-                <p className="text-gray-400 text-sm">System analytics and activity graphs will appear here.</p>
+
+            {/* ── Range Controls ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex bg-gray-100 p-1 rounded-xl">
+                    {(['14d', '1m', '1y', 'custom'] as RangeOption[]).map((r) => (
+                        <button
+                            key={r}
+                            onClick={() => setRange(r)}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${range === r ? 'bg-white shadow-sm text-[#00002E]' : 'text-gray-500 hover:text-gray-900'
+                                }`}
+                        >
+                            {rangeLabels[r]}
+                        </button>
+                    ))}
+                </div>
+                {range === 'custom' && (
+                    <div className="flex items-center gap-2 text-xs">
+                        <label className="flex items-center gap-1.5 text-gray-500 font-medium">
+                            From
+                            <input
+                                type="date"
+                                value={customFrom}
+                                max={customTo}
+                                onChange={(e) => setCustomFrom(e.target.value)}
+                                className="border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+                            />
+                        </label>
+                        <label className="flex items-center gap-1.5 text-gray-500 font-medium">
+                            To
+                            <input
+                                type="date"
+                                value={customTo}
+                                min={customFrom}
+                                max={todayStr}
+                                onChange={(e) => setCustomTo(e.target.value)}
+                                className="border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+                            />
+                        </label>
+                    </div>
+                )}
             </div>
+
+            {/* ── Selected Period Detail ── */}
+            {(() => {
+                const selected = analytics.find((p) => p.key === selectedKey);
+                return (
+                    <div className="bg-[#00002E] rounded-2xl shadow-sm p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        {selected ? (
+                            <>
+                                <div>
+                                    <p className="text-[#8A8A9B] text-xs font-medium">Selected Period</p>
+                                    <p className="text-white text-lg font-bold">{selected.label}</p>
+                                </div>
+                                <div className="flex gap-6">
+                                    <div>
+                                        <p className="text-[#8A8A9B] text-xs font-medium">Orders</p>
+                                        <p className="text-white text-lg font-bold">{selected.orders}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[#8A8A9B] text-xs font-medium">Revenue</p>
+                                        <p className="text-white text-lg font-bold">{fmtCurrency(selected.revenue)}</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedKey(null)}
+                                    className="text-[#8A8A9B] hover:text-white text-xs font-semibold self-start sm:self-center"
+                                >
+                                    Clear
+                                </button>
+                            </>
+                        ) : (
+                            <p className="text-[#8A8A9B] text-sm">Click a bar on either chart to see that period's exact orders & revenue here.</p>
+                        )}
+                    </div>
+                );
+            })()}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                    <h3 className="text-sm font-bold text-gray-900 mb-1">Orders — {rangeLabels[range]}</h3>
+                    <p className="text-xs text-gray-400 mb-4">Total: <span className="font-semibold text-gray-600">{totalOrders} orders</span></p>
+                    {chartLoading ? (
+                        <div className="py-12 flex justify-center"><div className="animate-spin w-6 h-6 border-2 border-[#00002E] border-t-transparent rounded-full" /></div>
+                    ) : analytics.length > 0 ? (
+                        <MiniBarChart points={analytics} valueKey="orders" formatValue={(v) => `${v} orders`} barColor="#3B82F6" selectedKey={selectedKey} onSelect={setSelectedKey} />
+                    ) : (
+                        <p className="text-gray-400 text-sm py-12 text-center">No order activity in this period.</p>
+                    )}
+                </div>
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                    <h3 className="text-sm font-bold text-gray-900 mb-1">Revenue — {rangeLabels[range]}</h3>
+                    <p className="text-xs text-gray-400 mb-4">Total: <span className="font-semibold text-gray-600">{fmtCurrency(totalRevenue)}</span></p>
+                    {chartLoading ? (
+                        <div className="py-12 flex justify-center"><div className="animate-spin w-6 h-6 border-2 border-[#00002E] border-t-transparent rounded-full" /></div>
+                    ) : analytics.length > 0 ? (
+                        <MiniBarChart points={analytics} valueKey="revenue" formatValue={fmtCurrency} barColor="#10B981" selectedKey={selectedKey} onSelect={setSelectedKey} />
+                    ) : (
+                        <p className="text-gray-400 text-sm py-12 text-center">No revenue activity in this period.</p>
+                    )}
+                </div>
+            </div>
+
+            {/* ── Exact Values ── */}
+            {!chartLoading && analytics.length > 0 && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                    <h3 className="text-sm font-bold text-gray-900 mb-4">Exact Values</h3>
+                    <div className="overflow-y-auto max-h-72 overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-gray-500 bg-gray-50 border-y border-gray-100 sticky top-0">
+                                <tr>
+                                    <th className="px-4 py-2 font-semibold">Period</th>
+                                    <th className="px-4 py-2 font-semibold text-right">Orders</th>
+                                    <th className="px-4 py-2 font-semibold text-right">Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {analytics.map((p) => (
+                                    <tr
+                                        key={p.key}
+                                        onClick={() => setSelectedKey(p.key)}
+                                        className={`cursor-pointer hover:bg-gray-50/50 ${p.key === selectedKey ? 'bg-blue-50/60' : ''}`}
+                                    >
+                                        <td className="px-4 py-2 text-gray-700">{p.label}</td>
+                                        <td className="px-4 py-2 text-right font-semibold text-gray-900">{p.orders}</td>
+                                        <td className="px-4 py-2 text-right font-semibold text-gray-900">{fmtCurrency(p.revenue)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -825,140 +1030,146 @@ function FinancesTab() {
     );
 }
 
-function CatalogTab() {
-    const [items, setItems] = useState<any[]>([]);
+function RiderOpsTab() {
+    const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [filters, setFilters] = useState({
-        type: 'PRODUCT', // PRODUCT or CAR_PART
-        status: 'pending', // all, active, pending
-    });
-
-    const fetchCatalog = async () => {
-        setLoading(true);
-        try {
-            const res = await adminApi.getCatalog({
-                type: filters.type,
-                ...(filters.status !== 'all' && { status: filters.status })
-            });
-            if (res.success) setItems(res.data);
-        } catch (error) {
-            console.error('Failed to fetch catalog', error);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     useEffect(() => {
-        fetchCatalog();
-    }, [filters.type, filters.status]);
+        const fetchRiderOps = async () => {
+            setLoading(true);
+            try {
+                const res = await adminApi.getRiderOps();
+                if (res.success) setData(res.data);
+            } catch (error) {
+                console.error('Failed to fetch rider ops', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchRiderOps();
+    }, []);
 
-    const handleStatusToggle = async (id: string, currentStatus: boolean) => {
-        try {
-            await adminApi.updateCatalogItemStatus(id, filters.type, !currentStatus);
-            fetchCatalog(); // refresh list
-        } catch (error) {
-            alert('Failed to update status');
-        }
+    if (loading) return <div className="py-20 flex justify-center"><div className="animate-spin w-8 h-8 border-2 border-[#00002E] border-t-transparent rounded-full" /></div>;
+
+    const summary = data?.summary || { total: 0, online: 0, busy: 0, offline: 0 };
+    const riders: any[] = data?.riders || [];
+    const jobStatusCounts: { status: string; count: number }[] = data?.jobStatusCounts || [];
+    const recentJobs: any[] = data?.recentJobs || [];
+
+    const riderStatusColors: Record<string, string> = {
+        online: 'bg-green-100 text-green-700',
+        available: 'bg-green-100 text-green-700',
+        busy: 'bg-amber-100 text-amber-700',
+        offline: 'bg-gray-100 text-gray-600',
     };
+    const jobStatusColors: Record<string, string> = {
+        delivered: 'bg-green-100 text-green-700',
+        failed: 'bg-red-100 text-red-700',
+        cancelled: 'bg-red-100 text-red-700',
+        pending: 'bg-amber-100 text-amber-700',
+        assigned: 'bg-blue-100 text-blue-700',
+        accepted: 'bg-blue-100 text-blue-700',
+        picked_up: 'bg-indigo-100 text-indigo-700',
+        in_transit: 'bg-indigo-100 text-indigo-700',
+        arrived_at_pickup: 'bg-purple-100 text-purple-700',
+        arrived_at_dropoff: 'bg-purple-100 text-purple-700',
+    };
+    const fmtCurrency = (v: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v || 0);
 
     return (
         <div className="space-y-6">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                    <div>
-                        <h2 className="text-lg font-bold text-gray-900">Catalog Moderation</h2>
-                        <p className="text-xs text-gray-500">Review and approve listings before they go public.</p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-4 items-center">
-                        {/* Type Toggle */}
-                        <div className="flex bg-gray-100 p-1 rounded-xl">
-                            <button
-                                onClick={() => setFilters(f => ({ ...f, type: 'PRODUCT' }))}
-                                className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${filters.type === 'PRODUCT' ? 'bg-white shadow-sm text-[#00002E]' : 'text-gray-500 hover:text-gray-900'
-                                    }`}
-                            >
-                                Shop Products
-                            </button>
-                            <button
-                                onClick={() => setFilters(f => ({ ...f, type: 'CAR_PART' }))}
-                                className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${filters.type === 'CAR_PART' ? 'bg-white shadow-sm text-[#00002E]' : 'text-gray-500 hover:text-gray-900'
-                                    }`}
-                            >
-                                Car Parts
-                            </button>
+            {/* ── Rider Summary Cards ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                    { label: 'Total Riders', value: summary.total, icon: Truck, color: 'text-blue-600', bg: 'bg-blue-100' },
+                    { label: 'Online', value: summary.online, icon: Bike, color: 'text-green-600', bg: 'bg-green-100' },
+                    { label: 'Busy (On Delivery)', value: summary.busy, icon: PackageCheck, color: 'text-amber-600', bg: 'bg-amber-100' },
+                    { label: 'Offline', value: summary.offline, icon: UserX, color: 'text-gray-500', bg: 'bg-gray-100' },
+                ].map((stat, i) => (
+                    <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                        <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center mb-3`}>
+                            <stat.icon className={`w-5 h-5 ${stat.color}`} />
                         </div>
-
-                        {/* Status Filter */}
-                        <select
-                            title="Filter catalog by listing status"
-                            value={filters.status}
-                            onChange={(e) => setFilters(f => ({ ...f, status: e.target.value }))}
-                            className="text-xs border border-gray-200 rounded-xl px-3 py-2 text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
-                        >
-                            <option value="pending">Pending Approval</option>
-                            <option value="active">Active Listings</option>
-                            <option value="all">All Listings</option>
-                        </select>
+                        <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                        <p className="text-sm text-gray-500">{stat.label}</p>
                     </div>
-                </div>
+                ))}
+            </div>
 
-                {loading ? (
-                    <div className="py-16 flex justify-center"><div className="animate-spin w-7 h-7 border-2 border-[#00002E] border-t-transparent rounded-full" /></div>
-                ) : items.length === 0 ? (
-                    <div className="py-16 text-center text-gray-400 text-sm flex flex-col items-center">
-                        <ShieldCheck className="w-10 h-10 text-gray-200 mb-3" />
-                        <p>No listings found in this queue.</p>
-                        <p className="text-xs mt-1 text-gray-400">All caught up!</p>
-                    </div>
+            {/* ── Delivery Job Status Breakdown ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <h2 className="text-lg font-bold text-gray-900 mb-4">Delivery Job Performance</h2>
+                {jobStatusCounts.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-6 text-center">No delivery jobs recorded yet.</p>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {items.map((item) => (
-                            <div key={item.id} className="border border-gray-100 rounded-2xl overflow-hidden flex flex-col hover:shadow-md transition-shadow">
-                                <div className="h-40 bg-gray-100 relative">
-                                    {item.images?.[0] ? (
-                                        <img src={item.images[0]} alt={item.name} className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                            <ShoppingBag className="w-8 h-8" />
-                                        </div>
-                                    )}
-                                    <div className="absolute top-2 right-2 flex gap-2">
-                                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${item.isActive ? 'bg-green-500 text-white' : 'bg-amber-500 text-white'
-                                            }`}>
-                                            {item.isActive ? 'Active' : 'Pending'}
-                                        </span>
-                                    </div>
+                    <div className="flex flex-wrap gap-3">
+                        {jobStatusCounts.map((j) => (
+                            <span key={j.status} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${jobStatusColors[j.status] || 'bg-gray-100 text-gray-600'}`}>
+                                {j.status.replace(/_/g, ' ')}: {j.count}
+                            </span>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* ── Riders Table ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <h2 className="text-lg font-bold text-gray-900 mb-4">Riders</h2>
+                {riders.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-6 text-center">No riders registered yet.</p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-gray-500 bg-gray-50 border-y border-gray-100">
+                                <tr>
+                                    <th className="px-4 py-3 font-semibold">Rider</th>
+                                    <th className="px-4 py-3 font-semibold">Vehicle</th>
+                                    <th className="px-4 py-3 font-semibold">Status</th>
+                                    <th className="px-4 py-3 font-semibold">Rating</th>
+                                    <th className="px-4 py-3 font-semibold text-right">Deliveries</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {riders.map((r) => (
+                                    <tr key={r.id} className="hover:bg-gray-50/50">
+                                        <td className="px-4 py-3">
+                                            <p className="font-semibold text-gray-900">{r.fullName}</p>
+                                            <p className="text-xs text-gray-500">{r.email}</p>
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-gray-600">{r.vehicleType || '—'}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${riderStatusColors[r.status] || 'bg-gray-100 text-gray-600'}`}>
+                                                {r.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-gray-600">{Number(r.rating).toFixed(1)} ★</td>
+                                        <td className="px-4 py-3 text-right font-semibold text-gray-900">{r.totalDeliveries}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {/* ── Recent Deliveries ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <h2 className="text-lg font-bold text-gray-900 mb-4">Recent Delivery Jobs</h2>
+                {recentJobs.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-6 text-center">No recent delivery jobs.</p>
+                ) : (
+                    <div className="space-y-3">
+                        {recentJobs.map((j) => (
+                            <div key={j.id} className="flex items-center justify-between border border-gray-100 rounded-xl p-3">
+                                <div>
+                                    <p className="text-sm font-semibold text-gray-900">{j.orderNumber}</p>
+                                    <p className="text-xs text-gray-500">{j.customerName} · Rider: {j.partner?.fullName || 'Unassigned'}</p>
                                 </div>
-                                <div className="p-4 flex-1 flex flex-col">
-                                    <h3 className="font-bold text-gray-900 text-sm line-clamp-1">{item.name}</h3>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
-                                            {item.category?.parent?.name ? `${item.category.parent.name} > ` : ''}
-                                            {item.category?.name || 'Uncategorized'}
-                                        </span>
-
-                                        <p className="text-[10px] text-gray-500">By {item.salesman?.name || item.seller?.name || 'Unknown'}</p>
-                                    </div>
-                                    <p className="text-xs text-gray-400 mt-2 line-clamp-2">{item.description || 'No description provided.'}</p>
-
-                                    <div className="mt-auto pt-4 flex gap-2">
-                                        {item.isActive ? (
-                                            <button
-                                                onClick={() => handleStatusToggle(item.id, item.isActive)}
-                                                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                                            >
-                                                <Slash className="w-3.5 h-3.5" /> Suspend
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() => handleStatusToggle(item.id, item.isActive)}
-                                                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold bg-[#00002E] text-white hover:bg-[#00002E]/90 transition-colors"
-                                            >
-                                                <Check className="w-3.5 h-3.5" /> Approve
-                                            </button>
-                                        )}
-                                    </div>
+                                <div className="text-right">
+                                    <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${jobStatusColors[j.status] || 'bg-gray-100 text-gray-600'}`}>
+                                        {j.status.replace(/_/g, ' ')}
+                                    </span>
+                                    <p className="text-xs text-gray-500 mt-1">{fmtCurrency(j.paymentAmount)}</p>
                                 </div>
                             </div>
                         ))}
@@ -973,7 +1184,7 @@ function ReviewsModerationTab() {
     const [reviews, setReviews] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [filters, setFilters] = useState({
-        status: 'PENDING',
+        status: 'FLAGGED',
         targetType: '',
         page: 1,
     });
@@ -1021,7 +1232,7 @@ function ReviewsModerationTab() {
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
                 <h2 className="text-lg font-bold text-gray-900">Review Queue</h2>
                 <div className="flex gap-2 bg-gray-50 p-1 rounded-xl border border-gray-200">
-                    {['PENDING', 'FLAGGED', 'PUBLISHED', 'HIDDEN', ''].map((status) => (
+                    {['FLAGGED', 'PUBLISHED', 'HIDDEN', ''].map((status) => (
                         <button
                             key={status}
                             onClick={() => setFilters(f => ({ ...f, status, page: 1 }))}

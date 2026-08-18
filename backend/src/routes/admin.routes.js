@@ -4,8 +4,8 @@ import {
   Users,
   updateUserStatus,
   getFinances,
-  getCatalog,
-  updateCatalogItemStatus
+  getAnalytics,
+  getRiderOps
 } from "../controllers/admin.controller.js";
 import { authenticate } from '../middleware/auth.middleware.js';
 
@@ -30,7 +30,7 @@ router.get('/stats', getOverviewStats);
 router.get('/users', Users);
 router.patch('/users/:userId/status', updateUserStatus);
 router.get('/finances', getFinances);
-router.get('/catalog', getCatalog);
-router.patch('/catalog/:id/status', updateCatalogItemStatus);
+router.get('/analytics', getAnalytics);
+router.get('/riders', getRiderOps);
 
 export default router;

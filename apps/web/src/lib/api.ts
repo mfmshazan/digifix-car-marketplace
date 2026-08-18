@@ -398,6 +398,12 @@ export const adminApi = {
     return response.data;
   },
 
+  // Get order/revenue series for the overview charts
+  getAnalytics: async (params?: { range?: '14d' | '1m' | '1y' | 'custom'; from?: string; to?: string }) => {
+    const response = await api.get('/admin/analytics', { params });
+    return response.data;
+  },
+
   // Get users for management
   getUsers: async (params?: { role?: string }) => {
     const response = await api.get('/admin/users', { params });
@@ -417,15 +423,9 @@ export const adminApi = {
     return response.data;
   },
 
-  // Get global catalog
-  getCatalog: async (params?: { type?: string; status?: string }) => {
-    const response = await api.get('/admin/catalog', { params });
-    return response.data;
-  },
-
-  // Update catalog item status
-  updateCatalogItemStatus: async (id: string, type: string, isActive: boolean) => {
-    const response = await api.patch(`/admin/catalog/${id}/status`, { type, isActive });
+  // Get rider roster + delivery job performance for the Rider Ops tab
+  getRiderOps: async () => {
+    const response = await api.get('/admin/riders');
     return response.data;
   },
 

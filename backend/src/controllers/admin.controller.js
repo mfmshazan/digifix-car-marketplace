@@ -148,67 +148,157 @@ const getFinances = async (req, res) => {
   }
 };
 
-// Get Global Catalog
-const getCatalog = async (req, res) => {
+// Get order count & revenue over time for the Overview charts.
+// range: '14d' | '1m' | '1y' | 'custom' (custom requires from/to query params).
+// Buckets by day for spans up to ~2 months, otherwise by month (so a 1-year
+// view renders 12 bars instead of 365).
+const getAnalytics = async (req, res) => {
   try {
-    const { type = 'PRODUCT', status } = req.query;
+    const { range = '14d', from, to } = req.query;
 
-    let whereClause = {};
-    if (status === 'active') whereClause.isActive = true;
-    if (status === 'pending') whereClause.isActive = false; // Using isActive=false to represent pending/flagged
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
 
-    let items;
-    if (type === 'PRODUCT') {
-      items = await prisma.product.findMany({
-        where: whereClause,
-        take: 50,
-        include: { 
-          salesman: { select: { name: true } }, 
-          category: { 
-            include: { parent: { select: { name: true } } } 
-          } 
-        },
-        orderBy: { createdAt: 'desc' }
+    let startDate;
+    let endDate = today;
+
+    if (range === 'custom') {
+      if (!from || !to) {
+        return res.status(400).json({ success: false, message: '"from" and "to" are required for a custom range' });
+      }
+      startDate = new Date(from);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(to);
+      endDate.setHours(23, 59, 59, 999);
+    } else if (range === '1m') {
+      startDate = new Date(today);
+      startDate.setMonth(startDate.getMonth() - 1);
+      startDate.setDate(startDate.getDate() + 1);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (range === '1y') {
+      startDate = new Date(today);
+      startDate.setFullYear(startDate.getFullYear() - 1);
+      startDate.setDate(startDate.getDate() + 1);
+      startDate.setHours(0, 0, 0, 0);
+    } else {
+      // default 14d
+      startDate = new Date(today);
+      startDate.setDate(startDate.getDate() - 13);
+      startDate.setHours(0, 0, 0, 0);
+    }
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
+      return res.status(400).json({ success: false, message: 'Invalid date range' });
+    }
+
+    const spanDays = Math.ceil((endDate - startDate) / (24 * 60 * 60 * 1000)) + 1;
+    const granularity = spanDays > 62 ? 'month' : 'day';
+
+    const orders = await prisma.order.findMany({
+      where: { createdAt: { gte: startDate, lte: endDate } },
+      select: { createdAt: true, total: true },
+    });
+
+    const buckets = [];
+    const bucketByKey = {};
+
+    if (granularity === 'day') {
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        const key = d.toISOString().slice(0, 10);
+        const bucket = { key, label: key, orders: 0, revenue: 0 };
+        buckets.push(bucket);
+        bucketByKey[key] = bucket;
+      }
+      orders.forEach((o) => {
+        const key = o.createdAt.toISOString().slice(0, 10);
+        const bucket = bucketByKey[key];
+        if (bucket) {
+          bucket.orders += 1;
+          bucket.revenue += o.total || 0;
+        }
       });
     } else {
-      items = await prisma.carPart.findMany({
-        where: whereClause,
-        take: 50,
-        include: { 
-          seller: { select: { name: true } }, 
-          category: { 
-            include: { parent: { select: { name: true } } } 
-          } 
-        },
-        orderBy: { createdAt: 'desc' }
+      let cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      const endCursor = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+      while (cursor <= endCursor) {
+        const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+        const label = cursor.toLocaleString('en-AU', { month: 'short', year: 'numeric' });
+        const bucket = { key, label, orders: 0, revenue: 0 };
+        buckets.push(bucket);
+        bucketByKey[key] = bucket;
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+      orders.forEach((o) => {
+        const key = `${o.createdAt.getFullYear()}-${String(o.createdAt.getMonth() + 1).padStart(2, '0')}`;
+        const bucket = bucketByKey[key];
+        if (bucket) {
+          bucket.orders += 1;
+          bucket.revenue += o.total || 0;
+        }
       });
     }
 
-
-    res.json({ success: true, data: items });
+    res.json({
+      success: true,
+      data: buckets,
+      meta: { granularity, from: startDate.toISOString(), to: endDate.toISOString() },
+    });
   } catch (error) {
+    console.error('Error fetching admin analytics:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-// Update Catalog Item Status
-const updateCatalogItemStatus = async (req, res) => {
+// Get rider roster + delivery job performance (Rider & Delivery Ops tab)
+const getRiderOps = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { type, isActive } = req.body;
+    const [riders, jobStatusGroups, recentJobs] = await Promise.all([
+      prisma.rider.findMany({
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          status: true,
+          rating: true,
+          totalDeliveries: true,
+          vehicleType: true,
+        },
+        orderBy: { totalDeliveries: 'desc' },
+      }),
+      prisma.deliveryJob.groupBy({ by: ['status'], _count: { status: true } }),
+      prisma.deliveryJob.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          customerName: true,
+          paymentAmount: true,
+          createdAt: true,
+          partner: { select: { fullName: true } },
+        },
+      }),
+    ]);
 
-    if (type === 'PRODUCT') {
-      await prisma.product.update({ where: { id }, data: { isActive } });
-    } else if (type === 'CAR_PART') {
-      await prisma.carPart.update({ where: { id }, data: { isActive } });
-    } else {
-      return res.status(400).json({ success: false, message: 'Invalid catalog type' });
-    }
+    const summary = riders.reduce(
+      (acc, r) => {
+        if (r.status === 'busy') acc.busy += 1;
+        else if (r.status === 'online' || r.status === 'available') acc.online += 1;
+        else acc.offline += 1;
+        return acc;
+      },
+      { total: riders.length, online: 0, busy: 0, offline: 0 }
+    );
 
-    res.json({ success: true, message: 'Status updated' });
+    const jobStatusCounts = jobStatusGroups.map((g) => ({ status: g.status, count: g._count.status }));
+
+    res.json({ success: true, data: { summary, riders, jobStatusCounts, recentJobs } });
   } catch (error) {
+    console.error('Error fetching rider ops:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-export { getOverviewStats, Users, updateUserStatus, getFinances, getCatalog, updateCatalogItemStatus };
+export { getOverviewStats, Users, updateUserStatus, getFinances, getAnalytics, getRiderOps };

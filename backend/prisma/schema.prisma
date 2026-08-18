@@ -133,7 +133,7 @@ model Product {
   // Which delivery vehicle is needed to carry this product. Required for new
   // products (enforced in the API/UI); nullable in the DB so existing rows are
   // preserved. Drives which riders can be dispatched for an order.
-  deliveryVehicle    DeliveryVehicleType?
+  deliveryVehicleType DeliveryVehicleType?
   cartItems          CartItem[]
   orderItems         OrderItem[]
   category           Category?              @relation(fields: [categoryId], references: [id])

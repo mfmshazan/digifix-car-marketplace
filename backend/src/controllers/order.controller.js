@@ -806,6 +806,57 @@ export const getCustomerOrders = async (req, res) => {
  * Supports both Product and CarPart items
  * Dedcuts wallet balance upfront if paymentMethod === 'WALLET'
  */
+/**
+ * Estimate the delivery fee for the current cart + selected address, so the customer
+ * sees the same distance/vehicle based fee in the cart before paying with Stripe.
+ * Body: { items: [{ productId, quantity }], addressId }
+ */
+export const estimateDelivery = async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const { items, addressId } = req.body;
+    if (!items?.length || !addressId) {
+      return res.status(400).json({ success: false, message: 'items and addressId are required' });
+    }
+    const address = await prisma.address.findFirst({ where: { id: addressId, userId: customerId } });
+    if (!address || !hasValidCoordinates(address.latitude, address.longitude)) {
+      return res.status(400).json({ success: false, message: 'The selected address needs a delivery pin.' });
+    }
+    const itemIds = items.map((i) => i.productId);
+    const [products, carParts] = await Promise.all([
+      prisma.product.findMany({ where: { id: { in: itemIds } }, select: { deliveryVehicleType: true, salesman: { select: { store: { select: { pickupLatitude: true, pickupLongitude: true } } } } } }),
+      prisma.carPart.findMany({ where: { id: { in: itemIds } }, select: { seller: { select: { store: { select: { pickupLatitude: true, pickupLongitude: true } } } } } }),
+    ]);
+    const all = [
+      ...products.map((p) => ({ v: p.deliveryVehicleType, lat: p.salesman?.store?.pickupLatitude, lng: p.salesman?.store?.pickupLongitude })),
+      ...carParts.map((p) => ({ v: p.deliveryVehicleType, lat: p.seller?.store?.pickupLatitude, lng: p.seller?.store?.pickupLongitude })),
+    ];
+    const RATE = { MOTORBIKE: 50, CAR: 70, LORRY: 30 };
+    const RANK = { MOTORBIKE: 1, CAR: 2, LORRY: 3 };
+    const haversineKm = (a, b, c, d) => {
+      const r = (x) => (Number(x) * Math.PI) / 180, R = 6371;
+      const dLat = r(c - a), dLon = r(d - b);
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    };
+    let vehicle = 'MOTORBIKE';
+    let pickup = null;
+    for (const it of all) {
+      if (it.v && RANK[it.v] > RANK[vehicle]) vehicle = it.v;
+      if (pickup === null && it.lat != null && it.lng != null) pickup = { lat: Number(it.lat), lng: Number(it.lng) };
+    }
+    let deliveryFee = 0;
+    if (pickup && hasValidCoordinates(pickup.lat, pickup.lng)) {
+      const km = haversineKm(pickup.lat, pickup.lng, Number(address.latitude), Number(address.longitude));
+      deliveryFee = Math.round(km * RATE[vehicle]);
+    }
+    return res.json({ success: true, data: { deliveryFee, vehicle } });
+  } catch (e) {
+    console.error('estimateDelivery error:', e);
+    return res.status(500).json({ success: false, message: 'Failed to estimate delivery' });
+  }
+};
+
 export const createOrder = async (req, res) => {
   try {
     const customerId = req.user.id;
@@ -867,7 +918,9 @@ export const createOrder = async (req, res) => {
             managerId: true,
             store: {
               select: {
-                name: true
+                name: true,
+                pickupLatitude: true,
+                pickupLongitude: true
               }
             }
           }
@@ -889,7 +942,9 @@ export const createOrder = async (req, res) => {
             managerId: true,
             store: {
               select: {
-                name: true
+                name: true,
+                pickupLatitude: true,
+                pickupLongitude: true
               }
             }
           }
@@ -910,7 +965,10 @@ export const createOrder = async (req, res) => {
         images: product.images,
         sellerId: product.salesman?.managerId || product.salesmanId,
         sellerName: product.salesman?.name || 'Unknown Seller',
-        storeName: product.salesman?.store?.name
+        storeName: product.salesman?.store?.name,
+        deliveryVehicleType: product.deliveryVehicleType || null,
+        pickupLat: product.salesman?.store?.pickupLatitude ?? null,
+        pickupLng: product.salesman?.store?.pickupLongitude ?? null
       });
     });
 
@@ -924,7 +982,10 @@ export const createOrder = async (req, res) => {
         images: part.images,
         sellerId: part.seller?.managerId || part.sellerId,
         sellerName: part.seller?.name || 'Unknown Seller',
-        storeName: part.seller?.store?.name
+        storeName: part.seller?.store?.name,
+        deliveryVehicleType: part.deliveryVehicleType || null,
+        pickupLat: part.seller?.store?.pickupLatitude ?? null,
+        pickupLng: part.seller?.store?.pickupLongitude ?? null
       });
     });
 
@@ -936,6 +997,20 @@ export const createOrder = async (req, res) => {
         success: false,
         message: `One or more items not found: ${missingIds.join(', ')}`
       });
+    }
+
+    // Reject the order up front if any item doesn't have enough stock.
+    for (const orderItem of items) {
+      const prod = products.find(p => p.id === orderItem.productId);
+      const cp = carParts.find(c => c.id === orderItem.productId);
+      const available = prod ? prod.stock : (cp ? cp.stock : 0);
+      const itemName = prod?.name || cp?.name || orderItem.productId;
+      if (available < orderItem.quantity) {
+        return res.status(400).json({
+          success: false,
+          message: `Not enough stock for ${itemName}. Only ${available} left.`,
+        });
+      }
     }
 
     // Group items by seller
@@ -966,10 +1041,47 @@ export const createOrder = async (req, res) => {
 
     // Service charge is the platform's revenue — calculated server-side to prevent tampering
     const SERVICE_CHARGE_RATE = 0.10;
-    // Delivery fee will be distance-based (Rs. 250/km) once GPS integration is complete
-    // For now it defaults to 0 since we don't have distance data yet
-    const calculateDeliveryFee = (distanceKm = 0) => distanceKm * 250;
-    const deliveryFee = calculateDeliveryFee(0);
+
+    // Distance-based delivery fee. The per-km rate depends on the vehicle the order needs;
+    // an order uses the largest vehicle any of its items requires (LORRY > CAR > MOTORBIKE).
+    //   MOTORBIKE Rs.50/km, CAR Rs.70/km, LORRY Rs.30/km.
+    const VEHICLE_RATE_PER_KM = { MOTORBIKE: 50, CAR: 70, LORRY: 30 };
+    const VEHICLE_RANK = { MOTORBIKE: 1, CAR: 2, LORRY: 3 };
+
+    const haversineKm = (lat1, lon1, lat2, lon2) => {
+      const toRad = (v) => (Number(v) * Math.PI) / 180;
+      const R = 6371; // km
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    // Pick the largest required vehicle and the shop pickup point from the ordered items.
+    const orderedItems = items
+      .map((oi) => allItems.find((i) => i.id === oi.productId))
+      .filter(Boolean);
+    let vehicle = 'MOTORBIKE';
+    let pickup = null;
+    for (const it of orderedItems) {
+      if (it.deliveryVehicleType && VEHICLE_RANK[it.deliveryVehicleType] > VEHICLE_RANK[vehicle]) {
+        vehicle = it.deliveryVehicleType;
+      }
+      if (pickup === null && it.pickupLat != null && it.pickupLng != null) {
+        pickup = { lat: Number(it.pickupLat), lng: Number(it.pickupLng) };
+      }
+    }
+
+    // Only chargeable once we know both the shop pickup and the customer delivery point.
+    let deliveryFee = 0;
+    if (pickup && hasValidCoordinates(pickup.lat, pickup.lng)) {
+      const distanceKm = haversineKm(
+        pickup.lat, pickup.lng, deliveryLatitudeSnapshot, deliveryLongitudeSnapshot
+      );
+      deliveryFee = Math.round(distanceKm * VEHICLE_RATE_PER_KM[vehicle]);
+    }
+
     let grandTotal = 0;
     
     Object.values(groupedBySeller).forEach(sellerGroup => {
@@ -1094,10 +1206,25 @@ export const createOrder = async (req, res) => {
         orderIndex++;
       }
 
+      // Decrement stock for every ordered item now that the orders are created.
+      for (const orderItem of items) {
+        if (products.find(p => p.id === orderItem.productId)) {
+          await tx.product.update({
+            where: { id: orderItem.productId },
+            data: { stock: { decrement: orderItem.quantity } },
+          });
+        } else if (carParts.find(c => c.id === orderItem.productId)) {
+          await tx.carPart.update({
+            where: { id: orderItem.productId },
+            data: { stock: { decrement: orderItem.quantity } },
+          });
+        }
+      }
+
       return orders;
     }, {
-      timeout: 30000, 
-      maxWait: 10000 
+      timeout: 30000,
+      maxWait: 10000
     });
 
     // Format response

@@ -97,9 +97,11 @@ function DispatchModal({
     hasSavedCustomerLocation ? String(savedDeliveryLongitude) : "",
   );
   const [deliveryAddress, setDeliveryAddress] = useState(savedDeliveryAddress);
-  const [paymentType, setPaymentType] = useState<"COD" | "PREPAID">("COD");
+  // Rider dispatch is bank/prepaid only — no cash on delivery.
+  const paymentType = "PREPAID" as const;
   const [notes, setNotes] = useState("");
-  const [earnings, setEarnings] = useState("");
+  // Prefill the rider's pay with the order's calculated delivery fee.
+  const [earnings] = useState(order.deliveryFee ? String(order.deliveryFee) : "");
   const [gettingGps, setGettingGps] = useState(false);
   const [shopLocationLoading, setShopLocationLoading] = useState(true);
   const [shopLocationSaving, setShopLocationSaving] = useState(false);
@@ -537,17 +539,10 @@ function DispatchModal({
             </View>
           </Modal>
 
-          <Text style={[dispatchStyles.label, { marginTop: 14 }]}>Payment Type</Text>
-          <View style={dispatchStyles.row}>
-            {(["COD", "PREPAID"] as const).map((pt) => (
-              <TouchableOpacity key={pt} style={[dispatchStyles.payBtn, paymentType === pt && dispatchStyles.payBtnActive]} onPress={() => setPaymentType(pt)}>
-                <Text style={[dispatchStyles.payBtnText, paymentType === pt && dispatchStyles.payBtnTextActive]}>{pt === "COD" ? "Cash on Delivery" : "Prepaid"}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <Text style={[dispatchStyles.label, { marginTop: 14 }]}>Payment: Bank (Prepaid)</Text>
 
           <View style={[dispatchStyles.row, { marginTop: 12 }]}>
-            <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Rider pay ($)" keyboardType="decimal-pad" value={earnings} onChangeText={setEarnings} />
+            <TextInput style={[dispatchStyles.input, dispatchStyles.half, { backgroundColor: "#F3F4F6", color: "#374151" }]} placeholder="Delivery fee" keyboardType="decimal-pad" value={earnings} editable={false} />
             <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Package notes" value={notes} onChangeText={setNotes} />
           </View>
 

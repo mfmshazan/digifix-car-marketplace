@@ -562,9 +562,11 @@ function CreateDeliveryRequestModal({
     deliveryLatitude: hasSavedCustomerLocation ? String(savedDeliveryLatitude) : '',
     deliveryLongitude: hasSavedCustomerLocation ? String(savedDeliveryLongitude) : '',
     deliveryAddress: savedDeliveryAddress,
-    paymentType: 'COD',
+    // Bank/prepaid only — no cash on delivery.
+    paymentType: 'PREPAID',
     packageNotes: '',
-    estimatedEarnings: '',
+    // Prefill the rider's pay with the order's calculated delivery fee.
+    estimatedEarnings: (order as any).deliveryFee ? String((order as any).deliveryFee) : '',
   });
   const [gettingLocation, setGettingLocation] = useState(false);
   const [shopLocationLoading, setShopLocationLoading] = useState(true);
@@ -945,23 +947,11 @@ function CreateDeliveryRequestModal({
             )}
           </div>
 
-          {/* Payment Type */}
+          {/* Payment — bank/prepaid only, no cash on delivery */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-2">Payment Type</label>
-            <div className="flex gap-2">
-              {(['COD', 'PREPAID'] as const).map((pt) => (
-                <button
-                  key={pt}
-                  onClick={() => setForm((f) => ({ ...f, paymentType: pt }))}
-                  className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
-                    form.paymentType === pt
-                      ? 'bg-[#00002E] text-white border-[#00002E]'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-[#00002E]/40'
-                  }`}
-                >
-                  {pt === 'COD' ? 'Cash on Delivery' : 'Prepaid'}
-                </button>
-              ))}
+            <label className="block text-xs font-semibold text-gray-700 mb-2">Payment</label>
+            <div className="py-2 px-3 rounded-xl text-sm font-semibold bg-[#00002E] text-white text-center">
+              Bank (Prepaid)
             </div>
           </div>
 
@@ -969,11 +959,11 @@ function CreateDeliveryRequestModal({
           <div className="grid grid-cols-2 gap-2">
             <input
               type="number"
-              step="any"
-              placeholder="Rider earnings (Rs)"
+              readOnly
               value={form.estimatedEarnings}
-              onChange={(e) => setForm((f) => ({ ...f, estimatedEarnings: e.target.value }))}
-              className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+              title="Rider pay = this shop's delivery fee (fixed)"
+              placeholder="Delivery fee"
+              className="px-3 py-2 rounded-xl border border-gray-200 text-sm bg-gray-100 text-gray-700 cursor-not-allowed focus:outline-none"
             />
             <input
               type="text"
@@ -1153,7 +1143,7 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
       <div className="p-4 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-bold text-gray-900 text-sm">{order.orderNumber}</span>
+            <span className="font-bold text-gray-900 text-xs">{order.orderNumber}</span>
             <span className="text-gray-400 text-xs">·</span>
             <span className="text-gray-500 text-xs">{timeAgo(order.createdAt)}</span>
           </div>

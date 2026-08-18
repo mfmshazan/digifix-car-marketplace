@@ -824,12 +824,12 @@ export const estimateDelivery = async (req, res) => {
     }
     const itemIds = items.map((i) => i.productId);
     const [products, carParts] = await Promise.all([
-      prisma.product.findMany({ where: { id: { in: itemIds } }, select: { deliveryVehicleType: true, salesman: { select: { store: { select: { pickupLatitude: true, pickupLongitude: true } } } } } }),
-      prisma.carPart.findMany({ where: { id: { in: itemIds } }, select: { seller: { select: { store: { select: { pickupLatitude: true, pickupLongitude: true } } } } } }),
+      prisma.product.findMany({ where: { id: { in: itemIds } }, select: { deliveryVehicleType: true, salesman: { select: { store: { select: { id: true, pickupLatitude: true, pickupLongitude: true } } } } } }),
+      prisma.carPart.findMany({ where: { id: { in: itemIds } }, select: { seller: { select: { store: { select: { id: true, pickupLatitude: true, pickupLongitude: true } } } } } }),
     ]);
     const all = [
-      ...products.map((p) => ({ v: p.deliveryVehicleType, lat: p.salesman?.store?.pickupLatitude, lng: p.salesman?.store?.pickupLongitude })),
-      ...carParts.map((p) => ({ v: p.deliveryVehicleType, lat: p.seller?.store?.pickupLatitude, lng: p.seller?.store?.pickupLongitude })),
+      ...products.map((p) => ({ v: p.deliveryVehicleType, shopId: p.salesman?.store?.id, lat: p.salesman?.store?.pickupLatitude, lng: p.salesman?.store?.pickupLongitude })),
+      ...carParts.map((p) => ({ v: p.deliveryVehicleType, shopId: p.seller?.store?.id, lat: p.seller?.store?.pickupLatitude, lng: p.seller?.store?.pickupLongitude })),
     ];
     const RATE = { MOTORBIKE: 50, CAR: 70, LORRY: 30 };
     const RANK = { MOTORBIKE: 1, CAR: 2, LORRY: 3 };
@@ -839,18 +839,22 @@ export const estimateDelivery = async (req, res) => {
       const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dLon / 2) ** 2;
       return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
     };
-    let vehicle = 'MOTORBIKE';
-    let pickup = null;
+    // Group items by their shop pickup point; charge each shop's delivery leg
+    // separately (distance x the largest vehicle in that shop's items) and sum them.
+    const shops = new Map(); // shopId -> { lat, lng, vehicle }
     for (const it of all) {
-      if (it.v && RANK[it.v] > RANK[vehicle]) vehicle = it.v;
-      if (pickup === null && it.lat != null && it.lng != null) pickup = { lat: Number(it.lat), lng: Number(it.lng) };
+      if (it.shopId == null || it.lat == null || it.lng == null) continue;
+      const group = shops.get(it.shopId) || { lat: Number(it.lat), lng: Number(it.lng), vehicle: 'MOTORBIKE' };
+      if (it.v && RANK[it.v] > RANK[group.vehicle]) group.vehicle = it.v;
+      shops.set(it.shopId, group);
     }
     let deliveryFee = 0;
-    if (pickup && hasValidCoordinates(pickup.lat, pickup.lng)) {
-      const km = haversineKm(pickup.lat, pickup.lng, Number(address.latitude), Number(address.longitude));
-      deliveryFee = Math.round(km * RATE[vehicle]);
+    for (const shop of shops.values()) {
+      if (!hasValidCoordinates(shop.lat, shop.lng)) continue;
+      const km = haversineKm(shop.lat, shop.lng, Number(address.latitude), Number(address.longitude));
+      deliveryFee += Math.round(km * RATE[shop.vehicle]);
     }
-    return res.json({ success: true, data: { deliveryFee, vehicle } });
+    return res.json({ success: true, data: { deliveryFee, shopCount: shops.size } });
   } catch (e) {
     console.error('estimateDelivery error:', e);
     return res.status(500).json({ success: false, message: 'Failed to estimate delivery' });
@@ -1058,28 +1062,33 @@ export const createOrder = async (req, res) => {
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     };
 
-    // Pick the largest required vehicle and the shop pickup point from the ordered items.
+    // Group ordered items by their shop pickup point. Each shop's delivery leg is
+    // charged separately (distance x the largest vehicle in that shop's items) and
+    // summed, so an order spanning multiple shops pays a fee for each shop.
     const orderedItems = items
       .map((oi) => allItems.find((i) => i.id === oi.productId))
       .filter(Boolean);
-    let vehicle = 'MOTORBIKE';
-    let pickup = null;
+    const pickupShops = new Map(); // sellerId (shop) -> { lat, lng, vehicle }
     for (const it of orderedItems) {
-      if (it.deliveryVehicleType && VEHICLE_RANK[it.deliveryVehicleType] > VEHICLE_RANK[vehicle]) {
-        vehicle = it.deliveryVehicleType;
+      if (it.sellerId == null || it.pickupLat == null || it.pickupLng == null) continue;
+      const group = pickupShops.get(it.sellerId) || { lat: Number(it.pickupLat), lng: Number(it.pickupLng), vehicle: 'MOTORBIKE' };
+      if (it.deliveryVehicleType && VEHICLE_RANK[it.deliveryVehicleType] > VEHICLE_RANK[group.vehicle]) {
+        group.vehicle = it.deliveryVehicleType;
       }
-      if (pickup === null && it.pickupLat != null && it.pickupLng != null) {
-        pickup = { lat: Number(it.pickupLat), lng: Number(it.pickupLng) };
-      }
+      pickupShops.set(it.sellerId, group);
     }
 
-    // Only chargeable once we know both the shop pickup and the customer delivery point.
-    let deliveryFee = 0;
-    if (pickup && hasValidCoordinates(pickup.lat, pickup.lng)) {
+    // Per-shop fee so each seller's order carries only its own delivery leg.
+    const feeByShop = new Map(); // sellerId -> fee
+    let deliveryFee = 0; // total across shops (for the customer's grand total)
+    for (const [sellerId, shop] of pickupShops) {
+      if (!hasValidCoordinates(shop.lat, shop.lng)) continue;
       const distanceKm = haversineKm(
-        pickup.lat, pickup.lng, deliveryLatitudeSnapshot, deliveryLongitudeSnapshot
+        shop.lat, shop.lng, deliveryLatitudeSnapshot, deliveryLongitudeSnapshot
       );
-      deliveryFee = Math.round(distanceKm * VEHICLE_RATE_PER_KM[vehicle]);
+      const fee = Math.round(distanceKm * VEHICLE_RATE_PER_KM[shop.vehicle]);
+      feeByShop.set(sellerId, fee);
+      deliveryFee += fee;
     }
 
     let grandTotal = 0;
@@ -1145,9 +1154,9 @@ export const createOrder = async (req, res) => {
           salesmanId: sellerId,
           subtotal: sellerGroup.subtotal,
           serviceCharge: sellerGroup.serviceCharge,
-          // Only the first order carries the delivery fee to avoid double-charging
-          total: sellerGroup.subtotal + sellerGroup.serviceCharge + (Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0),
-          deliveryFee: Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0,
+          // Each seller's order carries its own shop's delivery leg.
+          total: sellerGroup.subtotal + sellerGroup.serviceCharge + (feeByShop.get(sellerId) || 0),
+          deliveryFee: feeByShop.get(sellerId) || 0,
           paymentMethod: normalizedPaymentMethod,
           notes,
           deliveryAddress: deliveryAddressSnapshot,

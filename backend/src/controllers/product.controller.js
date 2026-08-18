@@ -1,4 +1,8 @@
 import prisma from '../lib/prisma.js';
+import { resolveShopOwnerId } from '../lib/shopAccess.js';
+
+// Delivery vehicle types a product can require (matches the Prisma enum).
+const DELIVERY_VEHICLE_TYPES = ['MOTORBIKE', 'CAR', 'LORRY'];
 
 // Get all products (with filters)
 const getProducts = async (req, res) => {
@@ -18,9 +22,11 @@ const getProducts = async (req, res) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Build where clause
+    // Build where clause. Only surface approved listings — same gate the
+    // number-plate search applies, so a REJECTED item never shows here either.
     const where = {
       isActive: true,
+      approvalStatus: 'APPROVED',
     };
 
     if (category) {
@@ -56,6 +62,14 @@ const getProducts = async (req, res) => {
           },
           store: {
             select: { id: true, name: true, rating: true },
+          },
+          vehicleModel: {
+            select: {
+              id: true,
+              name: true,
+              vehicleBrand: { select: { id: true, name: true } },
+              vehicleType: { select: { id: true, name: true } },
+            },
           },
           _count: {
             select: { reviews: true },
@@ -101,6 +115,12 @@ const getProductById = async (req, res) => {
         store: {
           select: { id: true, name: true, rating: true, logo: true },
         },
+        vehicleModel: {
+          include: {
+            vehicleBrand: true,
+            vehicleType: true,
+          },
+        },
         compatibleVehicles: true,
         reviews: {
           include: {
@@ -140,7 +160,9 @@ const getProductById = async (req, res) => {
 // Create product (Salesman only)
 const createProduct = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Scope to the shop owner (manager) so a salesman's items belong to the shop,
+    // matching how orders are recorded & how dashboards query. See resolveShopOwnerId.
+    const userId = await resolveShopOwnerId(req.user);
     const {
       name,
       description,
@@ -150,14 +172,43 @@ const createProduct = async (req, res) => {
       stock,
       images,
       categoryId,
+      vehicleModelId,
+      vehicleModelIds,
       compatibleVehicles,
+      deliveryVehicle,
     } = req.body;
 
+    // Support both the legacy single vehicleModelId and the newer multi-select
+    // vehicleModelIds array (manager can tag one product to several models).
+    const modelIds = Array.isArray(vehicleModelIds) && vehicleModelIds.length > 0
+      ? [...new Set(vehicleModelIds)]
+      : (vehicleModelId ? [vehicleModelId] : []);
+
     // Validate required fields
-    if (!name || !price) {
+    if (!name || !price || modelIds.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Name and price are required',
+        message: 'Name, price, and at least one vehicle model are required',
+      });
+    }
+
+    // The delivery vehicle (which rider vehicle can carry this product) is required.
+    if (!DELIVERY_VEHICLE_TYPES.includes(deliveryVehicle)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Select a delivery vehicle: Motorbike, Car, or Lorry',
+      });
+    }
+
+    // Verify that every selected vehicle model exists
+    const matchingModels = await prisma.vehicleModel.findMany({
+      where: { id: { in: modelIds } },
+    });
+
+    if (matchingModels.length !== modelIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'One or more selected vehicle models are invalid',
       });
     }
 
@@ -177,8 +228,14 @@ const createProduct = async (req, res) => {
         stock: stock ? parseInt(stock) : 0,
         images: images || [],
         categoryId: categoryId || null,
+        vehicleModelId: modelIds[0],
+        deliveryVehicle,
         salesmanId: userId,
         storeId: store?.id,
+        approvalStatus: 'APPROVED',
+        compatibleModels: {
+          connect: modelIds.map((id) => ({ id })),
+        },
         compatibleVehicles: compatibleVehicles
           ? {
               create: compatibleVehicles,
@@ -188,6 +245,18 @@ const createProduct = async (req, res) => {
       include: {
         category: true,
         store: true,
+        vehicleModel: {
+          include: {
+            vehicleBrand: true,
+            vehicleType: true,
+          },
+        },
+        compatibleModels: {
+          include: {
+            vehicleBrand: true,
+            vehicleType: true,
+          },
+        },
         compatibleVehicles: true,
       },
     });
@@ -209,7 +278,9 @@ const createProduct = async (req, res) => {
 // Update product (Salesman only)
 const updateProduct = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Scope to the shop owner (manager) so a salesman's items belong to the shop,
+    // matching how orders are recorded & how dashboards query. See resolveShopOwnerId.
+    const userId = await resolveShopOwnerId(req.user);
     const { id } = req.params;
     const updateData = req.body;
 
@@ -225,6 +296,33 @@ const updateProduct = async (req, res) => {
       });
     }
 
+    // Verify vehicleModelIds/vehicleModelId if provided
+    const modelIds = Array.isArray(updateData.vehicleModelIds) && updateData.vehicleModelIds.length > 0
+      ? [...new Set(updateData.vehicleModelIds)]
+      : (updateData.vehicleModelId ? [updateData.vehicleModelId] : []);
+
+    if (modelIds.length > 0) {
+      const matchingModels = await prisma.vehicleModel.findMany({
+        where: { id: { in: modelIds } },
+      });
+
+      if (matchingModels.length !== modelIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'One or more selected vehicle models are invalid',
+        });
+      }
+    }
+
+    // If a delivery vehicle is supplied it must be valid; when omitted the
+    // existing value is kept (undefined = no change).
+    if (updateData.deliveryVehicle !== undefined && !DELIVERY_VEHICLE_TYPES.includes(updateData.deliveryVehicle)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Delivery vehicle must be Motorbike, Car, or Lorry',
+      });
+    }
+
     // Update product
     const product = await prisma.product.update({
       where: { id },
@@ -237,11 +335,28 @@ const updateProduct = async (req, res) => {
         stock: updateData.stock ? parseInt(updateData.stock) : undefined,
         images: updateData.images,
         categoryId: updateData.categoryId || null,
+        vehicleModelId: modelIds[0] || undefined,
+        deliveryVehicle: updateData.deliveryVehicle ?? undefined,
         isActive: updateData.isActive,
+        compatibleModels: modelIds.length > 0
+          ? { set: modelIds.map((id) => ({ id })) }
+          : undefined,
       },
       include: {
         category: true,
         store: true,
+        vehicleModel: {
+          include: {
+            vehicleBrand: true,
+            vehicleType: true,
+          },
+        },
+        compatibleModels: {
+          include: {
+            vehicleBrand: true,
+            vehicleType: true,
+          },
+        },
       },
     });
 
@@ -262,7 +377,9 @@ const updateProduct = async (req, res) => {
 // Delete product (Salesman only)
 const deleteProduct = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Scope to the shop owner (manager) so a salesman's items belong to the shop,
+    // matching how orders are recorded & how dashboards query. See resolveShopOwnerId.
+    const userId = await resolveShopOwnerId(req.user);
     const { id } = req.params;
 
     // Check if product belongs to salesman
@@ -298,20 +415,33 @@ const deleteProduct = async (req, res) => {
 // Get salesman's products
 const getSalesmanProducts = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // A salesman views the shop catalog, which is owned by their manager.
+    const userId = await resolveShopOwnerId(req.user);
     const { page = '1', limit = '20' } = req.query;
 
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    const pageNum = Number.isFinite(parseInt(page)) && parseInt(page) > 0 ? parseInt(page) : 1;
+    const limitNum = Number.isFinite(parseInt(limit)) && parseInt(limit) > 0 ? parseInt(limit) : 20;
     const skip = (pageNum - 1) * limitNum;
+    // Upper bound of rows that could appear on this page from either table. Any item in
+    // the merged page must be within the first (skip + limit) rows of its own table when
+    // both are ordered by createdAt desc — so we never need to load more than this per table.
+    const takeBound = skip + limitNum;
 
-    // Fetch both regular products and car parts
-    const [products, carParts] = await Promise.all([
+    // Fetch a bounded slice of both tables plus their totals (counts are cheap, index-only).
+    const [products, carParts, productTotal, carPartTotal] = await Promise.all([
       prisma.product.findMany({
         where: { salesmanId: userId },
+        orderBy: { createdAt: 'desc' },
+        take: takeBound,
         include: {
           category: {
             select: { id: true, name: true },
+          },
+          vehicleModel: {
+            include: {
+              vehicleBrand: { select: { id: true, name: true } },
+              vehicleType: { select: { id: true, name: true } },
+            },
           },
           orderItems: {
             select: {
@@ -325,6 +455,8 @@ const getSalesmanProducts = async (req, res) => {
       }),
       prisma.carPart.findMany({
         where: { sellerId: userId },
+        orderBy: { createdAt: 'desc' },
+        take: takeBound,
         include: {
           category: {
             select: { id: true, name: true },
@@ -339,6 +471,8 @@ const getSalesmanProducts = async (req, res) => {
           }
         },
       }),
+      prisma.product.count({ where: { salesmanId: userId } }),
+      prisma.carPart.count({ where: { sellerId: userId } }),
     ]);
 
     // Compute status function
@@ -361,8 +495,9 @@ const getSalesmanProducts = async (req, res) => {
       (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
     );
 
-    // Paginate manually
-    const total = allItems.length;
+    // Slice the merged/sorted window down to the requested page. `allItems` holds at most
+    // (skip + limit) rows per table, which is exactly enough to fill this page correctly.
+    const total = productTotal + carPartTotal;
     const paginatedItems = allItems.slice(skip, skip + limitNum);
 
     res.json({

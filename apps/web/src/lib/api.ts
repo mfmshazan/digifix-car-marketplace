@@ -8,6 +8,10 @@ export function resolveMediaUrl(path: string | null | undefined): string | null 
   const trimmed = path.trim();
   if (!trimmed) return null;
 
+  // Already-complete sources must be returned untouched — never prefix the API origin.
+  // (data: base64 images and blob: object URLs are self-contained.)
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return trimmed;
+
   // If it's already a full URL, return as is
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
 
@@ -232,7 +236,7 @@ export const authApi = {
   },
 
   // Register
-  register: async (data: { name: string; email: string; password: string; phone: string; role?: string }) => {
+  register: async (data: { name: string; email: string; password: string; phone: string; role?: string; joinCode?: string }) => {
     const response = await api.post('/auth/register', data);
     return response.data;
   },
@@ -261,6 +265,42 @@ export const authApi = {
 
   resetPassword: async (resetToken: string, newPassword: string) => {
     const response = await api.post('/auth/reset-password', { resetToken, newPassword });
+    return response.data;
+  },
+};
+
+export interface ShopSalesman {
+  id: string;
+  name: string | null;
+  email: string;
+  phone: string | null;
+  avatar: string | null;
+  status: 'PENDING' | 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+  createdAt: string;
+}
+
+export const managerApi = {
+  // Get the shop join code the manager shares with salesmen
+  getJoinCode: async (): Promise<{ success: boolean; data: { joinCode: string } }> => {
+    const response = await api.get('/manager/join-code');
+    return response.data;
+  },
+
+  // List salesmen working under the manager (pending + active)
+  getSalesmen: async (): Promise<{ success: boolean; data: ShopSalesman[] }> => {
+    const response = await api.get('/manager/salesmen');
+    return response.data;
+  },
+
+  // Approve a pending salesman
+  approveSalesman: async (id: string) => {
+    const response = await api.post(`/manager/salesmen/${id}/approve`);
+    return response.data;
+  },
+
+  // Reject (remove) a pending salesman request
+  rejectSalesman: async (id: string) => {
+    const response = await api.post(`/manager/salesmen/${id}/reject`);
     return response.data;
   },
 };
@@ -331,6 +371,38 @@ export const ordersApi = {
 };
 
 export const deliveryRequestsApi = {
+  getShopLocation: async () => {
+    const response = await api.get('/delivery-requests/shop-location');
+    return response.data as {
+      success: boolean;
+      data: {
+        configured: boolean;
+        storeName: string | null;
+        address: string | null;
+        latitude: number | null;
+        longitude: number | null;
+      };
+    };
+  },
+
+  updateShopLocation: async (data: {
+    latitude: number;
+    longitude: number;
+    address?: string;
+  }) => {
+    const response = await api.put('/delivery-requests/shop-location', data);
+    return response.data as {
+      success: boolean;
+      data: {
+        configured: boolean;
+        storeName: string | null;
+        address: string | null;
+        latitude: number;
+        longitude: number;
+      };
+    };
+  },
+
   // Create a delivery request for an order (salesman dispatches a rider)
   create: async (data: {
     orderId: string;

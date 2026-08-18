@@ -14,6 +14,7 @@ import carPartRoutes from './routes/carPart.routes.js';
 import cartRoutes from './routes/cart.routes.js';
 import clerkRoutes from './routes/clerk.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import managerRoutes from './routes/manager.routes.js';
 import wishlistRoutes from './routes/wishlist.routes.js';
 import vehicleRoutes from './routes/vehicle.routes.js';
 import riderPartnerRoutes from './routes/riderPartner.routes.js';
@@ -103,6 +104,7 @@ app.use('/api', riderPerformanceRoutes);
 app.use('/api/jobs', riderJobsRoutes);
 app.use('/api/admin', riderAdminRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/manager', managerRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/tracking', customerTrackingRoutes);
 app.use('/api/stats', statsRoutes);
@@ -126,7 +128,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ─── Start server ─────────────────────────────────────────────────────────────
+// ─── Start server ───────────────────────────────────────────────────────────
 initializeRiderRealtimeDispatch(httpServer).catch((error) => {
   console.warn('Rider realtime dispatch did not initialize:', error.message);
 });

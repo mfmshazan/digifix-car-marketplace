@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
@@ -36,10 +37,12 @@ import {
   MapPin,
   Navigation,
   Send,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
-import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi, vehicleApi } from '@/lib/api';
-import type { Review } from '@/lib/api';
+import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi, vehicleApi, managerApi } from '@/lib/api';
+import type { Review, ShopSalesman } from '@/lib/api';
 import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket';
 import { initOneSignal, loginOneSignalUser, logoutOneSignalUser, requestNotificationPermission } from '@/lib/onesignal';
 import WalletDashboard from '@/components/wallet/WalletDashboard';
@@ -78,7 +81,7 @@ function useOneSignalPush() {
         setPermission(perm);
         if (perm === 'granted') {
           setSubscribed(true);
-          new window.Notification('✅ Notifications enabled!', {
+          new window.Notification('Notifications enabled!', {
             body: 'You will now receive alerts when customers place orders.',
             icon: '/favicon.ico',
           });
@@ -124,6 +127,18 @@ interface Order {
   createdAt: string;
   cancellationReason?: string | null;
   isComplaint?: boolean;
+  deliveryAddress?: string | null;
+  deliveryLatitude?: number | null;
+  deliveryLongitude?: number | null;
+  address?: {
+    street: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
 }
 
 interface SalesSummary {
@@ -215,11 +230,14 @@ function StatusDropdown({ order, onUpdate, deliveryStatus }: { order: Order; onU
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const currentIndex = STATUS_FLOW.indexOf(order.status as OrderStatus);
+  // Show every upcoming status so the whole lifecycle is visible, plus Cancel. Only the
+  // immediate next step is actionable — the rest render locked (see per-option logic).
   const nextStatuses = STATUS_FLOW.slice(currentIndex + 1);
   const dropdownOptions = [...nextStatuses, 'CANCELLED' as OrderStatus];
 
-  // SHIPPED is allowed only once a rider has picked the order up.
+  // SHIPPED needs a rider pickup; DELIVERED needs the rider to have completed delivery.
   const canShip = deliveryStatus ? PICKED_UP_DELIVERY_STATES.includes(deliveryStatus) : false;
+  const canDeliver = deliveryStatus === 'delivered';
 
   if (order.status === 'DELIVERED' || order.status === 'CANCELLED' || order.status === 'REFUND_REQUESTED') {
     const meta = STATUS_META[order.status as OrderStatus] ?? { label: order.status, color: 'text-gray-700', bg: 'bg-gray-100', icon: Clock };
@@ -248,12 +266,31 @@ function StatusDropdown({ order, onUpdate, deliveryStatus }: { order: Order; onU
           {dropdownOptions.map(s => {
             const meta = STATUS_META[s];
             const Icon = meta.icon;
+            const flowIndex = STATUS_FLOW.indexOf(s);
+            // Only the immediate next flow status is actionable; later steps stay locked
+            // until the earlier ones complete. Cancel is available only while Pending.
+            const stepLocked = s !== 'CANCELLED' && flowIndex !== currentIndex + 1;
+            const cancelLocked = s === 'CANCELLED' && order.status !== 'PENDING';
             const shipBlocked = s === 'SHIPPED' && !canShip;
+            const deliverBlocked = s === 'DELIVERED' && !canDeliver;
+            const blocked = stepLocked || cancelLocked || shipBlocked || deliverBlocked;
+            const blockedHint =
+              stepLocked ? 'locked'
+              : shipBlocked ? 'after pickup'
+              : deliverBlocked ? 'after delivery'
+              : cancelLocked ? 'pending only'
+              : undefined;
             return (
               <button
                 key={s}
-                disabled={shipBlocked}
-                title={shipBlocked ? 'Assign a rider and wait for pickup before shipping' : undefined}
+                disabled={blocked}
+                title={
+                  stepLocked ? 'Complete the previous step first'
+                  : shipBlocked ? 'Assign a rider and wait for pickup before shipping'
+                  : deliverBlocked ? 'The rider must complete delivery before this can be marked Delivered'
+                  : cancelLocked ? 'Orders can only be cancelled while Pending'
+                  : undefined
+                }
                 onClick={async () => {
                   setOpen(false);
                   setLoading(true);
@@ -263,11 +300,11 @@ function StatusDropdown({ order, onUpdate, deliveryStatus }: { order: Order; onU
                     setLoading(false);
                   }
                 }}
-                className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 ${meta.color} ${shipBlocked ? 'opacity-40 cursor-not-allowed hover:bg-transparent' : ''}`}
+                className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 ${meta.color} ${blocked ? 'opacity-40 cursor-not-allowed hover:bg-transparent' : ''}`}
               >
                 <Icon className="w-4 h-4" />
                 Mark as {meta.label}
-                {shipBlocked && <span className="ml-auto text-[10px] text-gray-400">after pickup</span>}
+                {blockedHint && <span className="ml-auto text-[10px] text-gray-400">{blockedHint}</span>}
               </button>
             );
           })}
@@ -302,103 +339,147 @@ function DeliveryStatusBadge({ status }: { status: string }) {
   );
 }
 
-// ─── Leaflet Map Picker (Delivery Location) ──────────────────────────────────
+// ─── Google Map Picker (Delivery Location) ───────────────────────────────────
 
-function LeafletMapPicker({
+function GoogleMapPicker({
   onSelect,
+  initialCoordinates,
+  readOnly = false,
 }: {
   onSelect: (lat: number, lng: number, address: string) => void;
+  initialCoordinates?: { lat: number; lng: number } | null;
+  readOnly?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
-  const [status, setStatus] = useState<'idle' | 'selected' | 'geocoding'>('idle');
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const onSelectRef = useRef(onSelect);
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
+  const initialLatitude = initialCoordinates?.lat;
+  const initialLongitude = initialCoordinates?.lng;
+  const [status, setStatus] = useState<'idle' | 'selected' | 'geocoding' | 'error'>(
+    initialCoordinates ? 'selected' : 'idle'
+  );
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    initialCoordinates || null
+  );
 
   useEffect(() => {
-    // Inject Leaflet CSS once
-    if (!document.getElementById('leaflet-css')) {
-      const link = document.createElement('link');
-      link.id = 'leaflet-css';
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(link);
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
+
+  useEffect(() => {
+    if (!apiKey) {
+      setStatus('error');
+      return;
     }
+
+    let poll: ReturnType<typeof setInterval> | null = null;
 
     const initMap = () => {
       if (!containerRef.current || mapRef.current) return;
-      const L = (window as any).L;
-      if (!L) return;
+      const google = (window as any).google;
+      if (!google?.maps) return;
 
-      const map = L.map(containerRef.current).setView([6.9271, 79.8612], 13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 19,
-      }).addTo(map);
+      const hasInitialCoordinates =
+        initialLatitude !== undefined && initialLongitude !== undefined;
+      const center = hasInitialCoordinates
+        ? { lat: initialLatitude, lng: initialLongitude }
+        : { lat: 6.9271, lng: 79.8612 };
+      const map = new google.maps.Map(containerRef.current, {
+        center,
+        zoom: hasInitialCoordinates ? 15 : 13,
+        disableDefaultUI: readOnly,
+        clickableIcons: false,
+        gestureHandling: readOnly ? 'none' : 'auto',
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: false,
+      });
+      const geocoder = new google.maps.Geocoder();
 
-      const handlePick = async (lat: number, lng: number) => {
+      const handlePick = (lat: number, lng: number) => {
         setCoords({ lat, lng });
         setStatus('geocoding');
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-            { headers: { 'Accept-Language': 'en' } }
-          );
-          const data = await res.json();
-          onSelect(lat, lng, data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        } catch {
-          onSelect(lat, lng, `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        }
-        setStatus('selected');
+        geocoder.geocode(
+          { location: { lat, lng } },
+          (results: any[], geocodeStatus: string) => {
+            const address = geocodeStatus === 'OK' && results?.[0]?.formatted_address
+              ? results[0].formatted_address
+              : `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            onSelectRef.current(lat, lng, address);
+            setStatus('selected');
+          }
+        );
       };
 
-      map.on('click', (e: any) => {
-        const { lat, lng } = e.latlng;
+      const setMarker = (lat: number, lng: number) => {
         if (markerRef.current) {
-          markerRef.current.setLatLng([lat, lng]);
-        } else {
-          markerRef.current = L.marker([lat, lng], { draggable: true }).addTo(map);
-          markerRef.current.on('dragend', (de: any) => {
-            const pos = de.target.getLatLng();
-            handlePick(pos.lat, pos.lng);
+          markerRef.current.setPosition({ lat, lng });
+          return;
+        }
+        markerRef.current = new google.maps.Marker({
+          map,
+          position: { lat, lng },
+          draggable: !readOnly,
+          title: readOnly ? 'Customer delivery location' : 'Delivery location',
+        });
+        if (!readOnly) {
+          markerRef.current.addListener('dragend', (event: any) => {
+            if (event.latLng) handlePick(event.latLng.lat(), event.latLng.lng());
           });
         }
-        handlePick(lat, lng);
-      });
+      };
 
+      if (hasInitialCoordinates) setMarker(initialLatitude, initialLongitude);
+      if (!readOnly) {
+        map.addListener('click', (event: any) => {
+          if (!event.latLng) return;
+          const lat = event.latLng.lat();
+          const lng = event.latLng.lng();
+          setMarker(lat, lng);
+          handlePick(lat, lng);
+        });
+      }
       mapRef.current = map;
     };
 
-    if ((window as any).L) {
+    if ((window as any).google?.maps) {
       initMap();
-    } else if (!document.getElementById('leaflet-js')) {
+    } else if (!document.getElementById('google-maps-js')) {
       const script = document.createElement('script');
-      script.id = 'leaflet-js';
-      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.id = 'google-maps-js';
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
+      script.async = true;
+      script.defer = true;
       script.onload = initMap;
+      script.onerror = () => setStatus('error');
       document.head.appendChild(script);
     } else {
-      // Script tag exists but may still be loading — poll briefly
-      const poll = setInterval(() => {
-        if ((window as any).L) { clearInterval(poll); initMap(); }
+      poll = setInterval(() => {
+        if ((window as any).google?.maps) {
+          if (poll) clearInterval(poll);
+          initMap();
+        }
       }, 100);
-      return () => clearInterval(poll);
     }
 
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-        markerRef.current = null;
+      if (poll) clearInterval(poll);
+      const google = (window as any).google;
+      if (mapRef.current && google?.maps) {
+        google.maps.event.clearInstanceListeners(mapRef.current);
       }
+      mapRef.current = null;
+      markerRef.current = null;
     };
-  }, []);
+  }, [apiKey, initialLatitude, initialLongitude, readOnly]);
 
   return (
     <div className="space-y-2">
       <div
         ref={containerRef}
-        className="w-full rounded-xl overflow-hidden border border-gray-200"
+        className="w-full rounded-lg overflow-hidden border border-gray-200"
         style={{ height: 260 }}
       />
       {status === 'idle' && (
@@ -408,19 +489,22 @@ function LeafletMapPicker({
       )}
       {status === 'geocoding' && (
         <p className="text-xs text-amber-600 text-center animate-pulse">
-          Fetching address…
+          Fetching address...
         </p>
       )}
-      {status === 'selected' && coords && (
+      {status === 'selected' && coords && !readOnly && (
         <p className="text-xs text-green-700 font-medium text-center">
-          📍 {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)} — You can drag the pin to adjust
+          {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}. Drag the pin to adjust.
+        </p>
+      )}
+      {status === 'error' && (
+        <p className="text-xs text-red-600 text-center">
+          Google Maps could not load. Check the Maps JavaScript API key configuration.
         </p>
       )}
     </div>
   );
 }
-
-// ─── Create Delivery Request Modal ───────────────────────────────────────────
 
 interface DeliveryFormState {
   pickupLatitude: string;
@@ -445,6 +529,12 @@ interface AvailableRider {
   distanceToPickupKm: number | null;
 }
 
+interface SavedShopLocation {
+  latitude: number;
+  longitude: number;
+  address: string;
+}
+
 function CreateDeliveryRequestModal({
   order,
   onClose,
@@ -454,23 +544,79 @@ function CreateDeliveryRequestModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const savedDeliveryLatitude = order.deliveryLatitude ?? order.address?.latitude ?? null;
+  const savedDeliveryLongitude = order.deliveryLongitude ?? order.address?.longitude ?? null;
+  const hasSavedCustomerLocation =
+    savedDeliveryLatitude !== null &&
+    savedDeliveryLongitude !== null &&
+    Number.isFinite(Number(savedDeliveryLatitude)) &&
+    Number.isFinite(Number(savedDeliveryLongitude));
+  const savedDeliveryAddress = order.deliveryAddress || [
+    order.address?.street,
+    order.address?.city,
+    order.address?.state,
+    order.address?.postalCode,
+    order.address?.country,
+  ].filter(Boolean).join(', ');
   const [form, setForm] = useState<DeliveryFormState>({
     pickupLatitude: '',
     pickupLongitude: '',
     pickupAddress: '',
-    deliveryLatitude: '',
-    deliveryLongitude: '',
-    deliveryAddress: '',
+    deliveryLatitude: hasSavedCustomerLocation ? String(savedDeliveryLatitude) : '',
+    deliveryLongitude: hasSavedCustomerLocation ? String(savedDeliveryLongitude) : '',
+    deliveryAddress: savedDeliveryAddress,
     paymentType: 'COD',
     packageNotes: '',
     estimatedEarnings: '',
   });
   const [gettingLocation, setGettingLocation] = useState(false);
+  const [shopLocationLoading, setShopLocationLoading] = useState(true);
+  const [shopLocationSaving, setShopLocationSaving] = useState(false);
+  const [shopLocationConfigured, setShopLocationConfigured] = useState(false);
+  const [editingShopLocation, setEditingShopLocation] = useState(false);
+  const [savedShopLocation, setSavedShopLocation] = useState<SavedShopLocation | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loadingRiders, setLoadingRiders] = useState(false);
   const [availableRiders, setAvailableRiders] = useState<AvailableRider[]>([]);
   const [selectedRiderId, setSelectedRiderId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    deliveryRequestsApi.getShopLocation()
+      .then((response) => {
+        if (!mounted) return;
+        const location = response.data;
+        if (location.configured && location.latitude !== null && location.longitude !== null) {
+          const saved = {
+            latitude: location.latitude,
+            longitude: location.longitude,
+            address: location.address || '',
+          };
+          setSavedShopLocation(saved);
+          setShopLocationConfigured(true);
+          setForm((current) => ({
+            ...current,
+            pickupLatitude: saved.latitude.toFixed(6),
+            pickupLongitude: saved.longitude.toFixed(6),
+            pickupAddress: saved.address,
+          }));
+        } else {
+          setEditingShopLocation(true);
+        }
+      })
+      .catch((err: any) => {
+        if (!mounted) return;
+        setEditingShopLocation(true);
+        setError(err?.response?.data?.message || err?.message || 'Failed to load the shop location.');
+      })
+      .finally(() => {
+        if (mounted) setShopLocationLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -495,12 +641,66 @@ function CreateDeliveryRequestModal({
     );
   };
 
+  const saveFixedShopLocation = async () => {
+    setError(null);
+    const latitude = Number(form.pickupLatitude);
+    const longitude = Number(form.pickupLongitude);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+        !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      setError('Enter valid shop latitude and longitude values.');
+      return;
+    }
+
+    setShopLocationSaving(true);
+    try {
+      const response = await deliveryRequestsApi.updateShopLocation({
+        latitude,
+        longitude,
+        address: form.pickupAddress.trim() || undefined,
+      });
+      const location = response.data;
+      const saved = {
+        latitude: Number(location.latitude),
+        longitude: Number(location.longitude),
+        address: location.address || '',
+      };
+      setSavedShopLocation(saved);
+      setShopLocationConfigured(true);
+      setEditingShopLocation(false);
+      setAvailableRiders([]);
+      setSelectedRiderId(null);
+      setForm((current) => ({
+        ...current,
+        pickupLatitude: saved.latitude.toFixed(6),
+        pickupLongitude: saved.longitude.toFixed(6),
+        pickupAddress: saved.address,
+      }));
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Failed to save the shop location.');
+    } finally {
+      setShopLocationSaving(false);
+    }
+  };
+
+  const cancelShopLocationEdit = () => {
+    if (savedShopLocation) {
+      setForm((current) => ({
+        ...current,
+        pickupLatitude: savedShopLocation.latitude.toFixed(6),
+        pickupLongitude: savedShopLocation.longitude.toFixed(6),
+        pickupAddress: savedShopLocation.address,
+      }));
+    }
+    setEditingShopLocation(false);
+    setError(null);
+  };
+
   const loadAvailableRiders = async () => {
     setError(null);
     setSelectedRiderId(null);
 
-    if (!form.pickupLatitude || !form.pickupLongitude) {
-      setError('Pickup coordinates are required before loading available riders.');
+    if (!shopLocationConfigured || editingShopLocation) {
+      setError('Save the fixed shop location before loading available riders.');
       return;
     }
 
@@ -526,8 +726,8 @@ function CreateDeliveryRequestModal({
     setError(null);
     const { pickupLatitude, pickupLongitude, deliveryLatitude, deliveryLongitude, deliveryAddress } = form;
 
-    if (!pickupLatitude || !pickupLongitude) {
-      setError('Pickup coordinates are required. Use "Get Current Location" or enter manually.');
+    if (!shopLocationConfigured || editingShopLocation || !pickupLatitude || !pickupLongitude) {
+      setError('Save the fixed shop location before sending a delivery request.');
       return;
     }
     if (!deliveryLatitude || !deliveryLongitude || !deliveryAddress) {
@@ -599,39 +799,98 @@ function CreateDeliveryRequestModal({
               <MapPin className="w-3.5 h-3.5 inline mr-1" />
               Pickup Location (Your Shop)
             </label>
-            <button
-              onClick={useCurrentLocation}
-              disabled={gettingLocation}
-              className="w-full mb-2 flex items-center justify-center gap-2 px-3 py-2 bg-[#00002E] text-white rounded-xl text-sm font-medium hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
-            >
-              {gettingLocation ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
-              {gettingLocation ? 'Getting Location…' : 'Use My Current Location'}
-            </button>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                step="any"
-                placeholder="Latitude"
-                value={form.pickupLatitude}
-                onChange={(e) => setForm((f) => ({ ...f, pickupLatitude: e.target.value }))}
-                className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
-              />
-              <input
-                type="number"
-                step="any"
-                placeholder="Longitude"
-                value={form.pickupLongitude}
-                onChange={(e) => setForm((f) => ({ ...f, pickupLongitude: e.target.value }))}
-                className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
-              />
-            </div>
-            <input
-              type="text"
-              placeholder="Shop address (optional)"
-              value={form.pickupAddress}
-              onChange={(e) => setForm((f) => ({ ...f, pickupAddress: e.target.value }))}
-              className="mt-2 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
-            />
+            {shopLocationLoading ? (
+              <div className="min-h-[84px] flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-500">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Loading saved shop location...
+              </div>
+            ) : shopLocationConfigured && !editingShopLocation ? (
+              <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <div className="w-10 h-10 shrink-0 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <Store className="w-5 h-5 text-[#00002E]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900">Fixed pickup location</p>
+                  <p className="text-xs text-gray-600 truncate">{form.pickupAddress || 'Shop location'}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {Number(form.pickupLatitude).toFixed(5)}, {Number(form.pickupLongitude).toFixed(5)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  title="Change fixed shop location"
+                  onClick={() => setEditingShopLocation(true)}
+                  className="w-10 h-10 shrink-0 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center hover:bg-orange-100"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 space-y-2">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {shopLocationConfigured ? 'Change shop location' : 'Set your shop location'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Save this once. It will be the pickup point for every delivery.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={useCurrentLocation}
+                  disabled={gettingLocation}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#00002E] text-white rounded-lg text-sm font-medium hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
+                >
+                  {gettingLocation ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
+                  {gettingLocation ? 'Getting Location...' : 'Use Current Location for Shop'}
+                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Latitude"
+                    value={form.pickupLatitude}
+                    onChange={(e) => setForm((f) => ({ ...f, pickupLatitude: e.target.value }))}
+                    className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Longitude"
+                    value={form.pickupLongitude}
+                    onChange={(e) => setForm((f) => ({ ...f, pickupLongitude: e.target.value }))}
+                    className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+                  />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Shop address"
+                  value={form.pickupAddress}
+                  onChange={(e) => setForm((f) => ({ ...f, pickupAddress: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+                />
+                <div className="flex justify-end gap-2 pt-1">
+                  {shopLocationConfigured && (
+                    <button
+                      type="button"
+                      onClick={cancelShopLocationEdit}
+                      className="min-h-10 px-3 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={saveFixedShopLocation}
+                    disabled={shopLocationSaving}
+                    className="min-h-10 px-3 rounded-lg bg-[#00002E] text-white text-xs font-semibold inline-flex items-center gap-2 disabled:opacity-60"
+                  >
+                    {shopLocationSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+                    {shopLocationSaving ? 'Saving...' : 'Save Shop Location'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Delivery Location — map picker */}
@@ -649,6 +908,11 @@ function CreateDeliveryRequestModal({
                   <p className="text-xs font-semibold text-indigo-900 truncate">
                     {form.deliveryAddress || 'Location pinned'}
                   </p>
+                  {hasSavedCustomerLocation && (
+                    <p className="text-[10px] font-bold uppercase text-green-700 mt-0.5">
+                      Customer saved location
+                    </p>
+                  )}
                   <p className="text-xs text-indigo-500 mt-0.5">
                     {parseFloat(form.deliveryLatitude).toFixed(5)}, {parseFloat(form.deliveryLongitude).toFixed(5)}
                   </p>
@@ -656,8 +920,12 @@ function CreateDeliveryRequestModal({
               </div>
             )}
 
-            {/* Leaflet map */}
-            <LeafletMapPicker
+            {/* Google map */}
+            <GoogleMapPicker
+              initialCoordinates={form.deliveryLatitude && form.deliveryLongitude
+                ? { lat: Number(form.deliveryLatitude), lng: Number(form.deliveryLongitude) }
+                : null}
+              readOnly={hasSavedCustomerLocation}
               onSelect={(lat, lng, address) => {
                 setForm((f) => ({
                   ...f,
@@ -669,7 +937,7 @@ function CreateDeliveryRequestModal({
             />
 
             {/* Editable address label after pin */}
-            {form.deliveryLatitude && form.deliveryLongitude && (
+            {form.deliveryLatitude && form.deliveryLongitude && !hasSavedCustomerLocation && (
               <input
                 type="text"
                 placeholder="Edit address label (optional)"
@@ -729,7 +997,7 @@ function CreateDeliveryRequestModal({
               <button
                 type="button"
                 onClick={loadAvailableRiders}
-                disabled={loadingRiders}
+                disabled={loadingRiders || !shopLocationConfigured || editingShopLocation || shopLocationLoading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               >
                 {loadingRiders ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
@@ -790,7 +1058,7 @@ function CreateDeliveryRequestModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || !shopLocationConfigured || editingShopLocation || shopLocationLoading}
             className="flex-1 py-2.5 rounded-xl bg-[#00002E] text-white text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
           >
             {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -1041,18 +1309,27 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
               )}
             </div>
           ) : (
-            <button
-              onClick={() => setShowDispatchModal(true)}
-              disabled={loadingDeliveryStatus}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-[#00002E] text-white rounded-xl text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
-            >
-              {loadingDeliveryStatus ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Truck className="w-4 h-4" />
-              )}
-              {loadingDeliveryStatus ? 'Checking...' : 'Assign Delivery'}
-            </button>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500 font-medium">Delivery Status</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">
+                  <Truck className="w-3 h-3" />
+                  Not Assigned
+                </span>
+              </div>
+              <button
+                onClick={() => setShowDispatchModal(true)}
+                disabled={loadingDeliveryStatus}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#00002E] text-white rounded-xl text-sm font-semibold hover:bg-[#00002E]/90 disabled:opacity-60 transition-colors"
+              >
+                {loadingDeliveryStatus ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Truck className="w-4 h-4" />
+                )}
+                {loadingDeliveryStatus ? 'Checking...' : 'Assign Delivery'}
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -1092,34 +1369,33 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
 
 function CurrentOrdersTab({ userId }: { userId: string }) {
   const isManager = useAuthStore((s) => s.user?.role) === 'SHOP_MANAGER';
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
+  const queryClient = useQueryClient();
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
   const [complaintAlert, setComplaintAlert] = useState<string | null>(null);
   const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
 
-  const loadOrders = useCallback(async () => {
-    try {
+  // Orders are cached per filter. Flipping to another tab and back is instant;
+  // socket events and optimistic actions below patch this cache directly.
+  const ordersKey = ['salesman-orders', filterStatus];
+  const { data: orders = [], isLoading, dataUpdatedAt, refetch } = useQuery<Order[]>({
+    queryKey: ordersKey,
+    queryFn: async () => {
       const params: { status?: string; limit: number } = { limit: 50 };
       if (filterStatus) params.status = filterStatus;
       const res = await ordersApi.getSalesmanOrders(params);
-      if (res.success) {
-        setOrders(res.data.orders);
-        setLastRefresh(new Date());
-      }
-    } catch (err) {
-      console.error('Failed to load orders', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filterStatus]);
+      return res.success ? res.data.orders : [];
+    },
+  });
+  const lastRefresh = dataUpdatedAt ? new Date(dataUpdatedAt) : new Date();
 
-  useEffect(() => {
-    setIsLoading(true);
-    loadOrders();
-  }, [loadOrders]);
+  // Patch the currently-cached orders list in place (used by socket + action handlers).
+  const patchOrders = useCallback(
+    (updater: (prev: Order[]) => Order[]) => {
+      queryClient.setQueryData<Order[]>(['salesman-orders', filterStatus], (prev) => updater(prev ?? []));
+    },
+    [queryClient, filterStatus]
+  );
 
   // ── Real-time socket listeners ──────────────────────────────────────────────
   useEffect(() => {
@@ -1130,38 +1406,36 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
     // (OneSignal push notification is sent server-side by the backend)
     const handleNewOrder = (payload: { orderNumber: string; total?: number }) => {
       console.log('🆕 [CurrentOrdersTab] newOrder event received:', payload);
-      setNewOrderAlert(`🆕 New order received: ${payload.orderNumber}`);
-      loadOrders();
+      setNewOrderAlert(`New order received: ${payload.orderNumber}`);
+      queryClient.invalidateQueries({ queryKey: ['salesman-orders'] });
       setTimeout(() => setNewOrderAlert(null), 10000);
     };
 
     // Salesman updated status elsewhere (e.g., another tab) → update in-place
     const handleStatusUpdate = (payload: { orderId: string; status: OrderStatus }) => {
-      setOrders(prev =>
+      patchOrders(prev =>
         prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o)
       );
-      setLastRefresh(new Date());
     };
 
     // Admin approved customer cancellation/refund request
     const handleCancellationApproved = (payload: { orderId: string; status: OrderStatus }) => {
-      setOrders(prev =>
+      patchOrders(prev =>
         prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o)
       );
-      setLastRefresh(new Date());
     };
 
     // Customer raised a post-delivery complaint — surfaced to the manager only.
     const handleComplaintRaised = (payload: { orderNumber: string }) => {
       if (!isManager) return;
-      setComplaintAlert(`⚠️ New complaint on order ${payload.orderNumber}`);
-      loadOrders();
+      setComplaintAlert(`New complaint on order ${payload.orderNumber}`);
+      queryClient.invalidateQueries({ queryKey: ['salesman-orders'] });
       setTimeout(() => setComplaintAlert(null), 12000);
     };
 
     // A complaint was accepted/rejected (e.g. from another tab) → refresh
     const handleComplaintResolved = () => {
-      loadOrders();
+      queryClient.invalidateQueries({ queryKey: ['salesman-orders'] });
     };
 
     socket.on('newOrder', handleNewOrder);
@@ -1177,14 +1451,14 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
       socket.off('complaintRaised', handleComplaintRaised);
       socket.off('complaintResolved', handleComplaintResolved);
     };
-  }, [userId, loadOrders]);
+  }, [userId, isManager, patchOrders, queryClient]);
 
   const handleUpdateStatus = async (id: string, status: OrderStatus) => {
     setStatusUpdateError(null);
 
     try {
       await ordersApi.updateOrderStatus(id, status);
-      setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+      patchOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
@@ -1203,7 +1477,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
       } else {
         await ordersApi.rejectComplaint(id);
       }
-      await loadOrders();
+      await queryClient.invalidateQueries({ queryKey: ['salesman-orders'] });
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
@@ -1280,7 +1554,7 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
           ))}
         </div>
         <button
-          onClick={() => { setIsLoading(true); loadOrders(); }}
+          onClick={() => refetch()}
           className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#00002E] transition-colors"
         >
           <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -1315,27 +1589,22 @@ function CurrentOrdersTab({ userId }: { userId: string }) {
 // ─── Sales History Tab ───────────────────────────────────────────────────────
 
 function SalesHistoryTab() {
-  const [summary, setSummary] = useState<SalesSummary | null>(null);
-  const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [sumRes, ordersRes] = await Promise.all([
-          ordersApi.getSalesmanSummary(),
-          ordersApi.getSalesmanOrders({ status: 'DELIVERED', limit: 50 }),
-        ]);
-        if (sumRes.success) setSummary(sumRes.data);
-        if (ordersRes.success) setCompletedOrders(ordersRes.data.orders);
-      } catch (err) {
-        console.error('Failed to load summary', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
-  }, []);
+  // Cached via React Query so returning to this tab is instant.
+  const { data, isLoading } = useQuery({
+    queryKey: ['salesman-sales-history'],
+    queryFn: async () => {
+      const [sumRes, ordersRes] = await Promise.all([
+        ordersApi.getSalesmanSummary(),
+        ordersApi.getSalesmanOrders({ status: 'DELIVERED', limit: 50 }),
+      ]);
+      return {
+        summary: (sumRes.success ? sumRes.data : null) as SalesSummary | null,
+        completedOrders: (ordersRes.success ? ordersRes.data.orders : []) as Order[],
+      };
+    },
+  });
+  const summary = data?.summary ?? null;
+  const completedOrders = data?.completedOrders ?? [];
 
   if (isLoading) {
     return (
@@ -1478,35 +1747,23 @@ function SalesHistoryTab() {
 // ─── Products Tab ────────────────────────────────────────────────────────────
 
 function ProductsTab() {
-  const [products, setProducts] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   // Only managers can edit/delete catalog items; salesmen view only.
   const isManager = useAuthStore((s) => s.user?.role) === 'SHOP_MANAGER';
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await productsApi.getSalesmanProducts();
-        if (res?.success) {
-          const payload = res.data ?? res;
-          const nextProducts = Array.isArray(payload?.products)
-            ? payload.products
-            : Array.isArray(payload?.data?.products)
-              ? payload.data.products
-              : Array.isArray(payload)
-                ? payload
-                : [];
-          setProducts(nextProducts);
-        }
-      } catch (err) {
-        console.error('Failed to load products', err);
-        setProducts([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
-  }, []);
+  // Cached via React Query: switching away and back is instant (served from cache),
+  // with a quiet background refresh. isLoading is only true on the first-ever fetch.
+  const { data: products = [], isLoading } = useQuery<any[]>({
+    queryKey: ['salesman-products'],
+    queryFn: async () => {
+      const res = await productsApi.getSalesmanProducts();
+      if (!res.success) return [];
+      return Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.products)
+          ? res.data.products
+          : [];
+    },
+  });
 
   if (isLoading) {
     return (
@@ -1737,24 +1994,20 @@ function ReviewCard({ review, onReplied }: { review: Review; onReplied: (reviewI
 }
 
 function ReviewsTab({ salesmanId }: { salesmanId: string }) {
-  const [reviews, setReviews] = React.useState<Review[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const reviewsKey = ['target-reviews', salesmanId];
 
-  const fetchReviews = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  // Cached via React Query so revisiting the Reviews tab is instant.
+  const { data: reviews = [], isLoading: loading, error: queryError } = useQuery<Review[]>({
+    queryKey: reviewsKey,
+    queryFn: async () => {
       const res = await reviewsApi.getTargetReviews(salesmanId);
-      setReviews(res.data || []);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Failed to load reviews');
-    } finally {
-      setLoading(false);
-    }
-  }, [salesmanId]);
-
-  React.useEffect(() => { fetchReviews(); }, [fetchReviews]);
+      return res.data || [];
+    },
+  });
+  const error = queryError
+    ? ((queryError as any)?.response?.data?.message || (queryError as any)?.message || 'Failed to load reviews')
+    : null;
 
   // Calculate aggregate stats
   const total = reviews.length;
@@ -1765,8 +2018,9 @@ function ReviewsTab({ salesmanId }: { salesmanId: string }) {
   }));
 
   const handleReplied = (reviewId: string, newReply: any) => {
-    setReviews(prev =>
-      prev.map(r =>
+    // Update the cached reviews in place so the reply shows immediately.
+    queryClient.setQueryData<Review[]>(reviewsKey, (prev) =>
+      (prev ?? []).map((r) =>
         r.id === reviewId ? { ...r, replies: [newReply] } : r
       )
     );
@@ -1814,7 +2068,7 @@ function ReviewsTab({ salesmanId }: { salesmanId: string }) {
             {total > 0 ? `All Reviews (${total})` : 'No reviews yet'}
           </h3>
           <button
-            onClick={fetchReviews}
+            onClick={() => queryClient.invalidateQueries({ queryKey: reviewsKey })}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
@@ -1850,12 +2104,173 @@ function ReviewsTab({ salesmanId }: { salesmanId: string }) {
   );
 }
 
+// ─── Team Tab (manager only) ─────────────────────────────────────────────────
+
+function TeamTab() {
+  const queryClient = useQueryClient();
+  const [copied, setCopied] = useState(false);
+  const [actioningId, setActioningId] = useState<string | null>(null);
+
+  const { data: joinCode } = useQuery({
+    queryKey: ['manager-join-code'],
+    queryFn: async () => {
+      const res = await managerApi.getJoinCode();
+      return res.success ? res.data.joinCode : null;
+    },
+  });
+
+  const { data: salesmen = [], isLoading } = useQuery<ShopSalesman[]>({
+    queryKey: ['manager-salesmen'],
+    queryFn: async () => {
+      const res = await managerApi.getSalesmen();
+      return res.success ? res.data : [];
+    },
+  });
+
+  const pending = salesmen.filter((s) => s.status === 'PENDING');
+  const active = salesmen.filter((s) => s.status !== 'PENDING');
+
+  const copyCode = async () => {
+    if (!joinCode) return;
+    try {
+      await navigator.clipboard.writeText(joinCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard may be unavailable (insecure context) — ignore silently.
+    }
+  };
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['manager-salesmen'] });
+  };
+
+  const approve = async (id: string) => {
+    setActioningId(id);
+    try {
+      await managerApi.approveSalesman(id);
+      refresh();
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const reject = async (id: string) => {
+    if (!window.confirm('Reject this salesman request? Their account will be removed.')) return;
+    setActioningId(id);
+    try {
+      await managerApi.rejectSalesman(id);
+      refresh();
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Join code card */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <h2 className="text-lg font-bold text-gray-900">Shop Join Code</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Share this code with your salesmen so they can register into your shop. Each new salesman
+          appears below for your approval before they can sign in.
+        </p>
+        <div className="mt-4 flex items-center gap-3">
+          <div className="px-5 py-3 bg-gray-50 border border-gray-200 rounded-xl font-mono text-2xl font-bold tracking-[0.3em] text-[#00002E]">
+            {joinCode ?? '••••••'}
+          </div>
+          <button
+            onClick={copyCode}
+            disabled={!joinCode}
+            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#00002E] text-white text-sm font-semibold hover:bg-[#000050] transition-all disabled:opacity-50"
+          >
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+      </div>
+
+      {/* Pending approvals */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div className="flex items-center gap-2">
+          <Clock className="w-5 h-5 text-amber-500" />
+          <h2 className="text-lg font-bold text-gray-900">Pending Approvals</h2>
+          {pending.length > 0 && (
+            <span className="ml-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">
+              {pending.length}
+            </span>
+          )}
+        </div>
+
+        {isLoading ? (
+          <p className="text-sm text-gray-400 mt-4">Loading…</p>
+        ) : pending.length === 0 ? (
+          <p className="text-sm text-gray-400 mt-4">No salesmen waiting for approval.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {pending.map((s) => (
+              <div key={s.id} className="flex items-center justify-between gap-4 p-3 rounded-xl border border-gray-100 bg-gray-50">
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{s.name || 'Unnamed'}</p>
+                  <p className="text-sm text-gray-500 truncate">{s.email}{s.phone ? ` · ${s.phone}` : ''}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => approve(s.id)}
+                    disabled={actioningId === s.id}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition-all disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Approve
+                  </button>
+                  <button
+                    onClick={() => reject(s.id)}
+                    disabled={actioningId === s.id}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-100 transition-all disabled:opacity-50"
+                  >
+                    <X className="w-4 h-4" /> Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Active team */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div className="flex items-center gap-2">
+          <Users className="w-5 h-5 text-blue-500" />
+          <h2 className="text-lg font-bold text-gray-900">Salesmen</h2>
+        </div>
+        {active.length === 0 ? (
+          <p className="text-sm text-gray-400 mt-4">No active salesmen yet.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {active.map((s) => (
+              <div key={s.id} className="flex items-center justify-between gap-4 p-3 rounded-xl border border-gray-100">
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{s.name || 'Unnamed'}</p>
+                  <p className="text-sm text-gray-500 truncate">{s.email}{s.phone ? ` · ${s.phone}` : ''}</p>
+                </div>
+                <span className="shrink-0 px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold">
+                  {s.status === 'ACTIVE' ? 'Active' : s.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 
-type Tab = 'orders' | 'products' | 'history' | 'wallet' | 'receipts' | 'reviews';
+type Tab = 'orders' | 'products' | 'history' | 'wallet' | 'receipts' | 'reviews' | 'team';
 
 export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALESMAN' | 'SHOP_MANAGER' }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user, logout, isAuthenticated, refreshProfile } = useAuthStore();
   const socketSetupKeyRef = useRef<string | null>(null);
 
@@ -1895,6 +2310,49 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
       router.push(dest);
     }
   }, [isAuthenticated, user, router, expectedRole]);
+
+  // Warm the other tabs' data in the background once we know who the user is, so the
+  // first click on Products / Sales History / Reviews is instant instead of loading.
+  // prefetchQuery respects staleTime, so this is a no-op if a tab is already cached.
+  const userId = user?.id;
+  const managerId = user?.managerId;
+  useEffect(() => {
+    if (!userId) return;
+    const salesmanId = managerId || userId;
+
+    queryClient.prefetchQuery({
+      queryKey: ['salesman-products'],
+      queryFn: async () => {
+        const res = await productsApi.getSalesmanProducts();
+        if (!res.success) return [];
+        return Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.products) ? res.data.products : [];
+      },
+    });
+
+    queryClient.prefetchQuery({
+      queryKey: ['salesman-sales-history'],
+      queryFn: async () => {
+        const [sumRes, ordersRes] = await Promise.all([
+          ordersApi.getSalesmanSummary(),
+          ordersApi.getSalesmanOrders({ status: 'DELIVERED', limit: 50 }),
+        ]);
+        return {
+          summary: (sumRes.success ? sumRes.data : null) as SalesSummary | null,
+          completedOrders: (ordersRes.success ? ordersRes.data.orders : []) as Order[],
+        };
+      },
+    });
+
+    queryClient.prefetchQuery({
+      queryKey: ['target-reviews', salesmanId],
+      queryFn: async () => {
+        const res = await reviewsApi.getTargetReviews(salesmanId);
+        return res.data || [];
+      },
+    });
+  }, [userId, managerId, queryClient]);
 
   // Sync profile data on mount to ensure mobile updates are reflected
   useEffect(() => {
@@ -2072,6 +2530,8 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
     { id: 'wallet' as const, label: 'Wallet', icon: Wallet },
     { id: 'receipts' as const, label: 'Receipts', icon: Receipt },
     { id: 'reviews' as const, label: 'Store Reviews', icon: Star },
+    // Managers own the shop and approve the salesmen who work under them.
+    ...(isManager ? [{ id: 'team' as const, label: 'Team', icon: Users }] : []),
   ];
 
 
@@ -2280,12 +2740,13 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
         {/* Greeting */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">
-            {activeTab === 'orders' && '📦 Current Orders'}
-            {activeTab === 'products' && '🛒 My Products'}
-            {activeTab === 'history' && '📊 Sales History'}
-            {activeTab === 'wallet' && '💼 Wallet'}
-            {activeTab === 'receipts' && '🧾 Receipts'}
-            {activeTab === 'reviews' && '⭐ Store Reviews'}
+            {activeTab === 'orders' && 'Current Orders'}
+            {activeTab === 'products' && 'My Products'}
+            {activeTab === 'history' && 'Sales History'}
+            {activeTab === 'wallet' && 'Wallet'}
+            {activeTab === 'receipts' && 'Receipts'}
+            {activeTab === 'reviews' && 'Store Reviews'}
+            {activeTab === 'team' && 'Team'}
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">
             {activeTab === 'orders' && 'Manage and update orders placed by your customers.'}
@@ -2294,6 +2755,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
             {activeTab === 'wallet' && 'Track balances, settlements, and recent transactions.'}
             {activeTab === 'receipts' && 'Upload and review repayment proof for wallet settlement.'}
             {activeTab === 'reviews' && 'See what customers are saying and reply to their reviews.'}
+            {activeTab === 'team' && 'Share your join code and approve salesmen who join your shop.'}
           </p>
 
         </div>
@@ -2305,6 +2767,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
         {activeTab === 'receipts' && <ReceiptUploadPanel />}
         {/* Reviews target the shop owner (manager); a salesman scopes to their manager. */}
         {activeTab === 'reviews' && <ReviewsTab salesmanId={user.managerId || user.id} />}
+        {activeTab === 'team' && <TeamTab />}
 
       </main>
 
@@ -2363,6 +2826,103 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
   );
 }
 
+// ─── Multi-select dropdown (checkbox list + "All") ──────────────────────────
+// Used for Vehicle Type / Brand / Model so a manager can tag one product as
+// compatible with several vehicles instead of exactly one.
+
+function MultiSelectDropdown({
+  options,
+  selectedIds,
+  onChange,
+  placeholder,
+  disabled,
+  loading,
+}: {
+  options: { id: string; name: string }[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  placeholder: string;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const allSelected = options.length > 0 && selectedIds.length === options.length;
+
+  const toggleAll = () => {
+    onChange(allSelected ? [] : options.map(o => o.id));
+  };
+
+  const toggleOne = (id: string) => {
+    onChange(
+      selectedIds.includes(id)
+        ? selectedIds.filter(existing => existing !== id)
+        : [...selectedIds, id]
+    );
+  };
+
+  const summary = loading
+    ? 'Loading...'
+    : selectedIds.length === 0
+    ? placeholder
+    : allSelected
+    ? `All (${options.length})`
+    : `${selectedIds.length} selected`;
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(prev => !prev)}
+        disabled={disabled}
+        className="w-full px-4 py-3 border border-gray-300 rounded-xl text-left flex items-center justify-between focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E] disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <span className={selectedIds.length === 0 ? 'text-gray-400' : 'text-gray-900'}>
+          {summary}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && !disabled && (
+        <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg py-1">
+          {options.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-gray-400">No options available</div>
+          ) : (
+            <>
+              <label className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 font-medium">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} className="rounded" />
+                <span className="text-sm text-gray-900">All</span>
+              </label>
+              {options.map(opt => (
+                <label key={opt.id} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(opt.id)}
+                    onChange={() => toggleOne(opt.id)}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-gray-700">{opt.name}</span>
+                </label>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Add Product Modal (with Vehicle Types, Brands, Models) ─────────────────
 
 function AddProductModal({ onClose }: { onClose: () => void }) {
@@ -2382,10 +2942,15 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     stock: '',
     condition: 'NEW',
     categoryId: '',
-    vehicleTypeId: '',
-    vehicleBrandId: '',
-    vehicleModelId: '',
+    // Which delivery vehicle is required to carry this product (compulsory).
+    deliveryVehicle: '',
   });
+
+  // Multi-select: a product can be tagged compatible with several vehicle
+  // types/brands/models at once (each dropdown also offers an "All" option).
+  const [selectedTypeIds, setSelectedTypeIds] = useState<string[]>([]);
+  const [selectedBrandIds, setSelectedBrandIds] = useState<string[]>([]);
+  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
 
   // Load vehicle types and categories on mount
   useEffect(() => {
@@ -2404,24 +2969,31 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     loadInitialData();
   }, []);
 
-  // Load vehicle brands when vehicle type changes
+  // Load vehicle brands for the union of all selected vehicle types
   useEffect(() => {
-    if (!formData.vehicleTypeId) {
+    if (selectedTypeIds.length === 0) {
       setVehicleBrands([]);
       setVehicleModels([]);
+      setSelectedBrandIds([]);
       return;
     }
 
     const loadBrands = async () => {
       setLoadingBrands(true);
       try {
-        const res = await vehicleApi.getVehicleBrandsByType(formData.vehicleTypeId);
-        if (res.success) {
-          setVehicleBrands(res.data);
-          // Reset brand and model selections
-          setFormData(prev => ({ ...prev, vehicleBrandId: '', vehicleModelId: '' }));
-          setVehicleModels([]);
-        }
+        const results = await Promise.all(
+          selectedTypeIds.map(typeId => vehicleApi.getVehicleBrandsByType(typeId))
+        );
+        const brandMap = new Map<string, any>();
+        results.forEach(res => {
+          if (res.success) {
+            res.data.forEach((brand: any) => brandMap.set(brand.id, brand));
+          }
+        });
+        const merged = Array.from(brandMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        setVehicleBrands(merged);
+        // Drop any brand selections that no longer apply under the new type set
+        setSelectedBrandIds(prev => prev.filter(id => merged.some(b => b.id === id)));
       } catch (err) {
         console.error('Failed to load vehicle brands', err);
       } finally {
@@ -2430,25 +3002,32 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     };
 
     loadBrands();
-  }, [formData.vehicleTypeId]);
+  }, [selectedTypeIds]);
 
-  // Load vehicle models when vehicle brand changes
+  // Load vehicle models for the union of all selected vehicle brands
   useEffect(() => {
-    if (!formData.vehicleBrandId) {
+    if (selectedBrandIds.length === 0) {
       setVehicleModels([]);
-      setFormData(prev => ({ ...prev, vehicleModelId: '' }));
+      setSelectedModelIds([]);
       return;
     }
 
     const loadModels = async () => {
       setLoadingModels(true);
       try {
-        const res = await vehicleApi.getVehicleModelsByBrand(formData.vehicleBrandId);
-        if (res.success) {
-          setVehicleModels(res.data);
-          // Reset model selection
-          setFormData(prev => ({ ...prev, vehicleModelId: '' }));
-        }
+        const results = await Promise.all(
+          selectedBrandIds.map(brandId => vehicleApi.getVehicleModelsByBrand(brandId))
+        );
+        const modelMap = new Map<string, any>();
+        results.forEach(res => {
+          if (res.success) {
+            res.data.forEach((model: any) => modelMap.set(model.id, model));
+          }
+        });
+        const merged = Array.from(modelMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        setVehicleModels(merged);
+        // Drop any model selections that no longer apply under the new brand set
+        setSelectedModelIds(prev => prev.filter(id => merged.some(m => m.id === id)));
       } catch (err) {
         console.error('Failed to load vehicle models', err);
       } finally {
@@ -2457,7 +3036,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     };
 
     loadModels();
-  }, [formData.vehicleBrandId]);
+  }, [selectedBrandIds]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -2481,8 +3060,12 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
     e.preventDefault();
 
     // Validate required fields
-    if (!formData.vehicleModelId) {
-      alert('Please select a vehicle model');
+    if (selectedModelIds.length === 0) {
+      alert('Please select at least one vehicle model');
+      return;
+    }
+    if (!formData.deliveryVehicle) {
+      alert('Please select the delivery vehicle for this product');
       return;
     }
 
@@ -2493,6 +3076,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock),
         images: images,
+        vehicleModelIds: selectedModelIds,
       });
       alert('Product added successfully!');
       onClose();
@@ -2544,61 +3128,71 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Vehicle Type Dropdown */}
+          {/* Vehicle Type Dropdown (multi-select) */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Type *</label>
-            <select
-              title="Select vehicle type"
-              value={formData.vehicleTypeId}
-              onChange={e => setFormData({ ...formData, vehicleTypeId: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
-              required
-            >
-              <option value="">Select a vehicle type</option>
-              {vehicleTypes.map(type => (
-                <option key={type.id} value={type.id}>{type.name}</option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Type * (select one or more)</label>
+            <MultiSelectDropdown
+              options={vehicleTypes}
+              selectedIds={selectedTypeIds}
+              onChange={setSelectedTypeIds}
+              placeholder="Select vehicle type(s)"
+            />
           </div>
 
-          {/* Vehicle Brand Dropdown */}
+          {/* Vehicle Brand Dropdown (multi-select) */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Brand *</label>
-            <select
-              title="Select vehicle brand"
-              value={formData.vehicleBrandId}
-              onChange={e => setFormData({ ...formData, vehicleBrandId: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
-              disabled={!formData.vehicleTypeId || loadingBrands}
-              required
-            >
-              <option value="">
-                {loadingBrands ? 'Loading brands...' : 'Select a brand'}
-              </option>
-              {vehicleBrands.map(brand => (
-                <option key={brand.id} value={brand.id}>{brand.name}</option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Brand * (select one or more)</label>
+            <MultiSelectDropdown
+              options={vehicleBrands}
+              selectedIds={selectedBrandIds}
+              onChange={setSelectedBrandIds}
+              placeholder="Select vehicle brand(s)"
+              disabled={selectedTypeIds.length === 0}
+              loading={loadingBrands}
+            />
           </div>
 
-          {/* Vehicle Model Dropdown */}
+          {/* Vehicle Model Dropdown (multi-select) */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Model *</label>
-            <select
-              title="Select vehicle model"
-              value={formData.vehicleModelId}
-              onChange={e => setFormData({ ...formData, vehicleModelId: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#00002E]/30 focus:border-[#00002E]"
-              disabled={!formData.vehicleBrandId || loadingModels}
-              required
-            >
-              <option value="">
-                {loadingModels ? 'Loading models...' : 'Select a model'}
-              </option>
-              {vehicleModels.map(model => (
-                <option key={model.id} value={model.id}>{model.name}</option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Model * (select one or more)</label>
+            <MultiSelectDropdown
+              options={vehicleModels}
+              selectedIds={selectedModelIds}
+              onChange={setSelectedModelIds}
+              placeholder="Select vehicle model(s)"
+              disabled={selectedBrandIds.length === 0}
+              loading={loadingModels}
+            />
+          </div>
+
+          {/* Delivery Vehicle (compulsory) — which vehicle is needed to carry this product */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Vehicle *</label>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { value: 'MOTORBIKE', label: 'Motorbike', icon: '🏍️' },
+                { value: 'CAR', label: 'Car', icon: '🚗' },
+                { value: 'LORRY', label: 'Lorry', icon: '🚚' },
+              ].map((option) => {
+                const selected = formData.deliveryVehicle === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, deliveryVehicle: option.value })}
+                    className={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl border-2 transition-all ${
+                      selected
+                        ? 'border-[#00002E] bg-[#00002E]/5 text-[#00002E]'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-xl">{option.icon}</span>
+                    <span className="text-sm font-semibold">{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-xs text-gray-500">The vehicle type needed to deliver this product.</p>
           </div>
 
           {/* Product Name */}
@@ -2672,7 +3266,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl transition-all">
               Cancel
             </button>
-            <button type="submit" disabled={isSubmitting || !formData.vehicleModelId} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
+            <button type="submit" disabled={isSubmitting || selectedModelIds.length === 0} className="flex-1 px-4 py-2 bg-[#00002E] hover:bg-[#000050] text-white font-semibold rounded-xl transition-all disabled:opacity-50">
               {isSubmitting ? 'Adding...' : 'Add Product'}
             </button>
           </div>

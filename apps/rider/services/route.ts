@@ -3,9 +3,8 @@ import {
     MAPBOX_ACCESS_TOKEN,
     ROUTE_PROVIDER,
 } from '../config';
-import { isMockSession } from './storage';
 
-export type RouteProvider = 'mapbox' | 'google';
+export type RouteProvider = 'mapbox' | 'google' | 'osrm';
 
 export type RouteCoordinate = {
     latitude: number;
@@ -43,13 +42,13 @@ const MAPBOX_DIRECTIONS_BASE_URL =
     'https://api.mapbox.com/directions/v5/mapbox/driving-traffic';
 const GOOGLE_ROUTES_BASE_URL =
     'https://routes.googleapis.com/directions/v2:computeRoutes';
+const OSRM_ROUTES_BASE_URL =
+    'https://router.project-osrm.org/route/v1/driving';
 
 const clampEtaMinutes = (durationSeconds: number) =>
     Math.max(1, Math.round(durationSeconds / 60));
 
 const toDistanceKm = (distanceMeters: number) => distanceMeters / 1000;
-
-const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
 
 const createRouteServiceError = (
     code: RouteServiceErrorCode,
@@ -97,76 +96,6 @@ const buildRouteResult = (
     durationSeconds,
     etaMinutes: clampEtaMinutes(durationSeconds),
 });
-
-const calculateDistanceMeters = (
-    origin: RouteCoordinate,
-    destination: RouteCoordinate
-) => {
-    const earthRadiusMeters = 6371000;
-    const latitudeDelta = toRadians(destination.latitude - origin.latitude);
-    const longitudeDelta = toRadians(destination.longitude - origin.longitude);
-    const originLatitude = toRadians(origin.latitude);
-    const destinationLatitude = toRadians(destination.latitude);
-    const haversine =
-        Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
-        Math.cos(originLatitude) *
-            Math.cos(destinationLatitude) *
-            Math.sin(longitudeDelta / 2) *
-            Math.sin(longitudeDelta / 2);
-
-    return (
-        2 *
-        earthRadiusMeters *
-        Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
-    );
-};
-
-const interpolateCoordinates = (
-    origin: RouteCoordinate,
-    destination: RouteCoordinate,
-    totalPoints = 6
-) => {
-    const coordinates: RouteCoordinate[] = [];
-
-    for (let index = 0; index < totalPoints; index += 1) {
-        const progress = index / (totalPoints - 1);
-        const bendOffset = progress > 0 && progress < 1 ? 0.004 * Math.sin(progress * Math.PI) : 0;
-
-        coordinates.push({
-            latitude:
-                origin.latitude + (destination.latitude - origin.latitude) * progress,
-            longitude:
-                origin.longitude +
-                (destination.longitude - origin.longitude) * progress +
-                bendOffset,
-        });
-    }
-
-    return coordinates;
-};
-
-const buildMockRoute = (
-    provider: RouteProvider,
-    origin: RouteCoordinate,
-    destination: RouteCoordinate
-) => {
-    const straightDistanceMeters = calculateDistanceMeters(origin, destination);
-    const roadDistanceMeters = Math.max(
-        900,
-        Math.round(straightDistanceMeters * 1.18)
-    );
-    const durationSeconds = Math.max(
-        7 * 60,
-        Math.round((roadDistanceMeters / 1000 / 24) * 3600)
-    );
-
-    return buildRouteResult(
-        provider,
-        interpolateCoordinates(origin, destination),
-        roadDistanceMeters,
-        durationSeconds
-    );
-};
 
 const decodeGoogleEncodedPolyline = (encoded: string): RouteCoordinate[] => {
     const coordinates: RouteCoordinate[] = [];
@@ -338,13 +267,66 @@ const fetchGoogleRoute = async ({
     );
 };
 
-export const getConfiguredRouteProvider = (): RouteProvider =>
-    ROUTE_PROVIDER === 'google' ? 'google' : 'mapbox';
+const fetchOsrmRoute = async ({
+    origin,
+    destination,
+}: RouteRequest): Promise<DeliveryRoute> => {
+    const coordinates =
+        `${origin.longitude},${origin.latitude};` +
+        `${destination.longitude},${destination.latitude}`;
+    const url =
+        `${OSRM_ROUTES_BASE_URL}/${coordinates}` +
+        '?alternatives=false&steps=false&geometries=geojson&overview=full';
+    const response = await fetch(url);
+
+    if (!response.ok) {
+        throw createRouteServiceError(
+            'REQUEST_FAILED',
+            `OSRM route request failed with status ${response.status}.`
+        );
+    }
+
+    const payload = await response.json();
+    const route = payload?.routes?.[0];
+    const geometry = route?.geometry?.coordinates;
+
+    if (payload?.code !== 'Ok' || !Array.isArray(geometry) || geometry.length < 2) {
+        throw createRouteServiceError(
+            'ROUTE_UNAVAILABLE',
+            'OSRM did not return a road route geometry.'
+        );
+    }
+
+    const routeCoordinates = geometry.map(
+        ([longitude, latitude]: [number, number]) => ({
+            latitude: Number(latitude),
+            longitude: Number(longitude),
+        })
+    );
+
+    return buildRouteResult(
+        'osrm',
+        routeCoordinates,
+        Number(route.distance ?? 0),
+        Number(route.duration ?? 0)
+    );
+};
+
+export const getConfiguredRouteProvider = (): RouteProvider => {
+    if (ROUTE_PROVIDER === 'google' || ROUTE_PROVIDER === 'mapbox') {
+        return ROUTE_PROVIDER;
+    }
+    return 'osrm';
+};
 
 export const isRouteServiceConfigured = (
     provider: RouteProvider = getConfiguredRouteProvider()
-) =>
-    provider === 'google' ? Boolean(GOOGLE_MAPS_API_KEY) : Boolean(MAPBOX_ACCESS_TOKEN);
+) => {
+    if (provider === 'osrm') return true;
+    return provider === 'google'
+        ? Boolean(GOOGLE_MAPS_API_KEY)
+        : Boolean(MAPBOX_ACCESS_TOKEN);
+};
 
 export const getRouteErrorMessage = (error: unknown) =>
     error instanceof Error
@@ -362,19 +344,41 @@ export const fetchRoute = async (
     }
 
     const provider = request.provider ?? getConfiguredRouteProvider();
-    const shouldUseMockFallback = await isMockSession();
+    const providers = [provider, 'osrm', 'google', 'mapbox'].filter(
+        (candidate, index, values) =>
+            values.indexOf(candidate) === index &&
+            isRouteServiceConfigured(candidate as RouteProvider)
+    ) as RouteProvider[];
+    const failures: string[] = [];
 
-    try {
-        if (provider === 'google') {
-            return await fetchGoogleRoute(request);
+    for (const candidate of providers) {
+        try {
+            if (candidate === 'google') {
+                return await fetchGoogleRoute(request);
+            }
+
+            if (candidate === 'mapbox') {
+                return await fetchMapboxRoute(request);
+            }
+
+            return await fetchOsrmRoute(request);
+        } catch (error) {
+            failures.push(
+                `${candidate}: ${getRouteErrorMessage(error)}`
+            );
         }
-
-        return await fetchMapboxRoute(request);
-    } catch (error) {
-        if (shouldUseMockFallback) {
-            return buildMockRoute(provider, request.origin, request.destination);
-        }
-
-        throw error;
     }
+
+    if (!providers.length) {
+        throw createRouteServiceError(
+            'CONFIG_MISSING',
+            'No real road-routing provider is configured.'
+        );
+    }
+
+    console.warn(`Road route providers failed: ${failures.join(' | ')}`);
+    throw createRouteServiceError(
+        'REQUEST_FAILED',
+        'Road directions are temporarily unavailable. Open the stop in Maps to continue navigation.'
+    );
 };

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { adminApi } from '@/lib/api';
@@ -370,22 +371,14 @@ function AdminReceiptQueueView() {
 }
 
 function OverviewTab() {
-    const [stats, setStats] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchStats = async () => {
-            try {
-                const res = await adminApi.getStats();
-                if (res.success) setStats(res.data);
-            } catch (error) {
-                console.error('Failed to fetch stats', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchStats();
-    }, []);
+    // Cached via React Query so switching admin tabs and back is instant.
+    const { data: stats, isLoading: loading } = useQuery({
+        queryKey: ['admin-stats'],
+        queryFn: async () => {
+            const res = await adminApi.getStats();
+            return res.success ? res.data : null;
+        },
+    });
 
     if (loading) return <div className="py-20 flex justify-center"><div className="animate-spin w-8 h-8 border-2 border-[#00002E] border-t-transparent rounded-full" /></div>;
 
@@ -417,25 +410,17 @@ function OverviewTab() {
 }
 
 function UsersTab() {
-    const [users, setUsers] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
     const [roleFilter, setRoleFilter] = useState<string>('');
 
-    const fetchUsers = async () => {
-        setLoading(true);
-        try {
+    const { data: users = [], isLoading: loading } = useQuery<any[]>({
+        queryKey: ['admin-users', roleFilter],
+        queryFn: async () => {
             const res = await adminApi.getUsers({ role: roleFilter });
-            if (res.success) setUsers(res.data);
-        } catch (error) {
-            console.error('Failed to fetch users', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchUsers();
-    }, [roleFilter]);
+            return res.success ? res.data : [];
+        },
+    });
+    const fetchUsers = () => queryClient.invalidateQueries({ queryKey: ['admin-users'] });
 
     const toggleUserStatus = async (userId: string, currentStatus: string, userDetails: any) => {
         const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
@@ -518,9 +503,7 @@ function UsersTab() {
 }
 
 function FinancesTab() {
-    const [transactions, setTransactions] = useState<any[]>([]);
-    const [meta, setMeta] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
     const [selectedTx, setSelectedTx] = useState<any>(null);
     const [filters, setFilters] = useState({
         status: '',
@@ -530,27 +513,21 @@ function FinancesTab() {
         page: 1,
     });
 
-    const fetchFinances = async () => {
-        setLoading(true);
-        try {
+    const { data, isLoading: loading } = useQuery<{ transactions: any[]; meta: any }>({
+        queryKey: ['admin-finances', filters],
+        queryFn: async () => {
             const params: any = { page: filters.page, limit: 20 };
             if (filters.status) params.status = filters.status;
             if (filters.paymentStatus) params.paymentStatus = filters.paymentStatus;
             if (filters.dateFrom) params.dateFrom = filters.dateFrom;
             if (filters.dateTo) params.dateTo = filters.dateTo;
             const res = await adminApi.getFinances(params);
-            if (res.success) {
-                setTransactions(res.data);
-                setMeta(res.meta);
-            }
-        } catch (error) {
-            console.error('Failed to fetch finances', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => { fetchFinances(); }, [filters.page, filters.status, filters.paymentStatus, filters.dateFrom, filters.dateTo]);
+            return res.success ? { transactions: res.data, meta: res.meta } : { transactions: [], meta: null };
+        },
+    });
+    const transactions = data?.transactions ?? [];
+    const meta = data?.meta ?? null;
+    const fetchFinances = () => queryClient.invalidateQueries({ queryKey: ['admin-finances'] });
 
     const statusColors: Record<string, string> = {
         PENDING:    'bg-amber-100 text-amber-700',
@@ -835,31 +812,23 @@ function FinancesTab() {
 }
 
 function CatalogTab() {
-    const [items, setItems] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
     const [filters, setFilters] = useState({
         type: 'PRODUCT', // PRODUCT or CAR_PART
         status: 'pending', // all, active, pending
     });
 
-    const fetchCatalog = async () => {
-        setLoading(true);
-        try {
+    const { data: items = [], isLoading: loading } = useQuery<any[]>({
+        queryKey: ['admin-catalog', filters],
+        queryFn: async () => {
             const res = await adminApi.getCatalog({
                 type: filters.type,
                 ...(filters.status !== 'all' && { status: filters.status })
             });
-            if (res.success) setItems(res.data);
-        } catch (error) {
-            console.error('Failed to fetch catalog', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchCatalog();
-    }, [filters.type, filters.status]);
+            return res.success ? res.data : [];
+        },
+    });
+    const fetchCatalog = () => queryClient.invalidateQueries({ queryKey: ['admin-catalog'] });
 
     const handleStatusToggle = async (id: string, currentStatus: boolean) => {
         try {
@@ -979,37 +948,27 @@ function CatalogTab() {
 }
 
 function ReviewsModerationTab() {
-    const [reviews, setReviews] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
     const [filters, setFilters] = useState({
         status: 'FLAGGED',
         targetType: '',
         page: 1,
     });
-    const [meta, setMeta] = useState<any>(null);
 
-    const fetchReviews = async () => {
-        setLoading(true);
-        try {
+    const { data, isLoading: loading } = useQuery<{ reviews: any[]; meta: any }>({
+        queryKey: ['admin-reviews', filters],
+        queryFn: async () => {
             const params: any = { page: filters.page, limit: 10 };
             if (filters.status) params.status = filters.status;
             if (filters.targetType) params.targetType = filters.targetType;
-            
-            const res = await adminApi.getReviews(params);
-            if (res.success) {
-                setReviews(res.data);
-                setMeta(res.meta);
-            }
-        } catch (error) {
-            console.error('Failed to fetch reviews', error);
-        } finally {
-            setLoading(false);
-        }
-    };
 
-    useEffect(() => {
-        fetchReviews();
-    }, [filters.status, filters.targetType, filters.page]);
+            const res = await adminApi.getReviews(params);
+            return res.success ? { reviews: res.data, meta: res.meta } : { reviews: [], meta: null };
+        },
+    });
+    const reviews = data?.reviews ?? [];
+    const meta = data?.meta ?? null;
+    const fetchReviews = () => queryClient.invalidateQueries({ queryKey: ['admin-reviews'] });
 
     const handleModerate = async (reviewId: string, status: 'PUBLISHED' | 'HIDDEN') => {
         try {

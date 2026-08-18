@@ -7,8 +7,10 @@ import {
   removeCartItem,
   clearCartApi,
   BackendCartItem,
+  SessionExpiredError,
 } from '../api/cart';
 import { getToken } from '../api/storage';
+import { router } from 'expo-router';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,8 +67,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   });
 
   // ── Load from backend (or local fallback) ──
-  const loadCart = useCallback(async () => {
-    setIsLoading(true);
+  // `silent` skips the loading flag so a background reconcile (e.g. after an
+  // optimistic add) doesn't flash a spinner over already-visible items.
+  const loadCart = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const token = await getToken();
 
@@ -84,6 +88,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             return;
           }
         } catch (backendError) {
+          if (backendError instanceof SessionExpiredError) {
+            setItems([]);
+            await AsyncStorage.removeItem(CART_OFFLINE_KEY);
+            router.replace('/(auth)/login');
+            return;
+          }
           console.warn('🛒 Cart: Backend fetch failed, falling back to offline cache:', String(backendError).substring(0, 100));
         }
       } else {
@@ -105,7 +115,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setItems([]);
       }
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, []);
 
@@ -122,13 +132,32 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         throw new Error('You must be logged in to add items to cart.');
       }
 
-      // Call backend first so quantity checks and duplicate-item merging happen
-      // in one place.
-      await addItemToCart(item.productId, 1, item.itemType);
+      // Optimistic update first so the cart reflects the add instantly. If the item
+      // is already in the cart we bump its quantity, otherwise append a temporary row.
+      let prevItems: CartItem[] = [];
+      setItems((curr) => {
+        prevItems = curr;
+        const existing = curr.find(
+          (i) => i.productId === item.productId && i.itemType === item.itemType
+        );
+        const next = existing
+          ? curr.map((i) => (i === existing ? { ...i, quantity: i.quantity + 1 } : i))
+          : [...curr, { ...item, id: `temp-${Date.now()}`, quantity: 1 }];
+        AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(next));
+        return next;
+      });
 
-      // Reload after the write because the backend assigns the real cart item
-      // ID and may merge with an existing row.
-      await loadCart();
+      try {
+        await addItemToCart(item.productId, 1, item.itemType);
+        // Reconcile in the background (silent) to pick up the real cart item ID and
+        // any server-side merge, without blocking the UI or flashing a spinner.
+        loadCart(true);
+      } catch (error) {
+        // Roll back the optimistic change on failure.
+        setItems(prevItems);
+        AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(prevItems));
+        throw error;
+      }
     },
     [loadCart]
   );
@@ -142,14 +171,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         throw new Error('You must be logged in.');
       }
 
-      await removeCartItem(id);
-
-      // Optimistic UI update
+      // Optimistic UI update first so removal feels instant; roll back on failure.
+      let prevItems: CartItem[] = [];
       setItems((curr) => {
+        prevItems = curr;
         const next = curr.filter((i) => i.id !== id);
         AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(next));
         return next;
       });
+
+      try {
+        await removeCartItem(id);
+      } catch (error) {
+        setItems(prevItems);
+        AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(prevItems));
+        throw error;
+      }
     },
     []
   );
@@ -167,16 +204,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         return removeItem(id);
       }
 
-      await updateCartItemQty(id, quantity);
-
-      // Optimistic UI update
+      // Optimistic UI update first so +/- feels instant; roll back on failure.
+      let prevItems: CartItem[] = [];
       setItems((curr) => {
+        prevItems = curr;
         const next = curr
           .map((i) => (i.id === id ? { ...i, quantity } : i))
           .filter((i) => i.quantity > 0);
         AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(next));
         return next;
       });
+
+      try {
+        await updateCartItemQty(id, quantity);
+      } catch (error) {
+        setItems(prevItems);
+        AsyncStorage.setItem(CART_OFFLINE_KEY, JSON.stringify(prevItems));
+        throw error;
+      }
     },
     [removeItem]
   );

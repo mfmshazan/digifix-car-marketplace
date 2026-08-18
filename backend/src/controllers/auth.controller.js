@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
 import { isRiderRegisterPayload, loginRiderByEmail, registerRider } from './riderAuth.controller.js';
 import { createStripeAccountForSalesman } from './stripe.controller.js';
+import { generateUniqueJoinCode } from '../lib/joinCode.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -43,7 +44,7 @@ const register = async (req, res) => {
         where: { role: 'ADMIN' },
       });
 
-      if (adminCount >= 3) {
+      if (adminCount >= 1) {
         return res.status(403).json({
           success: false,
           message: 'Maximum number of admins has been reached',
@@ -80,6 +81,27 @@ const register = async (req, res) => {
       });
     }
 
+    // A salesman may self-register into an existing shop by supplying that
+    // shop's join code. Resolve it (before creating the user) to the owning
+    // manager; such staff accounts start PENDING until the manager approves.
+    let joinManagerId = null;
+    if (role === 'SALESMAN') {
+      const joinCode = String(req.body.joinCode || '').trim().toUpperCase();
+      if (joinCode) {
+        const store = await prisma.store.findUnique({
+          where: { joinCode },
+          select: { ownerId: true },
+        });
+        if (!store) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid shop join code. Please check the code with your manager.',
+          });
+        }
+        joinManagerId = store.ownerId;
+      }
+    }
+
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
 
@@ -93,6 +115,9 @@ const register = async (req, res) => {
         phone: phone || '',
         role: role,
         authProvider: 'EMAIL',
+        // Staff joining a shop by code wait for manager approval before they can log in.
+        status: joinManagerId ? 'PENDING' : 'ACTIVE',
+        managerId: joinManagerId,
         vehicleType: role === 'DELIVERY_PARTNER' ? vehicleType : null,
         vehicleNumber: role === 'DELIVERY_PARTNER' ? vehicleNumber : null,
         deliveryStatus: role === 'DELIVERY_PARTNER' ? 'offline' : null,
@@ -100,16 +125,19 @@ const register = async (req, res) => {
     });
     console.log(`[Registration] User ${user.id} created successfully.`);
 
-    // If salesman, create a store + Stripe connected account
-    if (role === 'SALESMAN') {
+    // Store + Stripe connected account setup for a store-owning seller.
+    // The MANAGER owns the catalog and the wallet; a legacy self-registered SALESMAN
+    // (one created without a managerId) is also treated as its own store owner.
+    const setupStoreOwner = async () => {
+      const joinCode = await generateUniqueJoinCode();
       await prisma.store.create({
         data: {
           name: name ? `${name}'s Store` : 'My Store',
           ownerId: user.id,
+          joinCode,
         },
       });
 
-      // Create Stripe Express connected account and save to user
       try {
         const { accountId } = await createStripeAccountForSalesman();
         await prisma.user.update({
@@ -117,11 +145,35 @@ const register = async (req, res) => {
           data: { stripeAccountId: accountId },
         });
         user.stripeAccountId = accountId;
-        console.log(`Stripe connected account created for salesman ${user.email}: ${accountId}`);
+        console.log(`Stripe connected account created for ${user.role} ${user.email}: ${accountId}`);
       } catch (stripeErr) {
         // Non-fatal: user is created, they can connect Stripe later from profile
         console.warn(`Stripe account creation failed for ${user.email}:`, stripeErr.message);
       }
+    };
+
+    if (role === 'SHOP_MANAGER') {
+      // Manager is the store/catalog/wallet owner
+      await setupStoreOwner();
+      await prisma.wallet.upsert({
+        where: { userId: user.id },
+        update: {},
+        create: { userId: user.id },
+      });
+    } else if (role === 'SALESMAN' && !joinManagerId) {
+      // Legacy self-registered salesman (no join code) keeps its own store.
+      await setupStoreOwner();
+    }
+
+    // A salesman awaiting approval is not logged in — no token is issued. They
+    // must sign in once their manager approves the account.
+    if (joinManagerId) {
+      console.log(`[Registration] Salesman ${email} created as PENDING under manager ${joinManagerId}.`);
+      return res.status(201).json({
+        success: true,
+        pendingApproval: true,
+        message: 'Account created. Your manager must approve it before you can sign in.',
+      });
     }
 
     // Generate token
@@ -189,7 +241,7 @@ const login = async (req, res) => {
       },
     });
 
-    if (!user) {
+    if (user && ['DELIVERY_PARTNER', 'DELIVERY_PERSON', 'RIDER'].includes(user.role)) {
       const riderLoginResult = await loginRiderByEmail({ email, password });
 
       if (riderLoginResult && riderLoginResult !== false) {
@@ -202,6 +254,23 @@ const login = async (req, res) => {
       });
     }
 
+    if (!user) {
+      const riderLoginResult = await loginRiderByEmail({ email, password });
+
+      if (riderLoginResult && riderLoginResult !== false) {
+        return res.json(riderLoginResult);
+      }
+
+      // If they only exist in Rider table (or don't exist at all), or they are a rider and auth failed
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid email or password',
+        });
+      }
+    }
+
+
     const isWeb = req.headers.origin || req.headers.referer || (req.headers['user-agent'] && req.headers['user-agent'].includes('Mozilla'));
 
     // Admin web-only restriction
@@ -212,6 +281,14 @@ const login = async (req, res) => {
           message: 'Admin login is only allowed from the web application',
         });
       }
+    }
+
+    // Manager web-only restriction (manager role is currently web-only)
+    if (user.role === 'SHOP_MANAGER' && !isWeb) {
+      return res.status(403).json({
+        success: false,
+        message: 'Manager login is only allowed from the web application',
+      });
     }
 
     // Customer mobile-only restriction
@@ -239,6 +316,14 @@ const login = async (req, res) => {
       });
     }
 
+    // A salesman awaiting manager approval cannot log in yet.
+    if (user.role === 'SALESMAN' && user.status === 'PENDING') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is awaiting approval from your manager.',
+      });
+    }
+
     // Generate token
     const token = generateToken(user.id, user.role);
 
@@ -254,6 +339,7 @@ const login = async (req, res) => {
           role: user.role,
           avatar: user.avatar,
           store: user.store,
+          managerId: user.managerId,
         },
         token,
       },
@@ -285,6 +371,7 @@ const getProfile = async (req, res) => {
           phone: true,
           avatar: true,
           role: true,
+          managerId: true,
           isVerified: true,
           createdAt: true,
           store: true,
@@ -309,6 +396,7 @@ const getProfile = async (req, res) => {
           phone: true,
           avatar: true,
           role: true,
+          managerId: true,
           isVerified: true,
           createdAt: true,
           store: true,

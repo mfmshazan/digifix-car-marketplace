@@ -11,8 +11,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { wishlistApi } from "../../src/api/wishlist";
-import { useCart } from "../../src/store/cartStore";
+import { wishlistApi } from "../src/api/wishlist";
+import { useCart } from "../src/store/cartStore";
 
 export default function WishlistScreen() {
   const [wishlistItems, setWishlistItems] = useState<any[]>([]);

@@ -94,7 +94,7 @@ export default function CartScreen() {
           { text: "Not Now", style: "cancel" },
           {
             text: "Add Address",
-            onPress: () => router.push("/(customer)/addresses"),
+            onPress: () => router.push("/addresses"),
           },
         ],
       );
@@ -395,7 +395,7 @@ export default function CartScreen() {
                 styles.deliveryAddressCard,
                 !selectedAddress && styles.missingAddressCard,
               ]}
-              onPress={() => router.push("/(customer)/addresses")}
+              onPress={() => router.push("/addresses")}
               activeOpacity={0.8}
             >
               <View style={styles.deliveryAddressIcon}>

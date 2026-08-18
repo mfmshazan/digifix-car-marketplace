@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -8,18 +8,48 @@ import {
     Platform,
     ScrollView,
     TouchableOpacity,
+    ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Input, SurfaceCard, StatusBadge } from '../components/Common';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Button, Input, SurfaceCard } from '../components/Common';
 import { authAPI } from '../services/api';
 import { saveTokens, saveUserData } from '../services/storage';
 import { colors, spacing, typography, radii } from '../styles/theme';
+import { useGoogleSignIn, syncClerkWithBackend } from '../services/googleSignin';
+import { useAuth } from '@clerk/expo';
 
 export default function LoginScreen({ navigation }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [googleLoading, setGoogleLoading] = useState(false);
+
+    const { signInWithGoogle } = useGoogleSignIn();
+    const { isLoaded, isSignedIn, getToken, session } = useAuth();
+    const hasAttemptedSyncRef = useRef(false);
+
+    // Auto-sync an existing Clerk session with the backend on screen load
+    useEffect(() => {
+        const checkExistingSession = async () => {
+            if (!isLoaded || !isSignedIn || !session || hasAttemptedSyncRef.current) return;
+            try {
+                const clerkToken = await getToken();
+                if (clerkToken) {
+                    hasAttemptedSyncRef.current = true;
+                    setGoogleLoading(true);
+                    await handleBackendSync(clerkToken, session?.id);
+                }
+            } catch (err) {
+                console.error('Auto-sync error:', err);
+                hasAttemptedSyncRef.current = false;
+            } finally {
+                setGoogleLoading(false);
+            }
+        };
+        checkExistingSession();
+    }, [isLoaded, isSignedIn, session]);
 
     const handleLogin = async () => {
         if (!email || !password) {
@@ -48,119 +78,382 @@ export default function LoginScreen({ navigation }) {
         }
     };
 
+    const handleGoogleSignIn = async () => {
+        try {
+            setGoogleLoading(true);
+            const result = await signInWithGoogle();
+
+            if (!result.success) {
+                if (result.message) Alert.alert('Google Sign-In Failed', result.message);
+                return;
+            }
+
+            // Session is now active — getToken() will return the Clerk JWT
+            const clerkToken = await getToken();
+            if (!clerkToken) {
+                Alert.alert('Error', 'Could not retrieve authentication token. Please try again.');
+                return;
+            }
+
+            await handleBackendSync(clerkToken, result.sessionId);
+        } catch (err) {
+            console.error('Google sign-in error:', err);
+            Alert.alert('Google Sign-In Failed', err.message || 'An unexpected error occurred. Please try again.');
+        } finally {
+            setGoogleLoading(false);
+        }
+    };
+
+    const handleBackendSync = async (clerkToken, sessionId) => {
+        const response = await syncClerkWithBackend(clerkToken, 'DELIVERY_PARTNER', sessionId);
+        if (response.success && response.data) {
+            const { token, user } = response.data;
+            await saveTokens(token, '');
+            await saveUserData(user);
+            navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+        } else {
+            const msg = response.message || 'Backend sync failed. Please try again.';
+            Alert.alert('Sign-In Error', msg);
+        }
+    };
+
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.hero}>
-                    <StatusBadge label="Delivery Partner" tone="info" />
-                    <Text style={styles.title}>Professional dispatch at your fingertips.</Text>
-                    <Text style={styles.subtitle}>
-                        Sign in to manage routes, proofs, and live delivery updates from one polished workspace.
-                    </Text>
-                </View>
-
-                <SurfaceCard style={styles.formCard}>
-                    <Text style={styles.formTitle}>Welcome back</Text>
-                    <Text style={styles.formSubtitle}>Use your partner account to continue.</Text>
-
-                    <Input
-                        label="Email"
-                        placeholder="partner@delivery.com"
-                        value={email}
-                        onChangeText={setEmail}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                    />
-
-                    <Input
-                        label="Password"
-                        placeholder="Enter your password"
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry={!showPassword}
-                        rightAccessory={
-                            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} activeOpacity={0.7} style={{ padding: 4 }}>
-                                <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={22} color={colors.textMuted || '#6b7280'} />
-                            </TouchableOpacity>
-                        }
-                    />
-
-                    <Button
-                        title="Sign In"
-                        onPress={handleLogin}
-                        loading={loading}
-                        style={styles.primaryAction}
-                    />
-
-                    <View style={styles.footerContainer}>
-                        <Text style={styles.footerText}>Don't have an account? </Text>
-                        <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-                            <Text style={styles.footerLink}>Sign Up</Text>
-                        </TouchableOpacity>
+        <SafeAreaView style={styles.safeArea}>
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
+                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    <View style={styles.brandRow}>
+                        <View style={styles.brandMark}>
+                            <Ionicons name="bicycle" size={24} color={colors.surface} />
+                        </View>
+                        <View>
+                            <Text style={styles.brandName}>DIGIFIX RIDER</Text>
+                            <Text style={styles.brandTagline}>Delivery partner workspace</Text>
+                        </View>
                     </View>
 
-                </SurfaceCard>
-            </ScrollView>
-        </KeyboardAvoidingView>
+                    <View style={styles.hero}>
+                        <View style={styles.heroGlowLarge} />
+                        <View style={styles.heroGlowSmall} />
+                        <View style={styles.heroIcon}>
+                            <Ionicons name="navigate" size={25} color={colors.surface} />
+                        </View>
+                        <Text style={styles.heroEyebrow}>READY FOR THE ROAD</Text>
+                        <Text style={styles.title}>Your route command center.</Text>
+                        <Text style={styles.subtitle}>
+                            Receive delivery offers, navigate every stop, and close orders with verified proof.
+                        </Text>
+                        <View style={styles.heroFeatures}>
+                            <HeroFeature icon="radio-outline" label="Live offers" />
+                            <HeroFeature icon="map-outline" label="Road routes" />
+                            <HeroFeature icon="shield-checkmark-outline" label="Proof capture" />
+                        </View>
+                    </View>
+
+                    <SurfaceCard style={styles.formCard}>
+                        <View style={styles.formHeading}>
+                            <Text style={styles.formEyebrow}>PARTNER ACCESS</Text>
+                            <Text style={styles.formTitle}>Welcome back</Text>
+                            <Text style={styles.formSubtitle}>Sign in to start receiving delivery work.</Text>
+                        </View>
+
+                        <Input
+                            label="Email"
+                            placeholder="partner@delivery.com"
+                            value={email}
+                            onChangeText={setEmail}
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                        />
+
+                        <Input
+                            label="Password"
+                            placeholder="Enter your password"
+                            value={password}
+                            onChangeText={setPassword}
+                            secureTextEntry={!showPassword}
+                            rightAccessory={
+                                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} activeOpacity={0.7} style={styles.eyeButton}>
+                                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={21} color={colors.textSecondary} />
+                                </TouchableOpacity>
+                            }
+                        />
+
+                        <TouchableOpacity
+                            onPress={() => navigation.navigate('ForgotPassword')}
+                            style={styles.forgotPasswordLink}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                        </TouchableOpacity>
+
+                        <Button
+                            title="Sign In"
+                            icon="arrow-forward"
+                            iconPosition="right"
+                            onPress={handleLogin}
+                            loading={loading}
+                            style={styles.primaryAction}
+                        />
+
+                        {/* Divider */}
+                        <View style={styles.divider}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>or continue with</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        {/* Google Sign In Button */}
+                        <TouchableOpacity
+                            style={[styles.googleButton, (loading || googleLoading) && { opacity: 0.6 }]}
+                            onPress={handleGoogleSignIn}
+                            disabled={loading || googleLoading}
+                            activeOpacity={0.7}
+                        >
+                            {googleLoading ? (
+                                <ActivityIndicator size="small" color={colors.secondary} />
+                            ) : (
+                                <Ionicons name="logo-google" size={20} color="#DB4437" />
+                            )}
+                            <Text style={styles.googleButtonText}>Sign in with Google</Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.footerContainer}>
+                            <Text style={styles.footerText}>New delivery partner?</Text>
+                            <TouchableOpacity
+                                onPress={() => navigation.navigate('Register')}
+                                style={styles.createAccountButton}
+                            >
+                                <Text style={styles.footerLink}>Create account</Text>
+                                <Ionicons name="chevron-forward" size={16} color={colors.secondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                    </SurfaceCard>
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </SafeAreaView>
+    );
+}
+
+function HeroFeature({ icon, label }) {
+    return (
+        <View style={styles.heroFeature}>
+            <Ionicons name={icon} size={16} color="#BFDBFE" />
+            <Text style={styles.heroFeatureText}>{label}</Text>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
+    safeArea: {
+        flex: 1,
+        backgroundColor: colors.background,
+    },
     container: {
         flex: 1,
         backgroundColor: colors.background,
     },
     scrollContent: {
         flexGrow: 1,
-        padding: spacing.lg,
+        paddingHorizontal: spacing.lg,
+        paddingTop: spacing.md,
+        paddingBottom: spacing.xl,
         justifyContent: 'center',
     },
-    hero: {
-        backgroundColor: colors.primary,
-        borderRadius: radii.xl,
-        padding: spacing.xl,
+    brandRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
         marginBottom: spacing.lg,
     },
-    title: {
-        ...typography.hero,
-        color: colors.surface,
-        marginTop: spacing.md,
+    brandMark: {
+        width: 44,
+        height: 44,
+        borderRadius: 15,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.secondary,
+        shadowColor: colors.secondary,
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.25,
+        shadowRadius: 10,
+        elevation: 5,
+    },
+    brandName: {
+        ...typography.overline,
+        color: colors.text,
+    },
+    brandTagline: {
+        ...typography.caption,
+        color: colors.textSecondary,
+        marginTop: 2,
+    },
+    hero: {
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: colors.primary,
+        borderRadius: radii.xl,
+        padding: spacing.lg,
+        marginBottom: spacing.lg,
+    },
+    heroGlowLarge: {
+        position: 'absolute',
+        width: 190,
+        height: 190,
+        borderRadius: 95,
+        backgroundColor: 'rgba(59,130,246,0.18)',
+        right: -70,
+        top: -95,
+    },
+    heroGlowSmall: {
+        position: 'absolute',
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: 'rgba(139,92,246,0.15)',
+        right: 45,
+        bottom: -62,
+    },
+    heroIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.16)',
+        marginBottom: spacing.lg,
+    },
+    heroEyebrow: {
+        ...typography.overline,
+        color: '#93C5FD',
         marginBottom: spacing.sm,
     },
+    title: {
+        ...typography.h1,
+        color: colors.surface,
+        marginBottom: spacing.sm,
+        maxWidth: 290,
+    },
     subtitle: {
-        ...typography.body,
-        color: 'rgba(255,255,255,0.86)',
+        ...typography.bodySmall,
+        color: colors.textOnDarkMuted,
+        maxWidth: 330,
+    },
+    heroFeatures: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing.sm,
+        marginTop: spacing.lg,
+    },
+    heroFeature: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+        borderRadius: radii.pill,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    heroFeatureText: {
+        ...typography.caption,
+        color: colors.textOnDark,
     },
     formCard: {
         padding: spacing.lg,
+        borderColor: colors.border,
+    },
+    formHeading: {
+        marginBottom: spacing.lg,
+    },
+    formEyebrow: {
+        ...typography.overline,
+        color: colors.secondary,
+        marginBottom: 6,
     },
     formTitle: {
         ...typography.h2,
-        marginBottom: spacing.xs,
     },
     formSubtitle: {
         ...typography.bodySmall,
-        marginBottom: spacing.lg,
+        marginTop: spacing.xs,
     },
     primaryAction: {
         marginBottom: spacing.sm,
     },
+    eyeButton: {
+        padding: 6,
+    },
+    forgotPasswordLink: {
+        alignSelf: 'flex-end',
+        paddingVertical: spacing.xs,
+        marginTop: -spacing.xs,
+        marginBottom: spacing.xs,
+    },
+    forgotPasswordText: {
+        ...typography.bodySmall,
+        color: colors.secondary,
+        fontWeight: '700',
+    },
     footerContainer: {
-        flexDirection: 'row',
-        justifyContent: 'center',
+        alignItems: 'center',
         marginTop: spacing.md,
-        paddingVertical: spacing.sm,
+        paddingTop: spacing.md,
+        borderTopWidth: 1,
+        borderTopColor: colors.borderSubtle,
     },
     footerText: {
-        ...typography.body,
-        color: colors.textMuted || '#6b7280',
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+        marginBottom: spacing.xs,
+    },
+    createAccountButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        padding: spacing.xs,
     },
     footerLink: {
+        ...typography.bodySmall,
+        color: colors.secondary,
+        fontWeight: '800',
+    },
+    divider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: spacing.md,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: colors.borderSubtle,
+    },
+    dividerText: {
+        ...typography.caption,
+        color: colors.textSecondary,
+        marginHorizontal: spacing.md,
+    },
+    googleButton: {
+        minHeight: 52,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.surface,
+        borderRadius: radii.sm,
+        borderWidth: 1,
+        borderColor: colors.border,
+        paddingVertical: 14,
+        paddingHorizontal: spacing.md,
+        gap: spacing.sm,
+        marginBottom: spacing.xs,
+    },
+    googleButtonText: {
         ...typography.body,
-        color: colors.primary || '#1a1a1a',
-        fontWeight: 'bold',
+        fontWeight: '700',
+        color: colors.text,
     },
 });

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   View,
   Text,
@@ -15,10 +16,20 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
-import MapView, { Marker } from "react-native-maps";
-import { getSalesmanOrders, updateOrderStatus, createDeliveryRequest, getOrderDeliveryStatus, getAvailableRiders } from "../../src/api/orders";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import {
+  getSalesmanOrders,
+  updateOrderStatus,
+  createDeliveryRequest,
+  getOrderDeliveryStatus,
+  getAvailableRiders,
+  getShopPickupLocation,
+  saveShopPickupLocation,
+  resolveComplaint,
+} from "../../src/api/orders";
 import { usePendingOrders } from "../../src/store/pendingOrdersStore";
 import { getSocket } from "../../src/lib/socket";
+import { getUser } from "../../src/api/storage";
 
 // ─── Delivery status label map ────────────────────────────────────────────────
 const DELIVERY_LABEL: Record<string, string> = {
@@ -34,6 +45,10 @@ const DELIVERY_LABEL: Record<string, string> = {
   failed: "Delivery Failed",
 };
 
+// Rider delivery statuses meaning the package has physically left the shop —
+// only then can the seller/manager mark the order SHIPPED.
+const PICKED_UP_DELIVERY_STATES = ["picked_up", "in_transit", "arrived_at_dropoff", "delivered"];
+
 interface AvailableRider {
   id: number;
   fullName: string;
@@ -45,6 +60,14 @@ interface AvailableRider {
   distanceToPickupKm: number | null;
 }
 
+const formatOrderAddress = (address?: Order["address"]) => [
+  address?.street,
+  address?.city,
+  address?.state,
+  address?.postalCode,
+  address?.country,
+].filter(Boolean).join(", ");
+
 // ─── Dispatch Modal ───────────────────────────────────────────────────────────
 
 function DispatchModal({
@@ -52,28 +75,85 @@ function DispatchModal({
   onClose,
   onDispatched,
 }: {
-  order: { id: string; orderNumber: string; customer?: { name?: string } };
+  order: Order;
   onClose: () => void;
   onDispatched: () => void;
 }) {
+  const savedDeliveryLatitude = order.deliveryLatitude ?? order.address?.latitude ?? null;
+  const savedDeliveryLongitude = order.deliveryLongitude ?? order.address?.longitude ?? null;
+  const hasSavedCustomerLocation =
+    savedDeliveryLatitude !== null &&
+    savedDeliveryLongitude !== null &&
+    Number.isFinite(Number(savedDeliveryLatitude)) &&
+    Number.isFinite(Number(savedDeliveryLongitude));
+  const savedDeliveryAddress = order.deliveryAddress || formatOrderAddress(order.address);
   const [pickupLat, setPickupLat] = useState("");
   const [pickupLng, setPickupLng] = useState("");
   const [pickupAddress, setPickupAddress] = useState("");
-  const [deliveryLat, setDeliveryLat] = useState("");
-  const [deliveryLng, setDeliveryLng] = useState("");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryLat, setDeliveryLat] = useState(
+    hasSavedCustomerLocation ? String(savedDeliveryLatitude) : "",
+  );
+  const [deliveryLng, setDeliveryLng] = useState(
+    hasSavedCustomerLocation ? String(savedDeliveryLongitude) : "",
+  );
+  const [deliveryAddress, setDeliveryAddress] = useState(savedDeliveryAddress);
   const [paymentType, setPaymentType] = useState<"COD" | "PREPAID">("COD");
   const [notes, setNotes] = useState("");
   const [earnings, setEarnings] = useState("");
   const [gettingGps, setGettingGps] = useState(false);
+  const [shopLocationLoading, setShopLocationLoading] = useState(true);
+  const [shopLocationSaving, setShopLocationSaving] = useState(false);
+  const [shopLocationConfigured, setShopLocationConfigured] = useState(false);
+  const [editingShopLocation, setEditingShopLocation] = useState(false);
+  const [savedShopLocation, setSavedShopLocation] = useState<{
+    latitude: number;
+    longitude: number;
+    address: string;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loadingRiders, setLoadingRiders] = useState(false);
   const [availableRiders, setAvailableRiders] = useState<AvailableRider[]>([]);
   const [selectedRiderId, setSelectedRiderId] = useState<number | null>(null);
   // Map picker state for delivery location
   const [showMapPicker, setShowMapPicker] = useState(false);
-  const [tempPin, setTempPin] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [tempPin, setTempPin] = useState<{ latitude: number; longitude: number } | null>(
+    hasSavedCustomerLocation
+      ? { latitude: Number(savedDeliveryLatitude), longitude: Number(savedDeliveryLongitude) }
+      : null,
+  );
   const [geocoding, setGeocoding] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    getShopPickupLocation()
+      .then((location) => {
+        if (!mounted) return;
+        if (location.configured && location.latitude !== null && location.longitude !== null) {
+          setPickupLat(location.latitude.toFixed(6));
+          setPickupLng(location.longitude.toFixed(6));
+          setPickupAddress(location.address || "");
+          setSavedShopLocation({
+            latitude: location.latitude,
+            longitude: location.longitude,
+            address: location.address || "",
+          });
+          setShopLocationConfigured(true);
+        } else {
+          setEditingShopLocation(true);
+        }
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setEditingShopLocation(true);
+        Alert.alert("Shop Location", error.message || "Could not load the saved shop location.");
+      })
+      .finally(() => {
+        if (mounted) setShopLocationLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const getMyLocation = async () => {
     setGettingGps(true);
@@ -86,6 +166,20 @@ function DispatchModal({
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       setPickupLat(loc.coords.latitude.toFixed(6));
       setPickupLng(loc.coords.longitude.toFixed(6));
+      if (!pickupAddress.trim()) {
+        try {
+          const [place] = await Location.reverseGeocodeAsync({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+          });
+          const address = [place?.name, place?.street, place?.city, place?.region]
+            .filter(Boolean)
+            .join(", ");
+          if (address) setPickupAddress(address);
+        } catch {
+          // Coordinates are sufficient; the salesman can enter the address.
+        }
+      }
     } catch {
       Alert.alert("Error", "Could not get location. Enter coordinates manually.");
     } finally {
@@ -93,9 +187,54 @@ function DispatchModal({
     }
   };
 
+  const saveFixedShopLocation = async () => {
+    const latitude = Number(pickupLat);
+    const longitude = Number(pickupLng);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+        !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      Alert.alert("Invalid Location", "Enter valid shop latitude and longitude values.");
+      return;
+    }
+
+    setShopLocationSaving(true);
+    try {
+      const saved = await saveShopPickupLocation({
+        latitude,
+        longitude,
+        address: pickupAddress.trim() || undefined,
+      });
+      setPickupLat(Number(saved.latitude).toFixed(6));
+      setPickupLng(Number(saved.longitude).toFixed(6));
+      setPickupAddress(saved.address || "");
+      setSavedShopLocation({
+        latitude: Number(saved.latitude),
+        longitude: Number(saved.longitude),
+        address: saved.address || "",
+      });
+      setShopLocationConfigured(true);
+      setEditingShopLocation(false);
+      setAvailableRiders([]);
+      setSelectedRiderId(null);
+      Alert.alert("Shop Location Saved", "This pickup location will be used for every delivery.");
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to save the shop location.");
+    } finally {
+      setShopLocationSaving(false);
+    }
+  };
+
+  const cancelShopLocationEdit = () => {
+    if (savedShopLocation) {
+      setPickupLat(savedShopLocation.latitude.toFixed(6));
+      setPickupLng(savedShopLocation.longitude.toFixed(6));
+      setPickupAddress(savedShopLocation.address);
+    }
+    setEditingShopLocation(false);
+  };
+
   const loadAvailableRiders = async () => {
-    if (!pickupLat || !pickupLng) {
-      Alert.alert("Missing Info", "Pickup coordinates are required before loading available riders.");
+    if (!shopLocationConfigured || editingShopLocation) {
+      Alert.alert("Shop Location Required", "Save the fixed shop location before loading riders.");
       return;
     }
 
@@ -117,8 +256,8 @@ function DispatchModal({
   };
 
   const handleSubmit = async () => {
-    if (!pickupLat || !pickupLng) {
-      Alert.alert("Missing Info", "Pickup coordinates are required. Tap 'Use My Location' or enter manually.");
+    if (!shopLocationConfigured || editingShopLocation || !pickupLat || !pickupLng) {
+      Alert.alert("Shop Location Required", "Save the fixed shop location before dispatching a rider.");
       return;
     }
     if (!deliveryLat || !deliveryLng) {
@@ -176,34 +315,116 @@ function DispatchModal({
           </Text>
 
           <Text style={dispatchStyles.label}>Pickup Location (Your Shop)</Text>
-          <TouchableOpacity style={dispatchStyles.gpsBtn} onPress={getMyLocation} disabled={gettingGps}>
-            {gettingGps ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="navigate" size={18} color="#FFF" />}
-            <Text style={dispatchStyles.gpsBtnText}>{gettingGps ? "Getting GPS…" : "Use My Current Location"}</Text>
-          </TouchableOpacity>
-          <View style={dispatchStyles.row}>
-            <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Latitude" keyboardType="decimal-pad" value={pickupLat} onChangeText={setPickupLat} />
-            <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Longitude" keyboardType="decimal-pad" value={pickupLng} onChangeText={setPickupLng} />
-          </View>
-          <TextInput style={dispatchStyles.input} placeholder="Shop address (optional)" value={pickupAddress} onChangeText={setPickupAddress} />
+          {shopLocationLoading ? (
+            <View style={dispatchStyles.shopLocationLoading}>
+              <ActivityIndicator size="small" color="#00002E" />
+              <Text style={dispatchStyles.shopLocationLoadingText}>Loading saved shop location...</Text>
+            </View>
+          ) : shopLocationConfigured && !editingShopLocation ? (
+            <View style={dispatchStyles.fixedShopCard}>
+              <View style={dispatchStyles.fixedShopIcon}>
+                <Ionicons name="storefront" size={20} color="#00002E" />
+              </View>
+              <View style={dispatchStyles.fixedShopCopy}>
+                <Text style={dispatchStyles.fixedShopTitle}>Fixed pickup location</Text>
+                <Text style={dispatchStyles.fixedShopAddress} numberOfLines={2}>
+                  {pickupAddress || "Shop location"}
+                </Text>
+                <Text style={dispatchStyles.fixedShopCoords}>
+                  {Number(pickupLat).toFixed(5)}, {Number(pickupLng).toFixed(5)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Change fixed shop location"
+                onPress={() => setEditingShopLocation(true)}
+                style={dispatchStyles.editShopBtn}
+              >
+                <Ionicons name="pencil" size={17} color="#FF6B35" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={dispatchStyles.shopSetupCard}>
+              <Text style={dispatchStyles.shopSetupTitle}>
+                {shopLocationConfigured ? "Change shop location" : "Set your shop location"}
+              </Text>
+              <Text style={dispatchStyles.shopSetupText}>
+                Save this once. It will be the pickup point for every delivery.
+              </Text>
+              <TouchableOpacity style={dispatchStyles.gpsBtn} onPress={getMyLocation} disabled={gettingGps}>
+                {gettingGps ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="navigate" size={18} color="#FFF" />}
+                <Text style={dispatchStyles.gpsBtnText}>{gettingGps ? "Getting GPS..." : "Use Current Location for Shop"}</Text>
+              </TouchableOpacity>
+              <View style={dispatchStyles.row}>
+                <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Latitude" keyboardType="decimal-pad" value={pickupLat} onChangeText={setPickupLat} />
+                <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Longitude" keyboardType="decimal-pad" value={pickupLng} onChangeText={setPickupLng} />
+              </View>
+              <TextInput style={dispatchStyles.input} placeholder="Shop address" value={pickupAddress} onChangeText={setPickupAddress} />
+              <View style={dispatchStyles.shopSetupActions}>
+                {shopLocationConfigured ? (
+                  <TouchableOpacity style={dispatchStyles.shopSetupCancel} onPress={cancelShopLocationEdit}>
+                    <Text style={dispatchStyles.shopSetupCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  style={[dispatchStyles.saveShopBtn, shopLocationSaving && { opacity: 0.6 }]}
+                  onPress={saveFixedShopLocation}
+                  disabled={shopLocationSaving}
+                >
+                  {shopLocationSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="save" size={17} color="#FFF" />}
+                  <Text style={dispatchStyles.saveShopBtnText}>{shopLocationSaving ? "Saving..." : "Save Shop Location"}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           <Text style={[dispatchStyles.label, { marginTop: 14 }]}>Customer Delivery Location</Text>
 
           {/* Map picker button / selected location display */}
           {deliveryLat && deliveryLng ? (
-            <View style={dispatchStyles.selectedLocationBox}>
-              <Ionicons name="location" size={18} color="#00002E" style={{ marginTop: 2 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={dispatchStyles.selectedLocationText} numberOfLines={2}>
-                  {deliveryAddress || `${parseFloat(deliveryLat).toFixed(5)}, ${parseFloat(deliveryLng).toFixed(5)}`}
-                </Text>
-                <Text style={dispatchStyles.selectedCoords}>
-                  {parseFloat(deliveryLat).toFixed(5)}, {parseFloat(deliveryLng).toFixed(5)}
-                </Text>
+            <>
+              <View style={dispatchStyles.selectedLocationBox}>
+                <Ionicons name="location" size={18} color="#00002E" style={{ marginTop: 2 }} />
+                <View style={{ flex: 1 }}>
+                  {hasSavedCustomerLocation && (
+                    <Text style={dispatchStyles.savedLocationLabel}>CUSTOMER SAVED LOCATION</Text>
+                  )}
+                  <Text style={dispatchStyles.selectedLocationText} numberOfLines={2}>
+                    {deliveryAddress || `${parseFloat(deliveryLat).toFixed(5)}, ${parseFloat(deliveryLng).toFixed(5)}`}
+                  </Text>
+                  <Text style={dispatchStyles.selectedCoords}>
+                    {parseFloat(deliveryLat).toFixed(5)}, {parseFloat(deliveryLng).toFixed(5)}
+                  </Text>
+                </View>
+                {!hasSavedCustomerLocation && (
+                  <TouchableOpacity onPress={() => setShowMapPicker(true)} style={dispatchStyles.changeLocBtn}>
+                    <Text style={dispatchStyles.changeLocBtnText}>Change</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              <TouchableOpacity onPress={() => setShowMapPicker(true)} style={dispatchStyles.changeLocBtn}>
-                <Text style={dispatchStyles.changeLocBtnText}>Change</Text>
-              </TouchableOpacity>
-            </View>
+              {hasSavedCustomerLocation && (
+                <MapView
+                  style={dispatchStyles.customerMapPreview}
+                  provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
+                  initialRegion={{
+                    latitude: Number(deliveryLat),
+                    longitude: Number(deliveryLng),
+                    latitudeDelta: 0.012,
+                    longitudeDelta: 0.012,
+                  }}
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                  rotateEnabled={false}
+                  pitchEnabled={false}
+                  toolbarEnabled={false}
+                >
+                  <Marker
+                    coordinate={{ latitude: Number(deliveryLat), longitude: Number(deliveryLng) }}
+                    title="Customer delivery location"
+                  />
+                </MapView>
+              )}
+            </>
           ) : (
             <TouchableOpacity style={dispatchStyles.mapPickerBtn} onPress={() => setShowMapPicker(true)}>
               <Ionicons name="map" size={18} color="#FFF" />
@@ -212,7 +433,7 @@ function DispatchModal({
           )}
 
           {/* Optional: editable address label after pin is set */}
-          {deliveryLat && deliveryLng && (
+          {deliveryLat && deliveryLng && !hasSavedCustomerLocation && (
             <TextInput
               style={[dispatchStyles.input, { marginTop: 8 }]}
               placeholder="Edit address label (optional)"
@@ -244,6 +465,7 @@ function DispatchModal({
               {/* Map */}
               <MapView
                 style={{ flex: 1 }}
+                provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
                 initialRegion={
                   tempPin
                     ? { latitude: tempPin.latitude, longitude: tempPin.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 }
@@ -279,15 +501,24 @@ function DispatchModal({
                     if (!tempPin) return;
                     setDeliveryLat(tempPin.latitude.toFixed(6));
                     setDeliveryLng(tempPin.longitude.toFixed(6));
-                    // Reverse geocode via Nominatim (OSM, free)
                     setGeocoding(true);
                     try {
-                      const res = await fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${tempPin.latitude}&lon=${tempPin.longitude}`,
-                        { headers: { "Accept-Language": "en" } }
-                      );
-                      const data = await res.json();
-                      if (data.display_name) setDeliveryAddress(data.display_name);
+                      const currentPermission = await Location.getForegroundPermissionsAsync();
+                      const permission = currentPermission.status === "granted"
+                        ? currentPermission
+                        : await Location.requestForegroundPermissionsAsync();
+                      if (permission.status === "granted") {
+                        const [place] = await Location.reverseGeocodeAsync(tempPin);
+                        const address = [
+                          place?.streetNumber,
+                          place?.street || place?.name,
+                          place?.city || place?.subregion,
+                          place?.region,
+                          place?.postalCode,
+                          place?.country,
+                        ].filter(Boolean).join(", ");
+                        if (address) setDeliveryAddress(address);
+                      }
                     } catch { /* keep address empty, user can type it */ }
                     setGeocoding(false);
                     setShowMapPicker(false);
@@ -322,7 +553,14 @@ function DispatchModal({
 
           <View style={dispatchStyles.riderHeader}>
             <Text style={dispatchStyles.label}>Available Delivery Persons</Text>
-            <TouchableOpacity style={dispatchStyles.loadRidersBtn} onPress={loadAvailableRiders} disabled={loadingRiders}>
+            <TouchableOpacity
+              style={[
+                dispatchStyles.loadRidersBtn,
+                (!shopLocationConfigured || editingShopLocation || shopLocationLoading) && { opacity: 0.5 },
+              ]}
+              onPress={loadAvailableRiders}
+              disabled={loadingRiders || !shopLocationConfigured || editingShopLocation || shopLocationLoading}
+            >
               {loadingRiders ? <ActivityIndicator size="small" color="#00002E" /> : <Ionicons name="refresh" size={15} color="#00002E" />}
               <Text style={dispatchStyles.loadRidersText}>{loadingRiders ? "Loading" : "Load Riders"}</Text>
             </TouchableOpacity>
@@ -363,7 +601,14 @@ function DispatchModal({
           <TouchableOpacity style={dispatchStyles.cancelBtn} onPress={onClose}>
             <Text style={dispatchStyles.cancelBtnText}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[dispatchStyles.submitBtn, submitting && { opacity: 0.6 }]} onPress={handleSubmit} disabled={submitting}>
+          <TouchableOpacity
+            style={[
+              dispatchStyles.submitBtn,
+              (submitting || !shopLocationConfigured || editingShopLocation || shopLocationLoading) && { opacity: 0.6 },
+            ]}
+            onPress={handleSubmit}
+            disabled={submitting || !shopLocationConfigured || editingShopLocation || shopLocationLoading}
+          >
             {submitting ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="send" size={16} color="#FFF" />}
             <Text style={dispatchStyles.submitBtnText}>{submitting ? "Dispatching…" : "Dispatch Rider"}</Text>
           </TouchableOpacity>
@@ -397,6 +642,20 @@ interface Order {
   discount: number;
   total: number;
   createdAt: string;
+  cancellationReason?: string | null;
+  deliveryAddress?: string | null;
+  deliveryLatitude?: number | null;
+  deliveryLongitude?: number | null;
+  address?: {
+    street: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
+  isComplaint?: boolean;
   customer?: {
     id: string;
     name: string;
@@ -405,7 +664,12 @@ interface Order {
   items: OrderItem[];
 }
 
-const statusFilters = ["All", "PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"];
+const statusFilters = ["All", "PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "REFUND_REQUESTED", "CANCELLED"];
+
+// Friendly labels for the filter chips (raw status values are otherwise shown).
+const FILTER_LABELS: Record<string, string> = {
+  REFUND_REQUESTED: "Complaints",
+};
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -414,6 +678,7 @@ const getStatusColor = (status: string) => {
     case "PROCESSING": return "#2196F3";
     case "SHIPPED": return "#9C27B0";
     case "DELIVERED": return "#4CAF50";
+    case "REFUND_REQUESTED": return "#D97706";
     case "CANCELLED": return "#F44336";
     case "REFUNDED": return "#F44336";
     default: return "#666";
@@ -430,15 +695,49 @@ const formatDate = (dateString: string) => {
 };
 
 export default function SalesmanOrdersScreen() {
+  const queryClient = useQueryClient();
   const [selectedFilter, setSelectedFilter] = useState("All");
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const { refreshPendingCount } = usePendingOrders();
   const [dispatchingOrder, setDispatchingOrder] = useState<Order | null>(null);
   // Maps orderId → delivery status string (loaded on demand)
   const [deliveryStatuses, setDeliveryStatuses] = useState<Record<string, string>>({});
+  const [resolvingComplaintId, setResolvingComplaintId] = useState<string | null>(null);
+  // Post-delivery complaints are reviewed by the manager (shop owner).
+  const [isManager, setIsManager] = useState(false);
+
+  useEffect(() => {
+    getUser().then((u) => setIsManager(u?.role === 'SHOP_MANAGER')).catch(() => {});
+  }, []);
+
+  // Orders are cached per filter via React Query: navigating away and back is instant,
+  // with a background refresh. Socket events and actions patch this cache in place.
+  const ordersKey = ['salesman-orders-mobile', selectedFilter];
+  const {
+    data: orders = [],
+    isLoading,
+    isRefetching: isRefreshing,
+    error: queryError,
+    refetch,
+  } = useQuery<Order[]>({
+    queryKey: ordersKey,
+    queryFn: async () => {
+      const statusParam = selectedFilter === "All" ? undefined : selectedFilter;
+      const response = await getSalesmanOrders(statusParam);
+      if (response.success && response.data) return response.data.orders || [];
+      throw new Error(response.message || "Failed to load orders");
+    },
+  });
+  const error = queryError ? ((queryError as any).message || "Failed to load orders") : null;
+
+  const fetchOrders = useCallback(() => { refetch(); }, [refetch]);
+
+  // Patch the currently-cached orders list in place (used by socket + action handlers).
+  const patchOrders = useCallback(
+    (updater: (prev: Order[]) => Order[]) => {
+      queryClient.setQueryData<Order[]>(['salesman-orders-mobile', selectedFilter], (prev) => updater(prev ?? []));
+    },
+    [queryClient, selectedFilter]
+  );
 
   const loadDeliveryStatus = useCallback(async (orderId: string) => {
     try {
@@ -449,45 +748,50 @@ export default function SalesmanOrdersScreen() {
     } catch { /* silent */ }
   }, []);
 
-  const fetchOrders = useCallback(async (showRefresh = false) => {
-    try {
-      if (showRefresh) {
-        setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
-      }
-      setError(null);
-
-      const statusParam = selectedFilter === "All" ? undefined : selectedFilter;
-      const response = await getSalesmanOrders(statusParam);
-
-      if (response.success && response.data) {
-        setOrders(response.data.orders || []);
-      } else {
-        setError(response.message || "Failed to load orders");
-      }
-    } catch (err: any) {
-      console.error("Fetch orders error:", err);
-      setError(err.message || "Failed to load orders");
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [selectedFilter]);
-
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
-
-  // Listen for real-time new orders and refresh the list automatically
+  // Listen for real-time new orders + order/delivery status updates.
   useEffect(() => {
     const socket = getSocket();
     const handleNewOrder = () => {
       fetchOrders();
     };
+    // Backend emits orderStatusUpdated with the order status AND the detailed
+    // rider step (riderStep) to every shop member — use it to update the order
+    // status and the per-order delivery status live (e.g. rider picked up).
+    const handleStatusUpdate = (payload: { orderId: string; status?: string; riderStep?: string }) => {
+      if (!payload?.orderId) return;
+      if (payload.status) {
+        patchOrders((prev) => prev.map((o) => (o.id === payload.orderId ? { ...o, status: payload.status as string } : o)));
+      }
+      if (payload.riderStep) {
+        setDeliveryStatuses((prev) => ({ ...prev, [payload.orderId]: payload.riderStep as string }));
+      }
+    };
+    // Customer raised a complaint, or a complaint was resolved elsewhere → refresh.
+    const handleComplaint = () => {
+      fetchOrders();
+    };
     socket.on('newOrder', handleNewOrder);
-    return () => { socket.off('newOrder', handleNewOrder); };
-  }, [fetchOrders]);
+    socket.on('orderStatusUpdated', handleStatusUpdate);
+    socket.on('complaintRaised', handleComplaint);
+    socket.on('complaintResolved', handleComplaint);
+    return () => {
+      socket.off('newOrder', handleNewOrder);
+      socket.off('orderStatusUpdated', handleStatusUpdate);
+      socket.off('complaintRaised', handleComplaint);
+      socket.off('complaintResolved', handleComplaint);
+    };
+  }, [fetchOrders, patchOrders]);
+
+  // Load delivery status for orders that already have a rider in play, so the
+  // dispatch button, pickup cue and ship-gating reflect reality on first render.
+  useEffect(() => {
+    orders.forEach((o) => {
+      if (["PROCESSING", "SHIPPED"].includes(o.status) && deliveryStatuses[o.id] === undefined) {
+        loadDeliveryStatus(o.id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, loadDeliveryStatus]);
 
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {
     try {
@@ -502,6 +806,34 @@ export default function SalesmanOrdersScreen() {
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to update status");
     }
+  };
+
+  const handleResolveComplaint = (orderId: string, orderNumber: string, action: 'accept' | 'reject') => {
+    Alert.alert(
+      action === 'accept' ? 'Accept Complaint' : 'Reject Complaint',
+      action === 'accept'
+        ? `Approve the refund request for order ${orderNumber}? The customer should return the product to the warehouse.`
+        : `Reject the complaint for order ${orderNumber}? The order will remain marked as Delivered.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: action === 'accept' ? 'Accept' : 'Reject',
+          style: action === 'accept' ? 'default' : 'destructive',
+          onPress: async () => {
+            setResolvingComplaintId(orderId);
+            try {
+              await resolveComplaint(orderId, action);
+              Alert.alert('Done', action === 'accept' ? 'Refund approved. Customer notified.' : 'Complaint rejected. Customer notified.');
+              fetchOrders();
+            } catch (err: any) {
+              Alert.alert('Error', err.message || 'Failed to resolve complaint');
+            } finally {
+              setResolvingComplaintId(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const confirmCancelOrder = (orderId: string, orderNumber: string) => {
@@ -547,7 +879,16 @@ export default function SalesmanOrdersScreen() {
     const statusColor = getStatusColor(item.status);
     const canProgress = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED"].includes(item.status);
     const isPending = item.status === "PENDING";
-    const canCancel = ["PENDING", "CONFIRMED"].includes(item.status);
+    // Cancelling is only allowed while the order is still Pending.
+    const canCancel = item.status === "PENDING";
+    const deliveryStatus = deliveryStatuses[item.id];
+    // SHIPPED needs a rider pickup; DELIVERED needs the rider to have completed delivery.
+    const canShip = deliveryStatus ? PICKED_UP_DELIVERY_STATES.includes(deliveryStatus) : false;
+    const canDeliver = deliveryStatus === "delivered";
+    const nextStatus = getNextStatus(item.status);
+    const shipBlocked = nextStatus === "SHIPPED" && !canShip;
+    const deliverBlocked = nextStatus === "DELIVERED" && !canDeliver;
+    const progressBlocked = shipBlocked || deliverBlocked;
 
     return (
       <TouchableOpacity style={[styles.orderCard, isPending && styles.pendingOrderCard]}>
@@ -598,9 +939,25 @@ export default function SalesmanOrdersScreen() {
               </TouchableOpacity>
             )}
             {canProgress && !isPending && (
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.progressButton]}
-                onPress={() => confirmStatusChange(item.id, item.status)}
+              <TouchableOpacity
+                style={[styles.actionButton, styles.progressButton, progressBlocked && { opacity: 0.4 }]}
+                onPress={() => {
+                  if (shipBlocked) {
+                    Alert.alert(
+                      "Rider hasn't picked up yet",
+                      "You can mark this order as Shipped only after a rider has been assigned and has collected the package."
+                    );
+                    return;
+                  }
+                  if (deliverBlocked) {
+                    Alert.alert(
+                      "Rider hasn't delivered yet",
+                      "You can mark this order as Delivered only after the rider completes the delivery."
+                    );
+                    return;
+                  }
+                  confirmStatusChange(item.id, item.status);
+                }}
               >
                 <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
               </TouchableOpacity>
@@ -619,17 +976,62 @@ export default function SalesmanOrdersScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Dispatch Rider button for CONFIRMED / PROCESSING orders */}
-        {["CONFIRMED", "PROCESSING"].includes(item.status) && (
+        {/* Product complaint — manager reviews and accepts/rejects the refund request */}
+        {isManager && item.status === "REFUND_REQUESTED" && item.isComplaint && (
+          <View style={styles.complaintBox}>
+            <View style={styles.complaintHeaderRow}>
+              <Ionicons name="alert-circle" size={16} color="#B45309" />
+              <Text style={styles.complaintTitle}>Product Complaint</Text>
+            </View>
+            <Text style={styles.complaintReason}>
+              {item.cancellationReason || "The customer reported an issue with this delivered order."}
+            </Text>
+            <Text style={styles.complaintHint}>
+              The customer should return the product to the warehouse. Accept to approve the refund, or reject to decline.
+            </Text>
+            <View style={styles.complaintActions}>
+              <TouchableOpacity
+                style={[styles.complaintAcceptBtn, resolvingComplaintId === item.id && { opacity: 0.6 }]}
+                disabled={resolvingComplaintId === item.id}
+                onPress={() => handleResolveComplaint(item.id, item.orderNumber, 'accept')}
+              >
+                <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+                <Text style={styles.complaintAcceptText}>Accept Refund</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.complaintRejectBtn, resolvingComplaintId === item.id && { opacity: 0.6 }]}
+                disabled={resolvingComplaintId === item.id}
+                onPress={() => handleResolveComplaint(item.id, item.orderNumber, 'reject')}
+              >
+                <Ionicons name="close" size={16} color="#DC2626" />
+                <Text style={styles.complaintRejectText}>Reject</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Dispatch Rider appears only once the order is PROCESSING; delivery
+            status keeps showing through SHIPPED. */}
+        {["PROCESSING", "SHIPPED"].includes(item.status) && (
           <View style={styles.dispatchSection}>
-            {deliveryStatuses[item.id] ? (
-              <View style={styles.deliveryStatusRow}>
-                <Ionicons name="bicycle" size={14} color="#00002E" />
-                <Text style={styles.deliveryStatusText}>
-                  {DELIVERY_LABEL[deliveryStatuses[item.id]] ?? deliveryStatuses[item.id]}
-                </Text>
-              </View>
-            ) : (
+            {deliveryStatus ? (
+              <>
+                <View style={styles.deliveryStatusRow}>
+                  <Ionicons name="bicycle" size={14} color="#00002E" />
+                  <Text style={styles.deliveryStatusText}>
+                    {DELIVERY_LABEL[deliveryStatus] ?? deliveryStatus}
+                  </Text>
+                </View>
+                {canShip && item.status !== "SHIPPED" && (
+                  <View style={styles.readyToShipBox}>
+                    <Ionicons name="cube" size={14} color="#15803D" />
+                    <Text style={styles.readyToShipText}>
+                      Rider picked up the package — tap the → button above to mark this order Shipped.
+                    </Text>
+                  </View>
+                )}
+              </>
+            ) : item.status === "PROCESSING" ? (
               <TouchableOpacity
                 style={styles.dispatchButton}
                 onPress={() => {
@@ -640,7 +1042,7 @@ export default function SalesmanOrdersScreen() {
                 <Ionicons name="send" size={16} color="#FFFFFF" />
                 <Text style={styles.dispatchButtonText}>Dispatch Rider</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
         )}
       </TouchableOpacity>
@@ -661,7 +1063,8 @@ export default function SalesmanOrdersScreen() {
       {/* Status Filters */}
       <View style={styles.filtersContainer}>
         <FlatList
-          data={statusFilters}
+          // Complaints filter is manager-only (post-delivery complaints go to the manager).
+          data={statusFilters.filter((f) => f !== "REFUND_REQUESTED" || isManager)}
           horizontal
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => item}
@@ -679,7 +1082,7 @@ export default function SalesmanOrdersScreen() {
                   selectedFilter === item && styles.filterChipTextActive,
                 ]}
               >
-                {item}
+                {FILTER_LABELS[item] ?? item}
               </Text>
             </TouchableOpacity>
           )}
@@ -713,7 +1116,7 @@ export default function SalesmanOrdersScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
-              onRefresh={() => fetchOrders(true)}
+              onRefresh={() => refetch()}
               colors={["#00002E"]}
             />
           }
@@ -971,6 +1374,88 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#00002E",
   },
+  readyToShipBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 8,
+  },
+  readyToShipText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#15803D",
+    fontWeight: "600",
+  },
+  complaintBox: {
+    marginTop: 12,
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    borderRadius: 12,
+    padding: 12,
+  },
+  complaintHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  complaintTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#B45309",
+  },
+  complaintReason: {
+    fontSize: 14,
+    color: "#92400E",
+  },
+  complaintHint: {
+    fontSize: 11,
+    color: "#B45309",
+    marginTop: 4,
+  },
+  complaintActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  complaintAcceptBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#16A34A",
+    borderRadius: 10,
+    paddingVertical: 10,
+  },
+  complaintAcceptText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  complaintRejectBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 10,
+    paddingVertical: 10,
+  },
+  complaintRejectText: {
+    color: "#DC2626",
+    fontSize: 13,
+    fontWeight: "700",
+  },
 });
 
 // ─── Dispatch Modal Styles ────────────────────────────────────────────────────
@@ -990,6 +1475,83 @@ const dispatchStyles = StyleSheet.create({
   body: { flex: 1, padding: 20 },
   orderRef: { fontSize: 13, color: "#666", marginBottom: 18 },
   label: { fontSize: 13, fontWeight: "600", color: "#1A1A2E", marginBottom: 8 },
+  shopLocationLoading: {
+    minHeight: 82,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    backgroundColor: "#F9FAFB",
+    marginBottom: 10,
+  },
+  shopLocationLoadingText: { fontSize: 13, color: "#6B7280" },
+  fixedShopCard: {
+    minHeight: 92,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: 10,
+    backgroundColor: "#EFF6FF",
+    marginBottom: 10,
+  },
+  fixedShopIcon: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    backgroundColor: "#DBEAFE",
+  },
+  fixedShopCopy: { flex: 1 },
+  fixedShopTitle: { fontSize: 13, lineHeight: 18, fontWeight: "700", color: "#111827" },
+  fixedShopAddress: { fontSize: 12, lineHeight: 17, color: "#4B5563", marginTop: 2 },
+  fixedShopCoords: { fontSize: 11, lineHeight: 16, color: "#6B7280", marginTop: 2 },
+  editShopBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    backgroundColor: "#FFF7ED",
+  },
+  shopSetupCard: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+    borderRadius: 10,
+    backgroundColor: "#FFF7ED",
+    marginBottom: 10,
+  },
+  shopSetupTitle: { fontSize: 14, lineHeight: 20, fontWeight: "700", color: "#111827" },
+  shopSetupText: { fontSize: 12, lineHeight: 18, color: "#6B7280", marginTop: 2, marginBottom: 10 },
+  shopSetupActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+  shopSetupCancel: {
+    minHeight: 42,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    backgroundColor: "#FFF",
+  },
+  shopSetupCancelText: { fontSize: 13, fontWeight: "700", color: "#4B5563" },
+  saveShopBtn: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: "#00002E",
+  },
+  saveShopBtnText: { fontSize: 13, fontWeight: "700", color: "#FFF" },
   gpsBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1120,6 +1682,13 @@ const dispatchStyles = StyleSheet.create({
   },
   selectedLocationText: { fontSize: 13, color: "#1A1A2E", fontWeight: "500" },
   selectedCoords: { fontSize: 11, color: "#6B7280", marginTop: 2 },
+  savedLocationLabel: { fontSize: 10, color: "#166534", fontWeight: "700", marginBottom: 3 },
+  customerMapPreview: {
+    width: "100%",
+    height: 170,
+    borderRadius: 8,
+    marginTop: 8,
+  },
   changeLocBtn: { paddingLeft: 6, paddingTop: 2 },
   changeLocBtnText: { fontSize: 12, fontWeight: "700", color: "#FF6B35" },
   // Full-screen map modal

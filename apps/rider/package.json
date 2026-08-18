@@ -3,12 +3,15 @@
   "version": "1.0.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "start": "cross-env NODE_OPTIONS=--max-old-space-size=8192 expo start --go --port 8082 --max-workers 2",
+    "start:dev-client": "cross-env NODE_OPTIONS=--max-old-space-size=8192 expo start --dev-client --port 8082 --max-workers 2",
+    "start:expo-go": "cross-env NODE_OPTIONS=--max-old-space-size=8192 expo start --go --port 8082 --max-workers 2",
+    "android": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/android-dev.ps1 --port 8082",
+    "ios": "expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
+    "@clerk/expo": "^4.2.5",
     "@expo/metro-runtime": "~6.1.2",
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -17,10 +20,14 @@
     "@react-navigation/stack": "^6.3.20",
     "@reduxjs/toolkit": "^2.11.2",
     "axios": "^1.6.2",
-    "expo": "^54.0.35",
+    "expo": "~54.0.37",
+    "expo-auth-session": "~7.0.11",
+    "expo-build-properties": "~1.0.10",
     "expo-camera": "~17.0.10",
+    "expo-dev-client": "~6.0.21",
     "expo-document-picker": "~14.0.8",
     "expo-image-picker": "~17.0.10",
+    "expo-linking": "~8.0.12",
     "expo-location": "~19.0.8",
     "expo-secure-store": "~15.0.8",
     "expo-status-bar": "~3.0.9",
@@ -35,7 +42,7 @@
     "react-native-screens": "~4.16.0",
     "react-native-signature-canvas": "^4.7.2",
     "react-native-web": "^0.21.0",
-    "react-native-webview": "^13.12.5",
+    "react-native-webview": "13.15.0",
     "react-redux": "^9.2.0"
   },
   "devDependencies": {
@@ -44,6 +51,7 @@
     "@babel/plugin-transform-private-methods": "^7.29.7",
     "@types/react": "~19.1.10",
     "babel-preset-expo": "~54.0.10",
+    "cross-env": "^10.1.0",
     "typescript": "~5.9.2"
   },
   "private": true

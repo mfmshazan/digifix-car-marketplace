@@ -5,6 +5,26 @@ import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+const hasValidCoordinates = (latitude, longitude) => {
+    if (latitude === null || latitude === undefined || String(latitude).trim() === ''
+        || longitude === null || longitude === undefined || String(longitude).trim() === '') {
+        return false;
+    }
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    return Number.isFinite(lat) && Number.isFinite(lng)
+        && lat >= -90 && lat <= 90
+        && lng >= -180 && lng <= 180;
+};
+
+const formatDeliveryAddress = (address) => [
+    address?.street,
+    address?.city,
+    address?.state,
+    address?.postalCode,
+    address?.country,
+].filter(Boolean).join(', ');
+
 /**
  * Pure service function — creates a Stripe Express connected account.
  * Safe to call from any controller without req/res.
@@ -127,13 +147,29 @@ class StripeController {
                     id: addressId,
                     userId: userID,
                 },
-                select: { id: true },
+                select: {
+                    id: true,
+                    street: true,
+                    city: true,
+                    state: true,
+                    postalCode: true,
+                    country: true,
+                    latitude: true,
+                    longitude: true,
+                },
             });
 
             if (!address) {
                 return res.status(400).json({
                     success: false,
                     message: 'The selected delivery address is invalid.',
+                });
+            }
+
+            if (!hasValidCoordinates(address.latitude, address.longitude)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Please edit the selected delivery address and pin its location before payment.',
                 });
             }
 
@@ -217,12 +253,28 @@ class StripeController {
                     id: addressId,
                     userId: customerId,
                 },
-                select: { id: true },
+                select: {
+                    id: true,
+                    street: true,
+                    city: true,
+                    state: true,
+                    postalCode: true,
+                    country: true,
+                    latitude: true,
+                    longitude: true,
+                },
             });
             if (!address) {
                 return res.status(400).json({
                     success: false,
                     message: 'The delivery address for this payment is no longer available.',
+                });
+            }
+
+            if (!hasValidCoordinates(address.latitude, address.longitude)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'The delivery address needs a pinned location before this order can be completed.',
                 });
             }
 
@@ -234,17 +286,35 @@ class StripeController {
 
             const [products, carParts] = await Promise.all([
                 productIds.length > 0
-                    ? prisma.product.findMany({ where: { id: { in: productIds } } })
+                    ? prisma.product.findMany({
+                        where: { id: { in: productIds } },
+                        include: { salesman: { select: { managerId: true } } },
+                    })
                     : Promise.resolve([]),
                 carPartIds.length > 0
-                    ? prisma.carPart.findMany({ where: { id: { in: carPartIds } } })
+                    ? prisma.carPart.findMany({
+                        where: { id: { in: carPartIds } },
+                        include: { seller: { select: { managerId: true } } },
+                    })
                     : Promise.resolve([]),
             ]);
 
             // Build unified item lookup: productId -> item info with sellerId
             const itemMap = {};
-            products.forEach(p => { itemMap[p.id] = { ...p, sellerId: p.salesmanId, type: 'PRODUCT' }; });
-            carParts.forEach(cp => { itemMap[cp.id] = { ...cp, type: 'CAR_PART' }; });
+            products.forEach(p => {
+                itemMap[p.id] = {
+                    ...p,
+                    sellerId: p.salesman?.managerId || p.salesmanId,
+                    type: 'PRODUCT',
+                };
+            });
+            carParts.forEach(cp => {
+                itemMap[cp.id] = {
+                    ...cp,
+                    sellerId: cp.seller?.managerId || cp.sellerId,
+                    type: 'CAR_PART',
+                };
+            });
 
             // Group cart items by seller
             const groupedBySeller = {};
@@ -287,6 +357,9 @@ class StripeController {
                         customerId,
                         salesmanId: sellerGroup.sellerId,
                         addressId: address.id,
+                        deliveryAddress: formatDeliveryAddress(address),
+                        deliveryLatitude: Number(address.latitude),
+                        deliveryLongitude: Number(address.longitude),
                         subtotal,
                         total: subtotal,
                         status: 'PENDING',

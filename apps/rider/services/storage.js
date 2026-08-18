@@ -58,6 +58,11 @@ export const saveTokens = async (accessToken, refreshToken) => {
     try {
         await storage.setItem(KEYS.ACCESS_TOKEN, accessToken);
         await storage.setItem(KEYS.REFRESH_TOKEN, refreshToken);
+        // Register this device with OneSignal the moment the rider signs in, so
+        // delivery pushes arrive without opening any screen. Fire-and-forget.
+        import('./onesignal')
+            .then((m) => m.registerPushForToken(accessToken))
+            .catch(() => { });
     } catch (error) {
         console.error('Error saving tokens:', error);
         throw error;
@@ -98,7 +103,8 @@ export const clearTokens = async () => {
         await storage.removeItem(KEYS.ACCESS_TOKEN);
         await storage.removeItem(KEYS.REFRESH_TOKEN);
         await storage.removeItem(KEYS.USER_DATA);
-
+        // Detach this device so a signed-out rider stops receiving delivery push.
+        import('./onesignal').then((m) => m.logoutOneSignal()).catch(() => { });
     } catch (error) {
         console.error('Error clearing tokens:', error);
     }

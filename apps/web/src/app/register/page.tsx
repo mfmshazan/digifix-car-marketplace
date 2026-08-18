@@ -1,12 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, User, Store, Phone } from 'lucide-react';
-import { authApi } from '@/lib/api';
+import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, User, Store, Phone, CheckCircle2, XCircle } from 'lucide-react';
+import { authApi, commonApi } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import GoogleSignInButton from '@/components/google-signin-button';
+
+const PASSWORD_REQUIREMENTS_ERROR = 'Password does not meet the minimum requirements.';
+const PASSWORD_REQUIREMENTS = [
+  { label: 'At least 8 characters', test: (value: string) => value.length >= 8 },
+  { label: 'One number', test: (value: string) => /\d/.test(value) },
+  { label: 'One uppercase letter', test: (value: string) => /[A-Z]/.test(value) },
+  { label: 'One lowercase letter', test: (value: string) => /[a-z]/.test(value) },
+  { label: 'One symbol', test: (value: string) => /[\W_]/.test(value) },
+];
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+const isStrongPassword = (value: string) => passwordRegex.test(value);
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -17,10 +28,42 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState('SALESMAN');
+  const [joinCode, setJoinCode] = useState('');
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
+  const [hasTouchedConfirmPassword, setHasTouchedConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState({
+    partsListed: 0,
+    happyCustomers: 0,
+    activeSellers: 0
+  });
+  const isConfirmPasswordEntered = confirmPassword.length > 0;
+  const isConfirmPasswordValid = isConfirmPasswordEntered && confirmPassword === password;
+  const shouldShowConfirmPasswordMismatch =
+    hasTouchedConfirmPassword && isConfirmPasswordEntered && !isConfirmPasswordValid;
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await commonApi.getStats();
+        if (response.success) {
+          setStats(response.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch stats:', err);
+      }
+    };
+    fetchStats();
+  }, []);
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}K+`;
+    return num.toString();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,24 +87,51 @@ export default function RegisterPage() {
     }
 
     if (password !== confirmPassword) {
+      setHasTouchedConfirmPassword(true);
       setError('Passwords do not match');
       return;
     }
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-    if (!passwordRegex.test(password)) {
-      setError('Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.');
+    if (!isStrongPassword(password)) {
+      setHasTouchedPassword(true);
+      setError(PASSWORD_REQUIREMENTS_ERROR);
+      return;
+    }
+
+    const trimmedJoinCode = joinCode.trim().toUpperCase();
+    if (role === 'SALESMAN' && !trimmedJoinCode) {
+      setError('Enter the shop join code your manager gave you');
       return;
     }
 
     try {
       setIsLoading(true);
       setError(null);
-      const response = await authApi.register({ name, email, phone: formattedPhone, password, role });
+      const response = await authApi.register({
+        name,
+        email,
+        phone: formattedPhone,
+        password,
+        role,
+        ...(role === 'SALESMAN' ? { joinCode: trimmedJoinCode } : {}),
+      });
 
       if (response.success) {
+        // A salesman joining a shop is created PENDING and gets no token —
+        // show a confirmation and let them sign in once the manager approves.
+        if (response.pendingApproval) {
+          setPendingMessage(
+            response.message || 'Account created. Your manager must approve it before you can sign in.'
+          );
+          return;
+        }
         const { user, token } = response.data;
         login(user, token);
-        window.location.href = role === 'ADMIN' ? '/dashboard/admin' : '/dashboard/salesman';
+        window.location.href =
+          role === 'ADMIN' ? '/dashboard/admin'
+          // A new manager first sets their shop location (used for delivery fees)
+          // and is then forwarded to the dashboard.
+          : role === 'SHOP_MANAGER' ? '/dashboard/manager/location'
+          : '/dashboard/salesman';
       } else {
         setError(response.message || 'Registration failed');
       }
@@ -95,9 +165,26 @@ export default function RegisterPage() {
             <p className="text-gray-500">Join DIGIFIX to find the perfect car parts</p>
           </div>
 
+          {/* Pending approval confirmation (salesman joined a shop via code) */}
+          {pendingMessage && (
+            <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-4 rounded-xl text-sm">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="w-5 h-5 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold">Account created</p>
+                  <p className="mt-1">{pendingMessage}</p>
+                  <Link href="/login" className="mt-2 inline-block text-[#00002E] font-semibold hover:underline">
+                    Go to sign in
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Form */}
+          {!pendingMessage && (
           <form onSubmit={handleSubmit} className="space-y-5">
-            {error && (
+            {error && error !== PASSWORD_REQUIREMENTS_ERROR && (
               <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
                 {error}
               </div>
@@ -142,12 +229,23 @@ export default function RegisterPage() {
                 </div>
                 <input
                   type="tel"
-                  value={phone.startsWith('+94') ? phone.slice(3) : (phone.startsWith('0') ? phone.slice(1) : phone)}
+                  value={(() => {
+                    // Display formatting: xx xxx xxxx
+                    let displayVal = phone;
+                    if (displayVal.startsWith('+94')) displayVal = displayVal.slice(3);
+                    else if (displayVal.startsWith('0')) displayVal = displayVal.slice(1);
+                    
+                    const cleaned = displayVal.replace(/\D/g, '').slice(0, 9);
+                    let formatted = cleaned;
+                    if (cleaned.length > 2) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2);
+                    if (cleaned.length > 5) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2, 5) + ' ' + cleaned.slice(5);
+                    return formatted;
+                  })()}
                   onChange={(e) => {
                     const val = e.target.value.replace(/\D/g, '');
                     if (val.length <= 9) setPhone(val);
                   }}
-                  placeholder="7xxxxxxxx"
+                  placeholder="7x xxx xxxx"
                   className="w-full pl-24 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
                   required
                 />
@@ -164,6 +262,7 @@ export default function RegisterPage() {
                   onChange={(e) => setRole(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all appearance-none"
                 >
+                  <option value="SHOP_MANAGER">Manager</option>
                   <option value="SALESMAN">Salesman</option>
                   <option value="ADMIN">Admin</option>
                 </select>
@@ -173,6 +272,26 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            {role === 'SALESMAN' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Shop Join Code</label>
+                <div className="relative">
+                  <Store className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. K7QM9P"
+                    maxLength={10}
+                    className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all tracking-widest uppercase"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Ask your shop manager for the join code. Your account needs their approval before you can sign in.
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
               <div className="relative">
@@ -180,7 +299,8 @@ export default function RegisterPage() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                  onFocus={() => setHasTouchedPassword(true)}
                   placeholder="Create a password"
                   className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
                   required
@@ -193,6 +313,25 @@ export default function RegisterPage() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
+              {hasTouchedPassword && (
+                <div className="mt-3 space-y-2">
+                  {PASSWORD_REQUIREMENTS.map((requirement) => {
+                    const passed = requirement.test(password);
+                    return (
+                      <div key={requirement.label} className="flex items-center gap-2 text-sm">
+                        {passed ? (
+                          <CheckCircle2 className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-red-500" />
+                        )}
+                        <span className={passed ? 'text-green-600' : 'text-red-600'}>
+                          {requirement.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div>
@@ -202,9 +341,14 @@ export default function RegisterPage() {
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setError(null); }}
+                  onFocus={() => setHasTouchedConfirmPassword(true)}
                   placeholder="Confirm your password"
-                  className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00002E]/20 focus:border-[#00002E] transition-all"
+                  className={`w-full pl-12 pr-12 py-3 border rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 transition-all ${
+                    shouldShowConfirmPasswordMismatch
+                      ? 'border-red-300 focus:ring-red-100 focus:border-red-400'
+                      : 'border-gray-200 focus:ring-[#00002E]/20 focus:border-[#00002E]'
+                  }`}
                   required
                 />
                 <button
@@ -215,6 +359,16 @@ export default function RegisterPage() {
                   {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
+              {hasTouchedConfirmPassword && isConfirmPasswordEntered && (
+                <div className={`mt-2 flex items-center gap-2 text-sm font-medium ${isConfirmPasswordValid ? 'text-green-600' : 'text-red-600'}`}>
+                  {isConfirmPasswordValid ? (
+                    <CheckCircle2 className="w-4 h-4" />
+                  ) : (
+                    <XCircle className="w-4 h-4" />
+                  )}
+                  <span>{isConfirmPasswordValid ? 'Passwords match' : 'Passwords do not match'}</span>
+                </div>
+              )}
             </div>
 
             <button
@@ -232,6 +386,7 @@ export default function RegisterPage() {
               )}
             </button>
           </form>
+          )}
 
           {/* Google Sign Up */}
           <div className="mt-6">
@@ -270,15 +425,15 @@ export default function RegisterPage() {
           </div>
           <div className="grid grid-cols-3 gap-6 text-white">
             <div>
-              <div className="text-3xl font-bold">10K+</div>
+              <div className="text-3xl font-bold">{formatNumber(stats.partsListed)}</div>
               <div className="text-gray-400 text-sm">Parts Listed</div>
             </div>
             <div>
-              <div className="text-3xl font-bold">5K+</div>
+              <div className="text-3xl font-bold">{formatNumber(stats.happyCustomers)}</div>
               <div className="text-gray-400 text-sm">Happy Customers</div>
             </div>
             <div>
-              <div className="text-3xl font-bold">500+</div>
+              <div className="text-3xl font-bold">{formatNumber(stats.activeSellers)}</div>
               <div className="text-gray-400 text-sm">Active Sellers</div>
             </div>
           </div>

@@ -1,5 +1,40 @@
 import { API_URL } from '../config/api.config';
-import { getToken } from './storage';
+import { clearAuthData, getToken } from './storage';
+import { router } from 'expo-router';
+
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Your session has expired. Please log in again.');
+    this.name = 'SessionExpiredError';
+  }
+}
+
+const readJsonResponse = async (response: Response): Promise<any> => {
+  const text = await response.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+};
+
+const requireSuccessfulResponse = async (response: Response): Promise<any> => {
+  const result = await readJsonResponse(response);
+
+  if (response.status === 401) {
+    await clearAuthData();
+    router.replace('/(auth)/login');
+    throw new SessionExpiredError();
+  }
+
+  if (!response.ok) {
+    throw new Error(result.message || 'Request failed');
+  }
+
+  return result;
+};
 
 export interface BackendCartItem {
   id: string;           // backend CartItem ID (used for update/delete)
@@ -41,19 +76,7 @@ export const fetchCart = async (): Promise<CartResponse> => {
   try {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_URL}/cart`, { method: 'GET', headers });
-    const result = await response.json();
-    
-    // Handle 401 Unauthorized - token is invalid or expired
-    if (response.status === 401) {
-      console.warn('Cart fetch: Invalid or expired token - clearing stored token');
-      // Clear the stale token so user is redirected to login
-      const { removeToken } = await import('./storage');
-      await removeToken();
-      throw new Error('Token expired. Please log in again.');
-    }
-    
-    if (!response.ok) throw new Error(result.message || 'Failed to fetch cart');
-    return result;
+    return await requireSuccessfulResponse(response);
   } catch (error) {
     console.error('Fetch cart error:', error);
     throw error;
@@ -75,9 +98,7 @@ export const addItemToCart = async (
       headers,
       body: JSON.stringify({ productId, quantity, itemType }),
     });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message || 'Failed to add to cart');
-    return result;
+    return await requireSuccessfulResponse(response);
   } catch (error) {
     console.error('Add to cart error:', error);
     throw error;
@@ -96,9 +117,7 @@ export const updateCartItemQty = async (
       headers,
       body: JSON.stringify({ quantity }),
     });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message || 'Failed to update cart item');
-    return result;
+    return await requireSuccessfulResponse(response);
   } catch (error) {
     console.error('Update cart item error:', error);
     throw error;
@@ -115,9 +134,7 @@ export const removeCartItem = async (
       method: 'DELETE',
       headers,
     });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message || 'Failed to remove cart item');
-    return result;
+    return await requireSuccessfulResponse(response);
   } catch (error) {
     console.error('Remove cart item error:', error);
     throw error;
@@ -132,9 +149,7 @@ export const clearCartApi = async (): Promise<{ success: boolean; message?: stri
       method: 'DELETE',
       headers,
     });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message || 'Failed to clear cart');
-    return result;
+    return await requireSuccessfulResponse(response);
   } catch (error) {
     console.error('Clear cart error:', error);
     throw error;

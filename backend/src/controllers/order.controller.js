@@ -5,27 +5,21 @@ import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
 import { resolveShopOwnerId, getShopMemberIds } from '../lib/shopAccess.js';
 import { riderQuery } from '../lib/riderDb.js';
 
-const buildShopOrderScope = async (reqUser, extraWhere = {}) => {
-  const shopOwnerId = await resolveShopOwnerId(reqUser);
-  const teamMembers = await prisma.user.findMany({
-    where: { managerId: shopOwnerId },
-    select: { id: true },
-  });
-
-  const shopMemberIds = Array.from(new Set([
-    shopOwnerId,
-    ...teamMembers.map((member) => member.id),
-  ]));
-
-  const filters = [
-    Object.keys(extraWhere || {}).length > 0 ? extraWhere : null,
-    {
-      OR: shopMemberIds.map((memberId) => ({ salesmanId: memberId })),
-    },
-  ].filter(Boolean);
-
-  return filters.length > 1 ? { AND: filters } : filters[0] || { OR: shopMemberIds.map((memberId) => ({ salesmanId: memberId })) };
+const hasValidCoordinates = (latitude, longitude) => {
+  if (latitude === null || latitude === undefined || String(latitude).trim() === '' ||
+      longitude === null || longitude === undefined || String(longitude).trim() === '') {
+    return false;
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  return Number.isFinite(lat) && lat >= -90 && lat <= 90 &&
+    Number.isFinite(lng) && lng >= -180 && lng <= 180;
 };
+
+const formatDeliveryAddress = (address) =>
+  [address?.street, address?.city, address?.state, address?.postalCode, address?.country]
+    .filter(Boolean)
+    .join(', ');
 
 /**
  * Get salesman's sales summary
@@ -33,23 +27,23 @@ const buildShopOrderScope = async (reqUser, extraWhere = {}) => {
  */
 export const getSalesmanSalesSummary = async (req, res) => {
   try {
-    // Salesmen share the shop's sales figures, including orders created by the manager
-    // and every salesperson assigned to that manager.
+    // Salesmen share the shop's sales figures — scope to the manager (shop owner).
+    const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
     const { date } = req.query;
     const targetDate = date ? new Date(date) : new Date();
     const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
     const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
 
-    const orderScope = await buildShopOrderScope(req.user, {
-      createdAt: {
-        gte: startOfDay,
-        lte: endOfDay,
-      },
-    });
-
     // Get today's orders for this shop
     const todayOrders = await prisma.order.findMany({
-      where: orderScope,
+      where: {
+        salesmanId: { in: shopOrderOwnerIds },
+        createdAt: {
+          gte: startOfDay,
+          lte: endOfDay
+        }
+      },
       include: {
         items: {
           include: {
@@ -113,14 +107,13 @@ export const getSalesmanSalesSummary = async (req, res) => {
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
 
-    const weekScope = await buildShopOrderScope(req.user, {
-      createdAt: {
-        gte: startOfWeek,
-      },
-    });
-
     const weekOrders = await prisma.order.findMany({
-      where: weekScope,
+      where: {
+        salesmanId: { in: shopOrderOwnerIds },
+        createdAt: {
+          gte: startOfWeek
+        }
+      },
       select: {
         total: true,
         createdAt: true
@@ -135,14 +128,13 @@ export const getSalesmanSalesSummary = async (req, res) => {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const monthScope = await buildShopOrderScope(req.user, {
-      createdAt: {
-        gte: startOfMonth,
-      },
-    });
-
     const monthOrders = await prisma.order.findMany({
-      where: monthScope,
+      where: {
+        salesmanId: { in: shopOrderOwnerIds },
+        createdAt: {
+          gte: startOfMonth
+        }
+      },
       select: {
         total: true
       }
@@ -152,17 +144,16 @@ export const getSalesmanSalesSummary = async (req, res) => {
     const monthlyOrders = monthOrders.length;
 
     // Get top selling items this month (both products and car parts)
-    const topProductScope = await buildShopOrderScope(req.user, {
-      createdAt: {
-        gte: startOfMonth,
-      },
-    });
-
     const topProductItems = await prisma.orderItem.groupBy({
       by: ['productId'],
       where: {
         productId: { not: null },
-        order: topProductScope,
+        order: {
+          salesmanId: { in: shopOrderOwnerIds },
+          createdAt: {
+            gte: startOfMonth
+          }
+        }
       },
       _sum: {
         quantity: true,
@@ -176,17 +167,16 @@ export const getSalesmanSalesSummary = async (req, res) => {
       take: 5
     });
 
-    const topCarPartScope = await buildShopOrderScope(req.user, {
-      createdAt: {
-        gte: startOfMonth,
-      },
-    });
-
     const topCarPartItems = await prisma.orderItem.groupBy({
       by: ['carPartId'],
       where: {
         carPartId: { not: null },
-        order: topCarPartScope,
+        order: {
+          salesmanId: { in: shopOrderOwnerIds },
+          createdAt: {
+            gte: startOfMonth
+          }
+        }
       },
       _sum: {
         quantity: true,
@@ -326,8 +316,11 @@ export const getSalesmanSalesSummary = async (req, res) => {
  */
 export const getSalesmanPendingCount = async (req, res) => {
   try {
-    const where = await buildShopOrderScope(req.user, { status: 'PENDING' });
-    const count = await prisma.order.count({ where });
+    const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
+    const count = await prisma.order.count({
+      where: { salesmanId: { in: shopOrderOwnerIds }, status: 'PENDING' }
+    });
     res.json({ success: true, count });
   } catch (error) {
     console.error('Get pending count error:', error);
@@ -340,10 +333,18 @@ export const getSalesmanPendingCount = async (req, res) => {
  */
 export const getSalesmanOrders = async (req, res) => {
   try {
-    // A salesman sees the entire shop's orders, including orders assigned to the
-    // manager and every salesman under that manager.
+    // Include legacy orders recorded against a salesman as well as manager-owned orders.
+    const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
     const { status, page = 1, limit = 20 } = req.query;
-    const where = await buildShopOrderScope(req.user, status ? { status } : {});
+
+    const where = {
+      salesmanId: { in: shopOrderOwnerIds }
+    };
+
+    if (status) {
+      where.status = status;
+    }
 
     const orders = await prisma.order.findMany({
       where,
@@ -440,12 +441,16 @@ export const updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+    // Salesmen act on behalf of their manager, so scope to the shop owner's id.
     const shopOwnerId = await resolveShopOwnerId(req.user);
-    const shopOrderScope = await buildShopOrderScope(req.user, { id });
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
 
     // Verify the order belongs to this shop
     const order = await prisma.order.findFirst({
-      where: shopOrderScope
+      where: {
+        id,
+        salesmanId: { in: shopOrderOwnerIds }
+      }
     });
 
     if (!order) {
@@ -453,6 +458,35 @@ export const updateOrderStatus = async (req, res) => {
         success: false,
         message: 'Order not found'
       });
+    }
+
+    // ── Enforce the order lifecycle (seller/manager driven) ──────────────────
+    // The seller advances the order ONE step at a time and cannot skip ahead:
+    //   PENDING → CONFIRMED → PROCESSING → SHIPPED → DELIVERED
+    // Cancelling is only allowed while the order is still PENDING.
+    const SELLER_STATUS_FLOW = ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
+    if (status === 'CANCELLED') {
+      if (order.status !== 'PENDING') {
+        return res.status(400).json({
+          success: false,
+          message: 'Orders can only be cancelled while they are still Pending.',
+        });
+      }
+    } else {
+      const currentIndex = SELLER_STATUS_FLOW.indexOf(order.status);
+      const targetIndex = SELLER_STATUS_FLOW.indexOf(status);
+      if (targetIndex === -1) {
+        return res.status(400).json({ success: false, message: `Invalid status: ${status}.` });
+      }
+      if (targetIndex !== currentIndex + 1) {
+        const nextAllowed = SELLER_STATUS_FLOW[currentIndex + 1];
+        return res.status(400).json({
+          success: false,
+          message: nextAllowed
+            ? `Advance the order one step at a time. From ${order.status} you can only move to ${nextAllowed}.`
+            : `The order is already ${order.status} and cannot be advanced further.`,
+        });
+      }
     }
 
     // Gate manual SHIPPED: the seller/manager can only mark an order SHIPPED
@@ -480,6 +514,26 @@ export const updateOrderStatus = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: 'You can mark this order as Shipped only after the rider has picked it up.'
+        });
+      }
+    }
+
+    // Gate manual DELIVERED: only after the rider has actually completed delivery.
+    // (The rider's own "delivered" step already auto-advances the order; this stops
+    // the seller from marking Delivered before the package has arrived.)
+    if (status === 'DELIVERED' && order.status !== 'DELIVERED') {
+      const jobRes = await riderQuery(
+        `SELECT status FROM "DeliveryJob"
+           WHERE marketplace_order_id = $1
+           ORDER BY created_at DESC
+           LIMIT 1`,
+        [id]
+      );
+      const deliveryJob = jobRes.rows[0];
+      if (!deliveryJob || deliveryJob.status !== 'delivered') {
+        return res.status(400).json({
+          success: false,
+          message: 'You can mark this order as Delivered only after the rider completes the delivery.'
         });
       }
     }
@@ -569,6 +623,13 @@ export const updateOrderStatus = async (req, res) => {
       }
 
       return updated;
+    }, {
+      // Prisma's default interactive-transaction timeout is 5s. Under high DB latency
+      // (e.g. a local backend talking to a distant pooler) the update + tracking write
+      // can exceed that and abort. Give it generous headroom; it still returns as soon
+      // as the work completes.
+      maxWait: 10000,
+      timeout: 20000,
     });
 
     // 🔌 Emit real-time event to the customer so their mobile app updates instantly
@@ -650,6 +711,7 @@ export const getCustomerOrders = async (req, res) => {
                 id: true,
                 name: true,
                 images: true,
+                categoryId: true,
                 salesman: {
                   select: {
                     id: true,
@@ -775,7 +837,16 @@ export const createOrder = async (req, res) => {
         message: 'The selected delivery address is invalid. Please choose one of your saved addresses',
       });
     }
+    if (!hasValidCoordinates(address.latitude, address.longitude)) {
+      return res.status(400).json({
+        success: false,
+        message: 'The selected address needs a delivery pin. Edit the address and choose its location on the map.',
+      });
+    }
     const validAddressId = address.id;
+    const deliveryAddressSnapshot = formatDeliveryAddress(address);
+    const deliveryLatitudeSnapshot = Number(address.latitude);
+    const deliveryLongitudeSnapshot = Number(address.longitude);
 
     // Get item IDs
     const itemIds = items.map(item => item.productId);
@@ -790,6 +861,8 @@ export const createOrder = async (req, res) => {
           select: {
             id: true,
             name: true,
+            role: true,
+            managerId: true,
             store: {
               select: {
                 name: true
@@ -810,6 +883,8 @@ export const createOrder = async (req, res) => {
           select: {
             id: true,
             name: true,
+            role: true,
+            managerId: true,
             store: {
               select: {
                 name: true
@@ -831,7 +906,7 @@ export const createOrder = async (req, res) => {
         price: product.price,
         discountPrice: product.discountPrice,
         images: product.images,
-        sellerId: product.salesmanId,
+        sellerId: product.salesman?.managerId || product.salesmanId,
         sellerName: product.salesman?.name || 'Unknown Seller',
         storeName: product.salesman?.store?.name
       });
@@ -845,7 +920,7 @@ export const createOrder = async (req, res) => {
         price: part.price,
         discountPrice: part.discountPrice,
         images: part.images,
-        sellerId: part.sellerId,
+        sellerId: part.seller?.managerId || part.sellerId,
         sellerName: part.seller?.name || 'Unknown Seller',
         storeName: part.seller?.store?.name
       });
@@ -961,6 +1036,9 @@ export const createOrder = async (req, res) => {
           deliveryFee: Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0,
           paymentMethod: normalizedPaymentMethod,
           notes,
+          deliveryAddress: deliveryAddressSnapshot,
+          deliveryLatitude: deliveryLatitudeSnapshot,
+          deliveryLongitude: deliveryLongitudeSnapshot,
           status: 'PENDING',
           paymentStatus: normalizedPaymentMethod === 'WALLET' ? 'PAID' : 'PENDING', // Mark paid automatically if Wallet
           items: {
@@ -1543,8 +1621,10 @@ export const acceptComplaint = async (req, res) => {
     const { id } = req.params;
     // Scope to the full shop so a salesman/manager can act on any order in their store.
     const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
+
     const order = await prisma.order.findFirst({
-      where: await buildShopOrderScope(req.user, { id }),
+      where: { id, salesmanId: { in: shopOrderOwnerIds } },
       include: {
         customer: { select: { id: true, name: true } },
         tracking: { where: { status: 'DELIVERED' }, select: { id: true }, take: 1 },
@@ -1609,9 +1689,10 @@ export const rejectComplaint = async (req, res) => {
     const { id } = req.params;
     const { message } = req.body;
     const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
 
     const order = await prisma.order.findFirst({
-      where: await buildShopOrderScope(req.user, { id }),
+      where: { id, salesmanId: { in: shopOrderOwnerIds } },
       include: {
         customer: { select: { id: true, name: true } },
         tracking: { where: { status: 'DELIVERED' }, select: { id: true }, take: 1 },

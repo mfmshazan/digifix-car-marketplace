@@ -1,27 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
+import { Animated, Text, Easing, View, StyleSheet, Platform } from 'react-native';
 import { Provider, useDispatch } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
+import { ClerkProvider, ClerkLoaded } from '@clerk/expo';
+import { tokenCache } from '@clerk/expo/token-cache';
 
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
+import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import HomeScreen from './screens/HomeScreen';
 import DeliveryDetailsScreen from './screens/DeliveryDetailsScreen';
-import AvailableJobsScreen from './screens/AvailableJobsScreen';
 import ActiveDeliveryScreen from './screens/ActiveDeliveryScreen';
 import AssignedDeliveriesScreen from './screens/AssignedDeliveriesScreen';
 import ProofOfDeliveryScreen from './screens/ProofOfDeliveryScreen';
 import JobHistoryScreen from './screens/JobHistoryScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import ProfileHubScreen from './screens/ProfileHubScreen';
+import PerformanceDashboardScreen from './screens/PerformanceDashboardScreen';
 import WalletScreen from './screens/WalletScreen';
 import RealtimeDispatchLayer from './components/RealtimeDispatchLayer';
 
 import { getAccessToken, getRefreshToken } from './services/storage';
 import { requestLocationPermission } from './services/location';
+import { initOneSignal, registerPushForToken } from './services/onesignal';
 
 import { flushPendingNavigation, navigationRef } from './services/navigation';
 import { colors, shadows } from './styles/theme';
@@ -31,6 +36,52 @@ import { fetchDriverHome } from './store/slices/homeSlice';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+const ProfileStack = createStackNavigator();
+
+// Branded splash loading bar dimensions (track + sweeping segment).
+const SPLASH_BAR_TRACK = 180;
+const SPLASH_BAR_SEG = 62;
+
+/**
+ * Branded loading screen — DIGIFIX RIDER wordmark with an animated horizontal
+ * bar sweeping underneath. Shown while auth/session is being restored.
+ */
+function BrandedLoader() {
+    const sweep = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        const loop = Animated.loop(
+            Animated.timing(sweep, {
+                toValue: 1,
+                duration: 900,
+                easing: Easing.inOut(Easing.ease),
+                useNativeDriver: true,
+            })
+        );
+        loop.start();
+        return () => loop.stop();
+    }, [sweep]);
+
+    const translateX = sweep.interpolate({
+        inputRange: [0, 1],
+        outputRange: [-SPLASH_BAR_SEG, SPLASH_BAR_TRACK],
+    });
+
+    return (
+        <View style={styles.splash}>
+            <StatusBar style="dark" backgroundColor="#FFFFFF" />
+            <View style={styles.splashLogoRow}>
+                <Ionicons name="cog" size={28} color={colors.secondaryDark} style={{ marginRight: 10 }} />
+                <Text style={styles.splashBrand}>DIGIFIX</Text>
+            </View>
+            <Text style={styles.splashSub}>RIDER</Text>
+            <View style={styles.loadingTrack}>
+                <Animated.View style={[styles.loadingBar, { transform: [{ translateX }] }]} />
+            </View>
+            <Text style={styles.splashTagline}>Preparing your deliveries…</Text>
+        </View>
+    );
+}
 
 const navTheme = {
     ...DefaultTheme,
@@ -44,11 +95,48 @@ const navTheme = {
     },
 };
 
+function ProfileNavigator() {
+    return (
+        <ProfileStack.Navigator
+            screenOptions={{
+                headerStyle: styles.headerStyle,
+                headerTintColor: colors.text,
+                headerTitleStyle: styles.headerTitle,
+                headerTitleAlign: 'center',
+                headerShadowVisible: false,
+                cardStyle: { backgroundColor: colors.background },
+            }}
+        >
+            <ProfileStack.Screen
+                name="ProfileMenu"
+                component={ProfileHubScreen}
+                options={{ headerShown: false }}
+            />
+            <ProfileStack.Screen
+                name="RiderProfile"
+                component={ProfileScreen}
+                options={{ title: 'Profile' }}
+            />
+            <ProfileStack.Screen
+                name="AssignedDeliveries"
+                component={AssignedDeliveriesScreen}
+                options={{ title: 'Assigned Deliveries' }}
+            />
+            <ProfileStack.Screen
+                name="JobHistory"
+                component={JobHistoryScreen}
+                options={{ title: 'Delivery History' }}
+            />
+        </ProfileStack.Navigator>
+    );
+}
+
 function MainTabs() {
     return (
         <Tab.Navigator
             screenOptions={({ route }) => ({
                 headerShown: false,
+                tabBarHideOnKeyboard: true,
                 tabBarStyle: styles.tabBar,
                 tabBarActiveTintColor: colors.secondary,
                 tabBarInactiveTintColor: colors.textMuted,
@@ -58,16 +146,18 @@ function MainTabs() {
                     let iconName;
                     if (route.name === 'Home') {
                         iconName = focused ? 'home' : 'home-outline';
-                    } else if (route.name === 'AssignedDeliveries') {
-                        iconName = focused ? 'car' : 'car-outline';
-                    } else if (route.name === 'JobHistory') {
-                        iconName = focused ? 'receipt' : 'receipt-outline';
+                    } else if (route.name === 'Performance') {
+                        iconName = focused ? 'analytics' : 'analytics-outline';
                     } else if (route.name === 'Wallet') {
                         iconName = focused ? 'wallet' : 'wallet-outline';
                     } else if (route.name === 'Profile') {
                         iconName = focused ? 'person-circle' : 'person-circle-outline';
                     }
-                    return <Ionicons name={iconName} size={24} color={color} />;
+                    return (
+                        <View style={[styles.tabIconWrap, focused && styles.tabIconWrapActive]}>
+                            <Ionicons name={iconName} size={21} color={color} />
+                        </View>
+                    );
                 },
             })}
         >
@@ -77,14 +167,9 @@ function MainTabs() {
                 options={{ tabBarLabel: 'Home' }}
             />
             <Tab.Screen
-                name="AssignedDeliveries"
-                component={AssignedDeliveriesScreen}
-                options={{ tabBarLabel: 'Assigned' }}
-            />
-            <Tab.Screen
-                name="JobHistory"
-                component={JobHistoryScreen}
-                options={{ tabBarLabel: 'History' }}
+                name="Performance"
+                component={PerformanceDashboardScreen}
+                options={{ tabBarLabel: 'Performance' }}
             />
             <Tab.Screen
                 name="Wallet"
@@ -93,7 +178,7 @@ function MainTabs() {
             />
             <Tab.Screen
                 name="Profile"
-                component={ProfileScreen}
+                component={ProfileNavigator}
                 options={{ tabBarLabel: 'Profile' }}
             />
         </Tab.Navigator>
@@ -106,6 +191,8 @@ function AppContent() {
     const dispatch = useDispatch();
 
     useEffect(() => {
+        // Initialise push once at launch (no-ops in Expo Go / web).
+        initOneSignal();
         checkAuth();
         requestLocationPermission();
     }, []);
@@ -120,6 +207,9 @@ function AppContent() {
             setIsAuthenticated(authenticated);
 
             if (authenticated) {
+                // Re-attach the device to the logged-in rider on cold start so
+                // delivery pushes keep working across app restarts.
+                registerPushForToken(token);
                 dispatch(hydrateAvailability());
                 dispatch(fetchDriverHome());
 
@@ -132,16 +222,12 @@ function AppContent() {
     };
 
     if (isLoading) {
-        return (
-            <View style={styles.loader}>
-                <ActivityIndicator size="large" color={colors.secondary} />
-            </View>
-        );
+        return <BrandedLoader />;
     }
 
     return (
         <>
-            <StatusBar style="dark" />
+            <StatusBar style="dark" backgroundColor={colors.background} />
             <NavigationContainer
                 ref={navigationRef}
                 theme={navTheme}
@@ -169,11 +255,6 @@ function AppContent() {
                         options={{ title: 'Delivery Details' }}
                     />
                     <Stack.Screen
-                        name="AvailableJobs"
-                        component={AvailableJobsScreen}
-                        options={{ title: 'Available Jobs' }}
-                    />
-                    <Stack.Screen
                         name="ActiveDelivery"
                         component={ActiveDeliveryScreen}
                         options={{ title: 'Active Delivery' }}
@@ -193,6 +274,11 @@ function AppContent() {
                         component={RegisterScreen}
                         options={{ headerShown: false }}
                     />
+                    <Stack.Screen
+                        name="ForgotPassword"
+                        component={ForgotPasswordScreen}
+                        options={{ headerShown: false }}
+                    />
                 </Stack.Navigator>
             </NavigationContainer>
             <RealtimeDispatchLayer isAuthenticated={isAuthenticated} />
@@ -201,23 +287,65 @@ function AppContent() {
 }
 
 export default function App() {
+    const clerkKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
     return (
-        <Provider store={store}>
-            <AppContent />
-        </Provider>
+        <ClerkProvider publishableKey={clerkKey} tokenCache={tokenCache}>
+            <ClerkLoaded>
+                <Provider store={store}>
+                    <AppContent />
+                </Provider>
+            </ClerkLoaded>
+        </ClerkProvider>
     );
 }
 
 const styles = StyleSheet.create({
-    loader: {
+    splash: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: colors.background,
+        backgroundColor: '#FFFFFF',
+    },
+    splashLogoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    splashBrand: {
+        fontSize: 30,
+        fontWeight: '800',
+        letterSpacing: 4,
+        color: colors.secondaryDark,
+    },
+    splashSub: {
+        fontSize: 12,
+        fontWeight: '800',
+        letterSpacing: 6,
+        color: colors.textMuted,
+        marginTop: 6,
+    },
+    loadingTrack: {
+        width: SPLASH_BAR_TRACK,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: colors.secondarySoft,
+        overflow: 'hidden',
+        marginTop: 26,
+    },
+    loadingBar: {
+        width: SPLASH_BAR_SEG,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: colors.secondary,
+    },
+    splashTagline: {
+        fontSize: 13,
+        color: colors.textSecondary,
+        marginTop: 18,
     },
     headerStyle: {
         backgroundColor: colors.surface,
-        ...shadows.small,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.borderSubtle,
     },
     headerTitle: {
         fontSize: 17,
@@ -226,20 +354,33 @@ const styles = StyleSheet.create({
     },
     tabBar: {
         backgroundColor: colors.surface,
-        borderTopWidth: 1,
-        borderTopColor: colors.border,
-        height: Platform.OS === 'ios' ? 88 : 64,
-        paddingTop: 8,
-        paddingBottom: Platform.OS === 'ios' ? 28 : 10,
-        ...shadows.medium,
+        borderTopWidth: 0,
+        height: Platform.OS === 'ios' ? 92 : 72,
+        paddingTop: 9,
+        paddingBottom: Platform.OS === 'ios' ? 27 : 9,
+        marginHorizontal: 12,
+        marginBottom: Platform.OS === 'ios' ? 0 : 10,
+        borderRadius: 22,
+        position: 'absolute',
+        ...shadows.large,
     },
     tabLabel: {
-        fontSize: 11,
-        fontWeight: '600',
-        marginTop: 2,
+        fontSize: 10,
+        fontWeight: '700',
+        marginTop: 3,
     },
     tabItem: {
-        paddingVertical: 4,
+        paddingVertical: 2,
+    },
+    tabIconWrap: {
+        width: 34,
+        height: 28,
+        borderRadius: 11,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    tabIconWrapActive: {
+        backgroundColor: colors.secondarySoft,
     },
 });
 

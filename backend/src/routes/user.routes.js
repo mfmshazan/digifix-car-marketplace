@@ -10,12 +10,31 @@ const router = Router();
 // All routes require authentication
 router.use(authenticate);
 
+const cleanText = (value) => typeof value === 'string' ? value.trim() : '';
+const isCoordinateInRange = (value, min, max) => {
+  if (value === null || value === undefined || String(value).trim() === '') return false;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= min && number <= max;
+};
+
+const validateRequiredAddressFields = ({ street, city, state, postalCode }) => {
+  const missingFields = [];
+  if (!cleanText(street)) missingFields.push('street');
+  if (!cleanText(city)) missingFields.push('city');
+  if (!cleanText(state)) missingFields.push('state');
+  if (!cleanText(postalCode)) missingFields.push('postal code');
+  return missingFields;
+};
+
 // Get user addresses
 router.get('/addresses', async (req, res) => {
   try {
     const addresses = await prisma.address.findMany({
       where: { userId: req.user.id },
-      orderBy: { isDefault: 'desc' }
+      orderBy: [
+        { isDefault: 'desc' },
+        { updatedAt: 'desc' },
+      ],
     });
     res.json({ success: true, data: addresses });
   } catch (error) {
@@ -27,35 +46,53 @@ router.get('/addresses', async (req, res) => {
 // Add address
 router.post('/addresses', async (req, res) => {
   try {
-    const { label, street, city, state, postalCode, country, isDefault } = req.body;
-    
-    if (!street || !city || !state || !postalCode) {
+    const { label, street, city, state, postalCode, country, latitude, longitude, isDefault } = req.body;
+
+    const missingFields = validateRequiredAddressFields({ street, city, state, postalCode });
+    if (missingFields.length > 0) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Street, city, state, and postal code are required' 
+        message: `Please enter ${missingFields.join(', ')}`,
+      });
+    }
+    if (
+      !isCoordinateInRange(latitude, -90, 90) ||
+      !isCoordinateInRange(longitude, -180, 180)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please pin the delivery location on the map',
       });
     }
 
-    // If setting as default, remove default from other addresses
-    if (isDefault) {
-      await prisma.address.updateMany({
+    const address = await prisma.$transaction(async (tx) => {
+      const addressCount = await tx.address.count({
         where: { userId: req.user.id },
-        data: { isDefault: false }
       });
-    }
+      const shouldBeDefault = Boolean(isDefault) || addressCount === 0;
 
-    const address = await prisma.address.create({
-      data: {
-        userId: req.user.id,
-        label: label || 'Home',
-        street,
-        city,
-        state,
-        postalCode,
-        country: country || 'Sri Lanka',
-        isDefault: isDefault || false
+      if (shouldBeDefault) {
+        await tx.address.updateMany({
+          where: { userId: req.user.id },
+          data: { isDefault: false },
+        });
       }
-    });
+
+      return tx.address.create({
+        data: {
+          userId: req.user.id,
+          label: cleanText(label) || 'Home',
+          street: cleanText(street),
+          city: cleanText(city),
+          state: cleanText(state),
+          postalCode: cleanText(postalCode),
+          country: cleanText(country) || 'Sri Lanka',
+          latitude: Number(latitude),
+          longitude: Number(longitude),
+          isDefault: shouldBeDefault,
+        },
+      });
+    }, { maxWait: 10000, timeout: 20000 });
 
     res.status(201).json({ success: true, data: address });
   } catch (error) {
@@ -64,10 +101,142 @@ router.post('/addresses', async (req, res) => {
   }
 });
 
-// Get or create default address (for quick checkout)
+// Update an address owned by the authenticated user
+router.patch('/addresses/:addressId', async (req, res) => {
+  try {
+    const { addressId } = req.params;
+    const existingAddress = await prisma.address.findFirst({
+      where: {
+        id: addressId,
+        userId: req.user.id,
+      },
+    });
+
+    if (!existingAddress) {
+      return res.status(404).json({
+        success: false,
+        message: 'Address not found',
+      });
+    }
+
+    const nextAddress = {
+      street: req.body.street === undefined ? existingAddress.street : req.body.street,
+      city: req.body.city === undefined ? existingAddress.city : req.body.city,
+      state: req.body.state === undefined ? existingAddress.state : req.body.state,
+      postalCode: req.body.postalCode === undefined ? existingAddress.postalCode : req.body.postalCode,
+    };
+    const missingFields = validateRequiredAddressFields(nextAddress);
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Please enter ${missingFields.join(', ')}`,
+      });
+    }
+    const coordinatesWereProvided =
+      req.body.latitude !== undefined || req.body.longitude !== undefined;
+    if (
+      coordinatesWereProvided &&
+      (!isCoordinateInRange(req.body.latitude, -90, 90) ||
+        !isCoordinateInRange(req.body.longitude, -180, 180))
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please pin a valid delivery location on the map',
+      });
+    }
+
+    const address = await prisma.$transaction(async (tx) => {
+      if (req.body.isDefault === true) {
+        await tx.address.updateMany({
+          where: {
+            userId: req.user.id,
+            id: { not: addressId },
+          },
+          data: { isDefault: false },
+        });
+      }
+
+      const data = {};
+      if (req.body.label !== undefined) data.label = cleanText(req.body.label) || 'Home';
+      if (req.body.street !== undefined) data.street = cleanText(req.body.street);
+      if (req.body.city !== undefined) data.city = cleanText(req.body.city);
+      if (req.body.state !== undefined) data.state = cleanText(req.body.state);
+      if (req.body.postalCode !== undefined) data.postalCode = cleanText(req.body.postalCode);
+      if (req.body.country !== undefined) data.country = cleanText(req.body.country) || 'Sri Lanka';
+      if (coordinatesWereProvided) {
+        data.latitude = Number(req.body.latitude);
+        data.longitude = Number(req.body.longitude);
+      }
+      if (req.body.isDefault === true) data.isDefault = true;
+
+      return tx.address.update({
+        where: { id: addressId },
+        data,
+      });
+    }, { maxWait: 10000, timeout: 20000 });
+
+    res.json({ success: true, data: address });
+  } catch (error) {
+    console.error('Update address error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update address' });
+  }
+});
+
+// Delete an address and promote another address if the default was deleted
+router.delete('/addresses/:addressId', async (req, res) => {
+  try {
+    const { addressId } = req.params;
+    const existingAddress = await prisma.address.findFirst({
+      where: {
+        id: addressId,
+        userId: req.user.id,
+      },
+    });
+
+    if (!existingAddress) {
+      return res.status(404).json({
+        success: false,
+        message: 'Address not found',
+      });
+    }
+
+    const linkedOrderCount = await prisma.order.count({
+      where: { addressId },
+    });
+    if (linkedOrderCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'This address is attached to an existing order. You can edit it or add a new default address instead.',
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.address.delete({ where: { id: addressId } });
+
+      if (existingAddress.isDefault) {
+        const replacement = await tx.address.findFirst({
+          where: { userId: req.user.id },
+          orderBy: { updatedAt: 'desc' },
+        });
+        if (replacement) {
+          await tx.address.update({
+            where: { id: replacement.id },
+            data: { isDefault: true },
+          });
+        }
+      }
+    }, { maxWait: 10000, timeout: 20000 });
+
+    res.json({ success: true, message: 'Address deleted successfully' });
+  } catch (error) {
+    console.error('Delete address error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete address' });
+  }
+});
+
+// Return the address that checkout should use. Never create placeholder data.
 router.post('/addresses/default', async (req, res) => {
   try {
-    // Check if user has any address
     let address = await prisma.address.findFirst({
       where: { 
         userId: req.user.id,
@@ -78,25 +247,15 @@ router.post('/addresses/default', async (req, res) => {
     // If no default, get any address
     if (!address) {
       address = await prisma.address.findFirst({
-        where: { userId: req.user.id }
+        where: { userId: req.user.id },
+        orderBy: { updatedAt: 'desc' },
       });
     }
 
-    // If still no address, create a default one
     if (!address) {
-      const { street, city, state, postalCode, country } = req.body;
-      
-      address = await prisma.address.create({
-        data: {
-          userId: req.user.id,
-          label: 'Default',
-          street: street || 'Please update your address',
-          city: city || 'Colombo',
-          state: state || 'Western',
-          postalCode: postalCode || '00100',
-          country: country || 'Sri Lanka',
-          isDefault: true
-        }
+      return res.status(404).json({
+        success: false,
+        message: 'Please add a delivery address before checkout',
       });
     }
 

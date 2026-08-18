@@ -117,6 +117,50 @@ export const productsApi = {
     const response = await api.post('/products', data);
     return response.data;
   },
+
+  // Update a product
+  updateProduct: async (id: string, data: any) => {
+    const response = await api.put(`/products/${id}`, data);
+    return response.data;
+  },
+};
+
+export const vehicleApi = {
+  // Get all vehicle types
+  getVehicleTypes: async () => {
+    const response = await api.get('/vehicle/types');
+    return response.data;
+  },
+
+  // Get all vehicle brands
+  getVehicleBrands: async () => {
+    const response = await api.get('/vehicle/brands');
+    return response.data;
+  },
+
+  // Get vehicle brands filtered by vehicle type
+  getVehicleBrandsByType: async (vehicleTypeId: string) => {
+    const response = await api.get(`/vehicle/brands/by-type/${vehicleTypeId}`);
+    return response.data;
+  },
+
+  // Get all vehicle models
+  getVehicleModels: async () => {
+    const response = await api.get('/vehicle/models');
+    return response.data;
+  },
+
+  // Get vehicle models filtered by brand
+  getVehicleModelsByBrand: async (brandId: string) => {
+    const response = await api.get(`/vehicle/models/by-brand/${brandId}`);
+    return response.data;
+  },
+
+  // Search vehicle by registration number
+  searchVehicleByRegistration: async (registrationNumber: string) => {
+    const response = await api.get(`/vehicle/search/${encodeURIComponent(registrationNumber)}`);
+    return response.data;
+  },
 };
 
 export const commonApi = {
@@ -272,6 +316,18 @@ export const ordersApi = {
     const response = await api.put(`/orders/${id}/status`, { status });
     return response.data;
   },
+
+  // Manager accepts a post-delivery product complaint (approves the refund request)
+  acceptComplaint: async (orderId: string) => {
+    const response = await api.post(`/orders/${orderId}/accept-complaint`);
+    return response.data;
+  },
+
+  // Manager rejects a post-delivery product complaint (order reverts to Delivered)
+  rejectComplaint: async (orderId: string, message?: string) => {
+    const response = await api.post(`/orders/${orderId}/reject-complaint`, { message });
+    return response.data;
+  },
 };
 
 export const deliveryRequestsApi = {
@@ -302,6 +358,11 @@ export const deliveryRequestsApi = {
     const response = await api.get('/delivery-requests/available-riders', {
       params: { pickupLatitude, pickupLongitude },
     });
+    return response.data;
+  },
+
+  retry: async (orderId: string) => {
+    const response = await api.post(`/delivery-requests/${orderId}/retry`);
     return response.data;
   },
 
@@ -365,6 +426,77 @@ export const adminApi = {
   // Reject customer cancellation/refund request
   rejectCancellation: async (orderId: string, message?: string) => {
     const response = await api.post(`/orders/${orderId}/reject-cancel`, { message });
+    return response.data;
+  },
+
+  // Get all reviews for moderation (admin only)
+  getReviews: async (params?: { status?: string; targetType?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/reviews/admin/all', { params });
+    return response.data;
+  },
+
+  // Approve or hide a review (admin only)
+  moderateReview: async (reviewId: string, status: 'PUBLISHED' | 'HIDDEN') => {
+    const response = await api.patch(`/reviews/admin/${reviewId}/status`, { status });
+    return response.data;
+  },
+
+  // Fetch repayment receipts for admin review
+  getDebtReceipts: async (params?: { status?: string }) => {
+    const response = await api.get('/wallet/receipts/admin', { params });
+    return response.data;
+  },
+
+  // Fetch salespersons / delivery persons whose wallet balance is negative
+  getWalletDebtors: async () => {
+    const response = await api.get('/wallet/receipts/admin/debtors');
+    return response.data;
+  },
+
+  // Approve or reject a repayment receipt
+  reviewDebtReceipt: async (receiptId: string, decision: 'APPROVE' | 'REJECT', rejectionReason?: string) => {
+    const response = await api.post(`/wallet/receipts/${receiptId}/review`, {
+      decision,
+      ...(rejectionReason ? { rejectionReason } : {}),
+    });
+    return response.data;
+  },
+};
+
+// ─── Reviews Types ────────────────────────────────────────────────────────────
+
+export interface ReviewReply {
+  id: string;
+  replyText: string;
+  createdAt: string;
+  seller: { id: string; name: string; avatar: string | null };
+}
+
+export interface Review {
+  id: string;
+  targetId: string;
+  targetType: string;
+  rating: number;
+  comment: string | null;
+  title: string | null;
+  status: string;
+  createdAt: string;
+  user: { id: string; name: string; avatar: string | null };
+  replies: ReviewReply[];
+}
+
+// ─── Reviews API ──────────────────────────────────────────────────────────────
+
+export const reviewsApi = {
+  /** Fetch all PUBLISHED reviews for a given target (store owner ID, product ID, etc.) */
+  getTargetReviews: async (targetId: string): Promise<{ success: boolean; data: Review[] }> => {
+    const response = await api.get(`/reviews/target/${targetId}`);
+    return response.data;
+  },
+
+  /** Submit a salesman reply to a review */
+  replyToReview: async (reviewId: string, replyText: string): Promise<{ success: boolean; data: ReviewReply }> => {
+    const response = await api.post(`/reviews/${reviewId}/reply`, { replyText });
     return response.data;
   },
 };

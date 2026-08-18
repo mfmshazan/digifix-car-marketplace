@@ -23,7 +23,7 @@ vi.mock('../lib/adminWallet.js', () => ({
 }));
 
 import prisma from '../lib/prisma.js';
-import { createOrder } from '../controllers/order.controller.js';
+import { createOrder, getSalesmanOrders } from '../controllers/order.controller.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const makeRes = () => {
@@ -38,11 +38,16 @@ const makeRes = () => {
 
 const makeReq = (overrides = {}) => ({
   user: { id: 'customer-1' },
-  body: { items: [], paymentMethod: 'COD', addressId: null },
   headers: {},
   params: {},
   app: { get: vi.fn().mockReturnValue(null) }, // no socket.io
   ...overrides,
+  body: {
+    items: [],
+    paymentMethod: 'COD',
+    addressId: 'address-1',
+    ...(overrides.body || {}),
+  },
 });
 
 // ── Reusable fixtures ─────────────────────────────────────────────────────────
@@ -110,6 +115,20 @@ describe('createOrder', () => {
       expect(res._status).toBe(400);
       expect(res._body.success).toBe(false);
     });
+
+    it('returns 400 when a delivery address is not selected', async () => {
+      const req = makeReq({
+        body: {
+          items: [{ productId: 'p-1', quantity: 1 }],
+          paymentMethod: 'COD',
+          addressId: null,
+        },
+      });
+      const res = makeRes();
+      await createOrder(req, res);
+      expect(res._status).toBe(400);
+      expect(res._body.message).toMatch(/delivery address/i);
+    });
   });
 
   // ── 2. Item lookup ────────────────────────────────────────────────────────
@@ -117,7 +136,7 @@ describe('createOrder', () => {
     it('returns 400 when no matching product or carPart is found in DB', async () => {
       prisma.product.findMany.mockResolvedValueOnce([]);
       prisma.carPart.findMany.mockResolvedValueOnce([]);
-      prisma.address.findFirst.mockResolvedValueOnce(null);
+      prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
 
       const req = makeReq({
         body: { items: [{ productId: 'nonexistent', quantity: 1 }], paymentMethod: 'COD' },
@@ -133,7 +152,7 @@ describe('createOrder', () => {
       // Only one of two items found
       prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
       prisma.carPart.findMany.mockResolvedValueOnce([]);
-      prisma.address.findFirst.mockResolvedValueOnce(null);
+      prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
 
       const req = makeReq({
         body: {
@@ -157,7 +176,7 @@ describe('createOrder', () => {
     it('returns 400 when wallet balance is insufficient', async () => {
       prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
       prisma.carPart.findMany.mockResolvedValueOnce([]);
-      prisma.address.findFirst.mockResolvedValueOnce(null);
+      prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
       // Wallet balance 500 < subtotal (1000) + 10% (100) = 1100
       prisma.wallet.findUnique.mockResolvedValueOnce({ id: 'w-1', balance: 500 });
 
@@ -177,7 +196,7 @@ describe('createOrder', () => {
     it('proceeds when wallet balance covers the total (transaction called)', async () => {
       prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
       prisma.carPart.findMany.mockResolvedValueOnce([]);
-      prisma.address.findFirst.mockResolvedValueOnce(null);
+      prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
       // Balance 2000 > 1100 (subtotal + 10% service charge)
       prisma.wallet.findUnique.mockResolvedValueOnce({ id: 'w-1', balance: 2000 });
       // $transaction resolves to an array of created orders
@@ -202,7 +221,7 @@ describe('createOrder', () => {
     it('applies 10% service charge on subtotal — single seller COD order', async () => {
       prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
       prisma.carPart.findMany.mockResolvedValueOnce([]);
-      prisma.address.findFirst.mockResolvedValueOnce(null);
+      prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
       prisma.$transaction.mockImplementationOnce(async (fn) => {
         // Simulate the transaction: just return our mock created order
         const mockTx = {
@@ -233,7 +252,7 @@ describe('createOrder', () => {
     it('applies delivery fee as 0 when no distance provided', async () => {
       prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
       prisma.carPart.findMany.mockResolvedValueOnce([]);
-      prisma.address.findFirst.mockResolvedValueOnce(null);
+      prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
       prisma.$transaction.mockResolvedValueOnce([mockCreatedOrder]);
 
       const req = makeReq({
@@ -251,7 +270,7 @@ describe('createOrder', () => {
     it('sets paymentStatus to PAID for WALLET orders', async () => {
       prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
       prisma.carPart.findMany.mockResolvedValueOnce([]);
-      prisma.address.findFirst.mockResolvedValueOnce(null);
+      prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
       prisma.wallet.findUnique.mockResolvedValueOnce({ id: 'w-1', balance: 9999 });
       prisma.$transaction.mockResolvedValueOnce([mockCreatedOrder]);
 
@@ -267,7 +286,7 @@ describe('createOrder', () => {
     it('sets paymentStatus to PENDING for COD orders', async () => {
       prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
       prisma.carPart.findMany.mockResolvedValueOnce([]);
-      prisma.address.findFirst.mockResolvedValueOnce(null);
+      prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
       prisma.$transaction.mockResolvedValueOnce([mockCreatedOrder]);
 
       const req = makeReq({
@@ -291,7 +310,7 @@ describe('createOrder', () => {
       };
       prisma.product.findMany.mockResolvedValueOnce([mockProduct, product2]);
       prisma.carPart.findMany.mockResolvedValueOnce([]);
-      prisma.address.findFirst.mockResolvedValueOnce(null);
+      prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
 
       const order2 = { ...mockCreatedOrder, id: 'ord-2', orderNumber: 'ORD-ABC-XY12-2', salesmanId: 'seller-2' };
       // Transaction returns 2 orders
@@ -319,7 +338,7 @@ describe('createOrder', () => {
     it('resolves items from both product and carPart tables', async () => {
       prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
       prisma.carPart.findMany.mockResolvedValueOnce([mockCarPart]);
-      prisma.address.findFirst.mockResolvedValueOnce(null);
+      prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
       prisma.$transaction.mockResolvedValueOnce([mockCreatedOrder]);
 
       const req = makeReq({
@@ -346,7 +365,7 @@ describe('createOrder', () => {
     it('returns a response with orderNumber, total, deliveryFee, status, and orders array', async () => {
       prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
       prisma.carPart.findMany.mockResolvedValueOnce([]);
-      prisma.address.findFirst.mockResolvedValueOnce(null);
+      prisma.address.findFirst.mockResolvedValueOnce({ id: 'address-1' });
       prisma.$transaction.mockResolvedValueOnce([mockCreatedOrder]);
 
       const req = makeReq({
@@ -362,6 +381,40 @@ describe('createOrder', () => {
       expect(data).toHaveProperty('deliveryFee');
       expect(data).toHaveProperty('status', 'PENDING');
       expect(Array.isArray(data.orders)).toBe(true);
+    });
+  });
+
+  describe('salesman shop visibility', () => {
+    it('includes orders for the manager and all salesmen in the shop when loading the sales dashboard', async () => {
+      const req = {
+        user: { id: 'salesman-1', role: 'SALESMAN' },
+        query: { page: '1', limit: '20' },
+      };
+      const res = makeRes();
+
+      prisma.user.findUnique.mockResolvedValueOnce({ managerId: 'manager-1' });
+      prisma.user.findMany.mockResolvedValueOnce([{ id: 'salesman-2' }]);
+      prisma.order.findMany.mockResolvedValueOnce([
+        { id: 'ord-1', status: 'PENDING', createdAt: new Date(), items: [], customer: { id: 'c-1', name: 'Alice', email: 'a@test.com' }, address: { id: 'a-1' }, tracking: [], salesmanId: 'manager-1' },
+        { id: 'ord-2', status: 'PROCESSING', createdAt: new Date(), items: [], customer: { id: 'c-2', name: 'Bob', email: 'b@test.com' }, address: { id: 'a-2' }, tracking: [], salesmanId: 'salesman-2' },
+      ]);
+      prisma.order.count.mockResolvedValueOnce(2);
+
+      await getSalesmanOrders(req, res);
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [
+              { salesmanId: 'manager-1' },
+              { salesmanId: 'salesman-2' },
+            ],
+          },
+        })
+      );
+      expect(res._status).toBe(200);
+      expect(res._body.success).toBe(true);
+      expect(res._body.data.orders).toHaveLength(2);
     });
   });
 });

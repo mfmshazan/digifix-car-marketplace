@@ -9,11 +9,16 @@ export interface OrderItem {
   quantity: number;
   price: number;
   total: number;
+  productId?: string;
+  carPartId?: string;
+  product?: any;
+  carPart?: any;
 }
 
 export interface Order {
   id: string;
   orderNumber: string;
+  salesmanId?: string;
   customer: string;
   customerEmail?: string;
   items: OrderItem[];
@@ -24,6 +29,8 @@ export interface Order {
   status: string;
   paymentStatus: string;
   createdAt: string;
+  reviews?: any[];
+  riderDeliveryJobs?: any[];
 }
 
 export interface SalesmanSalesSummary {
@@ -184,6 +191,35 @@ export const updateOrderStatus = async (orderId: string, status: string) => {
   }
 };
 
+// Manager resolves a post-delivery product complaint (accept = approve refund, reject = decline)
+export const resolveComplaint = async (orderId: string, action: 'accept' | 'reject', message?: string) => {
+  try {
+    const token = await getToken();
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    const endpoint = action === 'accept' ? 'accept-complaint' : 'reject-complaint';
+    const response = await fetch(`${getApiUrl()}/orders/${orderId}/${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(action === 'reject' ? { message } : {}),
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to resolve complaint');
+    }
+    return result;
+  } catch (error) {
+    console.error('Resolve complaint error:', error);
+    throw error;
+  }
+};
+
 // Get salesman pending orders count (lightweight - avoids connection exhaustion)
 export const getSalesmanPendingCount = async (): Promise<number> => {
   try {
@@ -239,11 +275,11 @@ export const getCustomerOrders = async (
   }
 };
 
-// Create order (address is optional)
+// Create order using an address owned by the signed-in customer
 export const createOrder = async (
   items: { productId: string; quantity: number }[],
   paymentMethod: string,
-  addressId?: string,
+  addressId: string,
   notes?: string
 ) => {
   try {
@@ -256,16 +292,14 @@ export const createOrder = async (
     const orderData: {
       items: { productId: string; quantity: number }[];
       paymentMethod: string;
-      addressId?: string;
+      addressId: string;
       notes?: string;
     } = {
       items,
-      paymentMethod
+      paymentMethod,
+      addressId,
     };
 
-    if (addressId) {
-      orderData.addressId = addressId;
-    }
     if (notes) {
       orderData.notes = notes;
     }
@@ -282,7 +316,7 @@ export const createOrder = async (
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.message || 'Failed to create order');
+      throw new Error(result.error || result.message || 'Failed to create order');
     }
 
     return result;

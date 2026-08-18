@@ -10,7 +10,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { getMyWallet, triggerSalesmanPayout, WalletTransaction, WalletData, checkStripeAccountStatus, getStripeOnboardingLink } from '../../src/api/wallet';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -168,6 +168,9 @@ export default function SalesmanWalletScreen() {
         <Text style={styles.payoutNote}>
           Funds are released after order delivery is confirmed.
         </Text>
+        <TouchableOpacity onPress={() => router.push('/(salesman)/receipts')}>
+          <Text>Upload Repayment Receipt</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Transactions */}

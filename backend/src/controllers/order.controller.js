@@ -1,7 +1,31 @@
 import prisma from '../lib/prisma.js';
-import { sendNewOrderNotificationToSalesman } from '../lib/onesignal.js';
+import { sendNewOrderNotificationToSalesman, sendOrderStatusToCustomer } from '../lib/onesignal.js';
 import { createRiderJobsForMarketplaceOrders } from '../services/riderDeliveryJobFactory.js';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
+import { resolveShopOwnerId, getShopMemberIds } from '../lib/shopAccess.js';
+import { riderQuery } from '../lib/riderDb.js';
+
+const buildShopOrderScope = async (reqUser, extraWhere = {}) => {
+  const shopOwnerId = await resolveShopOwnerId(reqUser);
+  const teamMembers = await prisma.user.findMany({
+    where: { managerId: shopOwnerId },
+    select: { id: true },
+  });
+
+  const shopMemberIds = Array.from(new Set([
+    shopOwnerId,
+    ...teamMembers.map((member) => member.id),
+  ]));
+
+  const filters = [
+    Object.keys(extraWhere || {}).length > 0 ? extraWhere : null,
+    {
+      OR: shopMemberIds.map((memberId) => ({ salesmanId: memberId })),
+    },
+  ].filter(Boolean);
+
+  return filters.length > 1 ? { AND: filters } : filters[0] || { OR: shopMemberIds.map((memberId) => ({ salesmanId: memberId })) };
+};
 
 /**
  * Get salesman's sales summary
@@ -9,23 +33,23 @@ import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
  */
 export const getSalesmanSalesSummary = async (req, res) => {
   try {
-    const salesmanId = req.user.id;
+    // Salesmen share the shop's sales figures, including orders created by the manager
+    // and every salesperson assigned to that manager.
     const { date } = req.query;
-    
-    // Default to today if no date provided
     const targetDate = date ? new Date(date) : new Date();
     const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
     const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
 
-    // Get today's orders for this salesman
-    const todayOrders = await prisma.order.findMany({
-      where: {
-        salesmanId,
-        createdAt: {
-          gte: startOfDay,
-          lte: endOfDay
-        }
+    const orderScope = await buildShopOrderScope(req.user, {
+      createdAt: {
+        gte: startOfDay,
+        lte: endOfDay,
       },
+    });
+
+    // Get today's orders for this shop
+    const todayOrders = await prisma.order.findMany({
+      where: orderScope,
       include: {
         items: {
           include: {
@@ -89,13 +113,14 @@ export const getSalesmanSalesSummary = async (req, res) => {
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
 
-    const weekOrders = await prisma.order.findMany({
-      where: {
-        salesmanId,
-        createdAt: {
-          gte: startOfWeek
-        }
+    const weekScope = await buildShopOrderScope(req.user, {
+      createdAt: {
+        gte: startOfWeek,
       },
+    });
+
+    const weekOrders = await prisma.order.findMany({
+      where: weekScope,
       select: {
         total: true,
         createdAt: true
@@ -110,13 +135,14 @@ export const getSalesmanSalesSummary = async (req, res) => {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const monthOrders = await prisma.order.findMany({
-      where: {
-        salesmanId,
-        createdAt: {
-          gte: startOfMonth
-        }
+    const monthScope = await buildShopOrderScope(req.user, {
+      createdAt: {
+        gte: startOfMonth,
       },
+    });
+
+    const monthOrders = await prisma.order.findMany({
+      where: monthScope,
       select: {
         total: true
       }
@@ -126,16 +152,17 @@ export const getSalesmanSalesSummary = async (req, res) => {
     const monthlyOrders = monthOrders.length;
 
     // Get top selling items this month (both products and car parts)
+    const topProductScope = await buildShopOrderScope(req.user, {
+      createdAt: {
+        gte: startOfMonth,
+      },
+    });
+
     const topProductItems = await prisma.orderItem.groupBy({
       by: ['productId'],
       where: {
         productId: { not: null },
-        order: {
-          salesmanId,
-          createdAt: {
-            gte: startOfMonth
-          }
-        }
+        order: topProductScope,
       },
       _sum: {
         quantity: true,
@@ -149,16 +176,17 @@ export const getSalesmanSalesSummary = async (req, res) => {
       take: 5
     });
 
+    const topCarPartScope = await buildShopOrderScope(req.user, {
+      createdAt: {
+        gte: startOfMonth,
+      },
+    });
+
     const topCarPartItems = await prisma.orderItem.groupBy({
       by: ['carPartId'],
       where: {
         carPartId: { not: null },
-        order: {
-          salesmanId,
-          createdAt: {
-            gte: startOfMonth
-          }
-        }
+        order: topCarPartScope,
       },
       _sum: {
         quantity: true,
@@ -298,10 +326,8 @@ export const getSalesmanSalesSummary = async (req, res) => {
  */
 export const getSalesmanPendingCount = async (req, res) => {
   try {
-    const salesmanId = req.user.id;
-    const count = await prisma.order.count({
-      where: { salesmanId, status: 'PENDING' }
-    });
+    const where = await buildShopOrderScope(req.user, { status: 'PENDING' });
+    const count = await prisma.order.count({ where });
     res.json({ success: true, count });
   } catch (error) {
     console.error('Get pending count error:', error);
@@ -314,16 +340,10 @@ export const getSalesmanPendingCount = async (req, res) => {
  */
 export const getSalesmanOrders = async (req, res) => {
   try {
-    const salesmanId = req.user.id;
+    // A salesman sees the entire shop's orders, including orders assigned to the
+    // manager and every salesman under that manager.
     const { status, page = 1, limit = 20 } = req.query;
-
-    const where = {
-      salesmanId
-    };
-
-    if (status) {
-      where.status = status;
-    }
+    const where = await buildShopOrderScope(req.user, status ? { status } : {});
 
     const orders = await prisma.order.findMany({
       where,
@@ -353,7 +373,14 @@ export const getSalesmanOrders = async (req, res) => {
             email: true
           }
         },
-        address: true
+        address: true,
+        // Used to tell a post-delivery complaint apart from a pre-fulfillment
+        // cancellation: only a delivered order has a DELIVERED tracking entry.
+        tracking: {
+          where: { status: 'DELIVERED' },
+          select: { id: true },
+          take: 1
+        }
       },
       orderBy: {
         createdAt: 'desc'
@@ -365,6 +392,8 @@ export const getSalesmanOrders = async (req, res) => {
     // Format orders to include proper item names and images
     const formattedOrders = orders.map(order => ({
       ...order,
+      // A complaint is a refund request raised against an already-delivered order.
+      isComplaint: order.status === 'REFUND_REQUESTED' && order.tracking.length > 0,
       items: order.items.map(item => {
         // Get product or carPart details
         const productData = item.product || item.carPart;
@@ -411,14 +440,12 @@ export const updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    const salesmanId = req.user.id;
+    const shopOwnerId = await resolveShopOwnerId(req.user);
+    const shopOrderScope = await buildShopOrderScope(req.user, { id });
 
-    // Verify the order belongs to this salesman
+    // Verify the order belongs to this shop
     const order = await prisma.order.findFirst({
-      where: {
-        id,
-        salesmanId
-      }
+      where: shopOrderScope
     });
 
     if (!order) {
@@ -426,6 +453,35 @@ export const updateOrderStatus = async (req, res) => {
         success: false,
         message: 'Order not found'
       });
+    }
+
+    // Gate manual SHIPPED: the seller/manager can only mark an order SHIPPED
+    // once a rider has been assigned AND has physically picked up the package.
+    // The rider's pickup keeps the order in PROCESSING (see syncMarketplaceOrderStatus),
+    // so SHIPPED is the seller's explicit confirmation that it has left the shop.
+    if (status === 'SHIPPED' && order.status !== 'SHIPPED') {
+      const pickedUpStatuses = ['picked_up', 'in_transit', 'arrived_at_dropoff', 'delivered'];
+      const jobRes = await riderQuery(
+        `SELECT status FROM "DeliveryJob"
+           WHERE marketplace_order_id = $1
+           ORDER BY created_at DESC
+           LIMIT 1`,
+        [id]
+      );
+      const deliveryJob = jobRes.rows[0];
+
+      if (!deliveryJob) {
+        return res.status(400).json({
+          success: false,
+          message: 'Assign a rider before marking this order as Shipped.'
+        });
+      }
+      if (!pickedUpStatuses.includes(deliveryJob.status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'You can mark this order as Shipped only after the rider has picked it up.'
+        });
+      }
     }
 
     // Run order update and wallet transfers in one atomic transaction
@@ -469,7 +525,7 @@ export const updateOrderStatus = async (req, res) => {
       if (status === 'DELIVERED' && order.status !== 'DELIVERED') {
         if (order.paymentMethod === 'Stripe' || order.paymentMethod === 'WALLET') {
           const adminWallet = await getAdminWallet(tx);
-          const salesmanWallet = await ensureWallet(salesmanId, tx);
+          const salesmanWallet = await ensureWallet(shopOwnerId, tx);
 
           await tx.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: order.total } } });
           await tx.wallet.update({ where: { id: salesmanWallet.id }, data: { balance: { increment: order.total } } });
@@ -524,15 +580,28 @@ export const updateOrderStatus = async (req, res) => {
         status,
         updatedAt: updatedOrder.updatedAt,
       });
-      // Also broadcast to salesmen watching this order
-      io.to(`user:${salesmanId}`).emit('orderStatusUpdated', {
-        orderId: id,
-        orderNumber: updatedOrder.orderNumber,
-        status,
-        updatedAt: updatedOrder.updatedAt,
-      });
-      console.log(`📡 Emitted orderStatusUpdated for order ${id} → customer ${updatedOrder.customerId}`);
+      // Also broadcast to the manager and every salesman in the shop
+      const shopMemberIds = await getShopMemberIds(shopOwnerId);
+      for (const memberId of shopMemberIds) {
+        io.to(`user:${memberId}`).emit('orderStatusUpdated', {
+          orderId: id,
+          orderNumber: updatedOrder.orderNumber,
+          status,
+          updatedAt: updatedOrder.updatedAt,
+        });
+      }
+      console.log(`📡 Emitted orderStatusUpdated for order ${id} → customer ${updatedOrder.customerId} + ${shopMemberIds.length} shop member(s)`);
     }
+
+    // 🔔 Push notification to the customer (reaches them even if the app is closed).
+    // Only fires for customer-facing statuses; the socket event above handles the
+    // live in-app update when the app is open. Fire-and-forget: never block the response.
+    sendOrderStatusToCustomer({
+      customerId: updatedOrder.customerId,
+      orderNumber: updatedOrder.orderNumber,
+      orderId: id,
+      status,
+    }).catch((err) => console.error('Order status push failed:', err?.message || err));
 
     res.json({
       success: true,
@@ -541,10 +610,16 @@ export const updateOrderStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('Update order status error:', error);
-    res.status(500).json({
+    const databaseUnavailable =
+      error?.code === 'P1001' ||
+      String(error?.message || '').includes("Can't reach database server");
+
+    res.status(databaseUnavailable ? 503 : 500).json({
       success: false,
-      message: 'Failed to update order status',
-      error: error.message
+      message: databaseUnavailable
+        ? 'The database is temporarily unavailable. Please try again shortly.'
+        : 'Failed to update order status',
+      error: error.message,
     });
   }
 };
@@ -590,7 +665,46 @@ export const getCustomerOrders = async (req, res) => {
             }
           }
         },
-        address: true
+        address: true,
+        reviews: {
+          select: {
+            id: true,
+            targetId: true,
+            targetType: true,
+            rating: true,
+            comment: true,
+            replies: {
+              select: {
+                id: true,
+                replyText: true,
+                createdAt: true,
+                seller: {
+                  select: { name: true }
+                }
+              }
+            }
+          }
+        },
+        riderDeliveryJobs: {
+          select: {
+            id: true,
+            status: true,
+            partnerId: true,
+            partner: {
+              select: {
+                id: true,
+                fullName: true,
+                profilePhotoUrl: true,
+                vehicleType: true,
+                vehicleNumber: true,
+              }
+            }
+          },
+          where: {
+            status: 'delivered'
+          },
+          take: 1
+        }
       },
       orderBy: {
         createdAt: 'desc'
@@ -632,6 +746,7 @@ export const createOrder = async (req, res) => {
   try {
     const customerId = req.user.id;
     const { items, addressId, paymentMethod, notes } = req.body;
+    const normalizedPaymentMethod = String(paymentMethod || 'COD').trim().toUpperCase();
 
     if (!items || items.length === 0) {
       return res.status(400).json({
@@ -640,19 +755,27 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // Address is optional - verify only if provided
-    let validAddressId = null;
-    if (addressId) {
-      const address = await prisma.address.findFirst({
-        where: {
-          id: addressId,
-          userId: customerId
-        }
+    if (!addressId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please add and select a delivery address before placing your order',
       });
-      if (address) {
-        validAddressId = address.id;
-      }
     }
+
+    const address = await prisma.address.findFirst({
+      where: {
+        id: addressId,
+        userId: customerId,
+      },
+    });
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        message: 'The selected delivery address is invalid. Please choose one of your saved addresses',
+      });
+    }
+    const validAddressId = address.id;
 
     // Get item IDs
     const itemIds = items.map(item => item.productId);
@@ -783,7 +906,7 @@ export const createOrder = async (req, res) => {
     // ==========================================
     // WALLET INTEGRATION: UPFRONT DEDUCTION
     // ==========================================
-    if (paymentMethod === 'WALLET') {
+    if (normalizedPaymentMethod === 'WALLET') {
         const customerWallet = await prisma.wallet.findUnique({ where: { userId: customerId } });
         
         if (!customerWallet || customerWallet.balance < grandTotal) {
@@ -800,7 +923,7 @@ export const createOrder = async (req, res) => {
     const createdOrders = await prisma.$transaction(async (tx) => {
       
       // If WALLET, deduct balance now
-      if (paymentMethod === 'WALLET') {
+      if (normalizedPaymentMethod === 'WALLET') {
           const customerWallet = await tx.wallet.findUnique({ where: { userId: customerId } });
           
           await tx.wallet.update({
@@ -836,10 +959,10 @@ export const createOrder = async (req, res) => {
           // Only the first order carries the delivery fee to avoid double-charging
           total: sellerGroup.subtotal + sellerGroup.serviceCharge + (Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0),
           deliveryFee: Object.keys(groupedBySeller).length === 1 ? deliveryFee : 0,
-          paymentMethod,
+          paymentMethod: normalizedPaymentMethod,
           notes,
           status: 'PENDING',
-          paymentStatus: paymentMethod === 'WALLET' ? 'PAID' : 'PENDING', // Mark paid automatically if Wallet
+          paymentStatus: normalizedPaymentMethod === 'WALLET' ? 'PAID' : 'PENDING', // Mark paid automatically if Wallet
           items: {
             create: sellerGroup.items.map(item => ({
               productId: item.itemType === 'PRODUCT' ? item.productId : null,
@@ -853,9 +976,7 @@ export const createOrder = async (req, res) => {
           }
         };
         
-        if (validAddressId) {
-          orderData.addressId = validAddressId;
-        }
+        orderData.addressId = validAddressId;
         
         const order = await tx.order.create({
           data: orderData,
@@ -905,7 +1026,7 @@ export const createOrder = async (req, res) => {
       total: grandTotal,
       deliveryFee,
       status: 'PENDING',
-      paymentStatus: paymentMethod === 'WALLET' ? 'PAID' : 'PENDING',
+      paymentStatus: normalizedPaymentMethod === 'WALLET' ? 'PAID' : 'PENDING',
       createdAt: createdOrders[0]?.createdAt,
       orders: createdOrders.map(order => ({
         id: order.id,
@@ -929,10 +1050,16 @@ export const createOrder = async (req, res) => {
       }))
     };
 
-    // 🔌 Emit real-time event to each salesman so their dashboard shows the new order instantly
+    // Resolve every shop member (manager + their salesmen) per order so both the
+    // manager AND the salesmen get the realtime event and the push notification.
+    const orderShopMembers = await Promise.all(
+      createdOrders.map(order => getShopMemberIds(order.salesmanId))
+    );
+
+    // 🔌 Emit real-time event to each shop member so their dashboard shows the new order instantly
     const io = req.app.get('io');
     if (io) {
-      for (const order of createdOrders) {
+      createdOrders.forEach((order, idx) => {
         const orderPayload = {
           orderId: order.id,
           orderNumber: order.orderNumber,
@@ -942,21 +1069,25 @@ export const createOrder = async (req, res) => {
           status: order.status,
           createdAt: order.createdAt,
         };
-        // Notify the specific salesman's room
-        io.to(`user:${order.salesmanId}`).emit('newOrder', orderPayload);
-        console.log(`📡 Emitted newOrder ${order.orderNumber} → salesman ${order.salesmanId}`);
-      }
+        const memberIds = orderShopMembers[idx];
+        for (const memberId of memberIds) {
+          io.to(`user:${memberId}`).emit('newOrder', orderPayload);
+        }
+        console.log(`📡 Emitted newOrder ${order.orderNumber} → ${memberIds.length} shop member(s)`);
+      });
     }
 
     // 🔔 OneSignal push notifications (non-blocking — won't delay the response)
     Promise.all(
-      createdOrders.map(order =>
-        sendNewOrderNotificationToSalesman({
-          salesmanId: order.salesmanId,
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          total: order.total,
-        }).catch(err => console.error('OneSignal error:', err.message))
+      createdOrders.flatMap((order, idx) =>
+        orderShopMembers[idx].map(memberId =>
+          sendNewOrderNotificationToSalesman({
+            salesmanId: memberId,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            total: order.total,
+          }).catch(err => console.error('OneSignal error:', err.message))
+        )
       )
     );
 
@@ -1129,17 +1260,61 @@ export const requestCancellation = async (req, res) => {
       }
     });
 
+    // A post-delivery refund request is a product complaint — it is handled by
+    // the product's shop (manager), not admin. A pre-fulfillment cancellation
+    // (PENDING/CONFIRMED) still goes to admin for review.
+    const isComplaint = order.status === 'DELIVERED';
+
     // Log the status change for audit trail
     await prisma.orderTracking.create({
       data: {
         orderId: id,
         status: 'REFUND_REQUESTED',
-        description: `Customer requested cancellation: "${reason.trim()}"`
+        description: isComplaint
+          ? `Customer raised a complaint: "${reason.trim()}"`
+          : `Customer requested cancellation: "${reason.trim()}"`,
       }
     });
 
-    // Notify all admins via socket so they see it immediately on their dashboard
     const io = req.app.get('io');
+
+    // ── Post-delivery complaint → notify the shop (manager + salesmen) only ──
+    if (isComplaint) {
+      const shopMemberIds = await getShopMemberIds(order.salesmanId);
+      const payload = {
+        orderId: id,
+        orderNumber: order.orderNumber,
+        customerId,
+        customerName: order.customer?.name,
+        reason: reason.trim(),
+      };
+      if (io) {
+        for (const memberId of shopMemberIds) {
+          io.to(`user:${memberId}`).emit('complaintRaised', payload);
+        }
+        console.log(`📡 Emitted complaintRaised for order ${order.orderNumber} → ${shopMemberIds.length} shop member(s)`);
+      }
+
+      // Non-blocking push to the manager + salesmen
+      const { sendComplaintToShop } = await import('../lib/onesignal.js');
+      Promise.all(
+        shopMemberIds.map(memberId =>
+          sendComplaintToShop({
+            salesmanId: memberId,
+            orderNumber: order.orderNumber,
+            customerName: order.customer?.name || 'A customer',
+          }).catch(err => console.error('OneSignal complaint notification error:', err.message))
+        )
+      );
+
+      return res.json({
+        success: true,
+        message: 'Complaint submitted. The store will review your request.',
+        data: updatedOrder
+      });
+    }
+
+    // Notify all admins via socket so they see it immediately on their dashboard
     if (io) {
       io.to('role:ADMIN').emit('cancellationRequested', {
         orderId: id,
@@ -1259,17 +1434,25 @@ export const approveCancellation = async (req, res) => {
         status: 'CANCELLED',
         message: `Refund approved for Order ${order.orderNumber}. Please refund customer ${order.customer?.name || ''}.`.trim(),
       };
-      io.to(`user:${order.salesmanId}`).emit('cancellationApproved', payload);
+      const shopMemberIds = await getShopMemberIds(order.salesmanId);
+      for (const memberId of shopMemberIds) {
+        io.to(`user:${memberId}`).emit('cancellationApproved', payload);
+      }
       io.to(`user:${order.customerId}`).emit('cancellationApproved', payload);
-      console.log(`📡 Emitted cancellationApproved for order ${order.orderNumber}`);
+      console.log(`📡 Emitted cancellationApproved for order ${order.orderNumber} → ${shopMemberIds.length} shop member(s)`);
     }
 
-    // Push notification to salesman — they need to know to stop processing this order
+    // Push notification to the manager + every salesman — they need to know to stop processing this order
     const { sendRefundApprovedToSalesman } = await import('../lib/onesignal.js');
-    sendRefundApprovedToSalesman({
-      salesmanId: order.salesmanId,
-      orderNumber: order.orderNumber,
-    }).catch(err => console.error('OneSignal salesman notification error:', err.message));
+    const refundMemberIds = await getShopMemberIds(order.salesmanId);
+    Promise.all(
+      refundMemberIds.map(memberId =>
+        sendRefundApprovedToSalesman({
+          salesmanId: memberId,
+          orderNumber: order.orderNumber,
+        }).catch(err => console.error('OneSignal salesman notification error:', err.message))
+      )
+    );
 
     res.json({
       success: true,
@@ -1350,6 +1533,138 @@ export const rejectCancellation = async (req, res) => {
   }
 };
 
+/**
+ * Manager accepts a post-delivery complaint (refund request).
+ * Sets the order to CANCELLED / REFUNDED status and notifies the customer.
+ * NOTE: no wallet movement here — the actual refund transfer is handled separately.
+ */
+export const acceptComplaint = async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Scope to the full shop so a salesman/manager can act on any order in their store.
+    const shopOwnerId = await resolveShopOwnerId(req.user);
+    const order = await prisma.order.findFirst({
+      where: await buildShopOrderScope(req.user, { id }),
+      include: {
+        customer: { select: { id: true, name: true } },
+        tracking: { where: { status: 'DELIVERED' }, select: { id: true }, take: 1 },
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+    if (order.status !== 'REFUND_REQUESTED' || order.tracking.length === 0) {
+      return res.status(400).json({ success: false, message: 'This order has no pending complaint to review' });
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED',
+        // Marks that money should be returned — wallet transfer handled elsewhere.
+        paymentStatus: order.paymentStatus === 'PAID' ? 'REFUNDED' : order.paymentStatus,
+      }
+    });
+
+    await prisma.orderTracking.create({
+      data: {
+        orderId: id,
+        status: 'CANCELLED',
+        description: 'Store accepted the complaint and approved the refund request',
+      }
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      const payload = {
+        orderId: id,
+        orderNumber: order.orderNumber,
+        status: 'CANCELLED',
+        resolution: 'accepted',
+        message: `Your complaint for Order ${order.orderNumber} was accepted. A refund has been approved.`,
+      };
+      io.to(`user:${order.customerId}`).emit('complaintResolved', payload);
+      io.to(`user:${order.customerId}`).emit('orderStatusUpdated', {
+        orderId: id, orderNumber: order.orderNumber, status: 'CANCELLED', updatedAt: updatedOrder.updatedAt,
+      });
+      const shopMemberIds = await getShopMemberIds(shopOwnerId);
+      for (const memberId of shopMemberIds) {
+        io.to(`user:${memberId}`).emit('complaintResolved', payload);
+      }
+    }
+
+    res.json({ success: true, message: 'Complaint accepted. The customer has been notified.', data: updatedOrder });
+  } catch (error) {
+    console.error('Accept complaint error:', error);
+    res.status(500).json({ success: false, message: 'Failed to accept complaint', error: error.message });
+  }
+};
+
+/**
+ * Manager rejects a post-delivery complaint — the order reverts to DELIVERED.
+ */
+export const rejectComplaint = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    const shopOwnerId = await resolveShopOwnerId(req.user);
+
+    const order = await prisma.order.findFirst({
+      where: await buildShopOrderScope(req.user, { id }),
+      include: {
+        customer: { select: { id: true, name: true } },
+        tracking: { where: { status: 'DELIVERED' }, select: { id: true }, take: 1 },
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+    if (order.status !== 'REFUND_REQUESTED' || order.tracking.length === 0) {
+      return res.status(400).json({ success: false, message: 'This order has no pending complaint to review' });
+    }
+
+    // A complaint is raised against a delivered order, so revert it to DELIVERED.
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: { status: 'DELIVERED', cancellationReason: null }
+    });
+
+    await prisma.orderTracking.create({
+      data: {
+        orderId: id,
+        status: 'DELIVERED',
+        description: `Store rejected the complaint${message ? `: ${message}` : ''}`,
+      }
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      const payload = {
+        orderId: id,
+        orderNumber: order.orderNumber,
+        status: 'DELIVERED',
+        resolution: 'rejected',
+        message: message || `Your complaint for Order ${order.orderNumber} was reviewed and declined by the store.`,
+      };
+      io.to(`user:${order.customerId}`).emit('complaintResolved', payload);
+      io.to(`user:${order.customerId}`).emit('orderStatusUpdated', {
+        orderId: id, orderNumber: order.orderNumber, status: 'DELIVERED', updatedAt: updatedOrder.updatedAt,
+      });
+      const shopMemberIds = await getShopMemberIds(shopOwnerId);
+      for (const memberId of shopMemberIds) {
+        io.to(`user:${memberId}`).emit('complaintResolved', payload);
+      }
+    }
+
+    res.json({ success: true, message: 'Complaint rejected. The customer has been notified.', data: updatedOrder });
+  } catch (error) {
+    console.error('Reject complaint error:', error);
+    res.status(500).json({ success: false, message: 'Failed to reject complaint', error: error.message });
+  }
+};
+
 export default {
   getSalesmanSalesSummary,
   getSalesmanOrders,
@@ -1360,5 +1675,7 @@ export default {
   getCustomerOrdersSimple,
   requestCancellation,
   approveCancellation,
-  rejectCancellation
+  rejectCancellation,
+  acceptComplaint,
+  rejectComplaint
 };

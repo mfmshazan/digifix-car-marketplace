@@ -29,7 +29,7 @@ const TRANSACTION_LABELS = {
     REFUND_SETTLEMENT: 'Refund Settlement',
 };
 
-export default function WalletScreen() {
+export default function WalletScreen({ navigation }) {
     const [wallet, setWallet] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -171,6 +171,13 @@ export default function WalletScreen() {
                 <Text style={styles.payoutNote}>
                     Funds are released after order delivery is confirmed.
                 </Text>
+                <TouchableOpacity
+                    style={styles.receiptAction}
+                    onPress={() => navigation?.navigate?.('ReceiptUpload')}
+                >
+                    <Ionicons name="receipt-outline" size={18} color={colors.secondary} />
+                    <Text style={styles.receiptActionText}>Upload Repayment Receipt</Text>
+                </TouchableOpacity>
             </View>
 
             <Text style={styles.sectionTitle}>Transaction History</Text>
@@ -233,6 +240,23 @@ const styles = StyleSheet.create({
     payoutButtonDisabled: { opacity: 0.5 },
     payoutButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
     payoutNote: { color: colors.textMuted, fontSize: 12, textAlign: 'center' },
+    receiptAction: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        marginTop: 12,
+        paddingVertical: 12,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.surface,
+    },
+    receiptActionText: {
+        color: colors.secondary,
+        fontSize: 14,
+        fontWeight: '600',
+    },
     sectionTitle: { ...typography.h3, color: colors.text, marginHorizontal: spacing.lg, marginTop: spacing.sm, marginBottom: spacing.sm },
     emptyContainer: { alignItems: 'center', padding: 40 },
     emptyText: { color: colors.textMuted, fontSize: 14, marginTop: 12 },

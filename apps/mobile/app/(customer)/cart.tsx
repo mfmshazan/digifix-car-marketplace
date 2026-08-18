@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -13,21 +13,25 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart, CartItem } from "../../src/store/cartStore";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import * as ExpoLinking from "expo-linking";
 import { createOrder } from "../../src/api/orders";
 import CustomModal from "@/src/components/modal";
-import { getApiUrl, getExpoDeepLinkBase } from "../../src/config/api.config";
-import { getUser, getToken } from "../../src/api/storage";
+import { getApiUrl } from "../../src/config/api.config";
+import { getToken } from "../../src/api/storage";
 import { getMyWallet } from "../../src/api/wallet";
+import { CustomerAddress, getAddresses } from "../../src/api/addresses";
 
 export default function CartScreen() {
   const { items, updateQuantity, removeItem, clearCart, getTotalPrice, isLoading } = useCart();
   const router = useRouter();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [paymentMethode, setPaymentMethode] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [isLoadingAddress, setIsLoadingAddress] = useState(false);
   
   const subtotal = getTotalPrice();
   // We mirror the backend fee here so the customer sees the same checkout
@@ -35,6 +39,75 @@ export default function CartScreen() {
   const serviceCharge = parseFloat((subtotal * 0.10).toFixed(2));
   // Delivery is intentionally left out for now because it depends on distance.
   const total = subtotal + serviceCharge;
+  const selectedAddress =
+    addresses.find((address) => address.id === selectedAddressId) ||
+    addresses.find((address) => address.isDefault) ||
+    addresses[0] ||
+    null;
+
+  const loadDeliveryAddresses = React.useCallback(async () => {
+    setIsLoadingAddress(true);
+    try {
+      const savedAddresses = await getAddresses();
+      setAddresses(savedAddresses);
+      setSelectedAddressId((currentId) => {
+        const currentStillExists = savedAddresses.some(
+          (address) => address.id === currentId,
+        );
+        if (currentStillExists) return currentId;
+        return (
+          savedAddresses.find((address) => address.isDefault)?.id ||
+          savedAddresses[0]?.id ||
+          null
+        );
+      });
+      return savedAddresses;
+    } catch (error) {
+      console.warn("Could not load delivery addresses:", error);
+      return null;
+    } finally {
+      setIsLoadingAddress(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadDeliveryAddresses();
+    }, [loadDeliveryAddresses]),
+  );
+
+  const requireDeliveryAddress = async () => {
+    const savedAddresses = await loadDeliveryAddresses();
+    if (savedAddresses === null) {
+      Alert.alert(
+        "Could Not Check Address",
+        "Please check your connection and try checkout again.",
+      );
+      return null;
+    }
+
+    if (savedAddresses.length === 0) {
+      Alert.alert(
+        "Delivery Address Required",
+        "Please save your delivery address in your profile before purchasing this order.",
+        [
+          { text: "Not Now", style: "cancel" },
+          {
+            text: "Add Address",
+            onPress: () => router.push("/(customer)/addresses"),
+          },
+        ],
+      );
+      return null;
+    }
+
+    const address =
+      savedAddresses.find((item) => item.id === selectedAddressId) ||
+      savedAddresses.find((item) => item.isDefault) ||
+      savedAddresses[0];
+    setSelectedAddressId(address.id);
+    return address;
+  };
 
   const handleIncreaseQuantity = async (id: string, currentQty: number) => {
     try {
@@ -88,6 +161,11 @@ export default function CartScreen() {
 
   // --- 1. LOCAL CHECKOUT (Wallet & COD) ---
   const handleLocalCheckout = async (method: string) => {
+    if (!selectedAddress) {
+      await requireDeliveryAddress();
+      return;
+    }
+
     setIsCheckingOut(true);
     try {
       const orderItems = items.map(item => ({
@@ -95,7 +173,11 @@ export default function CartScreen() {
         quantity: item.quantity
       }));
 
-      const orderResponse = await createOrder(orderItems, method);
+      const orderResponse = await createOrder(
+        orderItems,
+        method,
+        selectedAddress.id,
+      );
 
       if (orderResponse.success) {
         // Clear local cart after successful order
@@ -128,11 +210,16 @@ export default function CartScreen() {
 
   // --- 2. STRIPE CHECKOUT ---
   const handleStripeCheckout = async () => {
+    if (!selectedAddress) {
+      await requireDeliveryAddress();
+      return;
+    }
+
     setIsCheckingOut(true);
     try {
-      const deepLinkBase = getExpoDeepLinkBase();
-      const [user, token] = await Promise.all([getUser(), getToken()]);
-      const realUserID = user?.id ?? '';
+      const token = await getToken();
+      const successUrl = `${ExpoLinking.createURL('/(customer)/checkout-success')}?session_id={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = ExpoLinking.createURL('/(customer)/cart');
       const response = await fetch(`${getApiUrl()}/stripe/create-checkout-session`, {
         method: 'POST',
         headers: {
@@ -141,14 +228,17 @@ export default function CartScreen() {
         },
         body: JSON.stringify({
           items: items,
-          userID: realUserID,
-          userRole: user?.role?.toLowerCase() ?? 'customer',
-          successUrl: `${deepLinkBase}/--/(customer)/checkout-success?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${deepLinkBase}/--/(customer)/cart`,
+          addressId: selectedAddress.id,
+          successUrl,
+          cancelUrl,
         }),
       });
       
       const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || "Could not start card payment.");
+      }
 
       if (data.url) {
         const supported = await Linking.canOpenURL(data.url);
@@ -160,9 +250,12 @@ export default function CartScreen() {
       } else {
         Alert.alert("Error", "Could not generate payment link.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      Alert.alert("Connection Error", "Could not connect to the payment gateway.");
+      Alert.alert(
+        "Payment Error",
+        error?.message || "Could not connect to the payment gateway.",
+      );
     } finally {
       setIsCheckingOut(false);
     }
@@ -170,7 +263,6 @@ export default function CartScreen() {
 
   // --- 3. UNIFIED PAYMENT HANDLER ---
   const handlePaymentSelection = (method: "stripe" | "wallet" | "cod") => {
-    setPaymentMethode(method);
     setModalVisible(false); // Close the modal
 
     if (method === "stripe") {
@@ -185,6 +277,10 @@ export default function CartScreen() {
       Alert.alert("Empty Cart", "Please add items to your cart first.");
       return;
     }
+
+    const address = await requireDeliveryAddress();
+    if (!address) return;
+
     // Fetch wallet balance before showing modal
     try {
       const result = await getMyWallet();
@@ -294,6 +390,45 @@ export default function CartScreen() {
             showsVerticalScrollIndicator={false}
           />
           <View style={styles.summaryContainer}>
+            <TouchableOpacity
+              style={[
+                styles.deliveryAddressCard,
+                !selectedAddress && styles.missingAddressCard,
+              ]}
+              onPress={() => router.push("/(customer)/addresses")}
+              activeOpacity={0.8}
+            >
+              <View style={styles.deliveryAddressIcon}>
+                {isLoadingAddress ? (
+                  <ActivityIndicator size="small" color="#00002E" />
+                ) : (
+                  <Ionicons name="location" size={20} color="#00002E" />
+                )}
+              </View>
+              <View style={styles.deliveryAddressCopy}>
+                <Text style={styles.deliveryAddressLabel}>
+                  {selectedAddress
+                    ? `Deliver to ${selectedAddress.label || "saved address"}`
+                    : "Delivery address required"}
+                </Text>
+                <Text style={styles.deliveryAddressText} numberOfLines={1}>
+                  {selectedAddress
+                    ? [
+                        selectedAddress.street,
+                        selectedAddress.city,
+                        selectedAddress.state,
+                        selectedAddress.postalCode,
+                      ]
+                        .filter(Boolean)
+                        .join(", ")
+                    : "Add an address in your profile before checkout"}
+                </Text>
+              </View>
+              <Text style={styles.addressChangeText}>
+                {selectedAddress ? "Change" : "Add"}
+              </Text>
+              <Ionicons name="chevron-forward" size={17} color="#6B7280" />
+            </TouchableOpacity>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal</Text>
               <Text style={styles.summaryValue}>Rs. {subtotal.toLocaleString()}</Text>
@@ -410,7 +545,7 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: 16,
-    paddingBottom: 200,
+    paddingBottom: 285,
   },
   cartItem: {
     flexDirection: "row",
@@ -522,6 +657,50 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 8,
+  },
+  deliveryAddressCard: {
+    minHeight: 66,
+    borderRadius: 13,
+    backgroundColor: "#F7F7FB",
+    borderWidth: 1,
+    borderColor: "#E1E2EA",
+    padding: 11,
+    marginBottom: 14,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  missingAddressCard: {
+    backgroundColor: "#FFF7ED",
+    borderColor: "#FDBA74",
+  },
+  deliveryAddressIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#E7E7F0",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  deliveryAddressCopy: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  deliveryAddressLabel: {
+    color: "#111827",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 3,
+  },
+  deliveryAddressText: {
+    color: "#6B7280",
+    fontSize: 11,
+  },
+  addressChangeText: {
+    color: "#00002E",
+    fontSize: 11,
+    fontWeight: "700",
+    marginRight: 2,
   },
   summaryRow: {
     flexDirection: "row",

@@ -14,10 +14,8 @@ router.get('/my', walletController.getMyWallet);
 router.get('/', authorize('ADMIN'), walletController.getAllWallets);
 router.post('/user', authorize('ADMIN'), walletController.getWallet);
 router.post('/refund/customer', authorize('ADMIN'), walletController.addCustomersRefund);
-router.post('/earnings/delivery', authorize('ADMIN'), walletController.addDeliveryPersonEarnings);
 router.post('/cod/collect', authorize('DELIVERY_PERSON'), walletController.substractCODPayment);
 router.post('/cod/settle', authorize('DELIVERY_PERSON'), walletController.settleCODPayment);
-// router.post('/payout/delivery', authorize('ADMIN'), walletController.substractDeliveryPersonDayPayment);
 router.post('/earnings/salesman', authorize('ADMIN'), walletController.addPurchaseAmountToSalesman);
 router.post('/refund/salesman-settlement', authorize('ADMIN'), walletController.addRefundSatlmentsToSalesman);
 router.post('/cod/collect', authorize('DELIVERY_PERSON'), walletController.substractCODPayment);
@@ -27,7 +25,7 @@ router.post('/earnings/salesman', authorize('ADMIN'), walletController.addPurcha
 // Users trigger their own payout
 router.post('/payout', walletController.triggerPayout);
 
-// Salesman triggers their own payout (legacy route)
-router.post('/payout/salesman', authorize('SALESMAN'), walletController.triggerPayout);
+// Store owner triggers their own payout (manager owns the wallet; salesman kept for legacy accounts)
+router.post('/payout/salesman', authorize('SHOP_MANAGER', 'SALESMAN'), walletController.triggerPayout);
 
 export default router;

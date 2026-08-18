@@ -104,7 +104,39 @@ class StripeController {
 
     createCheckoutSession = async (req, res) => {
         try {
-            const { items, userID, userRole, successUrl, cancelUrl } = req.body;
+            const { items, addressId, successUrl, cancelUrl } = req.body;
+            const userID = req.user.id;
+            const userRole = String(req.user.role || 'customer').toLowerCase();
+
+            if (!Array.isArray(items) || items.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Your cart is empty.',
+                });
+            }
+
+            if (!addressId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Please add and select a delivery address before payment.',
+                });
+            }
+
+            const address = await prisma.address.findFirst({
+                where: {
+                    id: addressId,
+                    userId: userID,
+                },
+                select: { id: true },
+            });
+
+            if (!address) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'The selected delivery address is invalid.',
+                });
+            }
+
             const line_items = items.map((item) => {
                 return {
                     price_data: {
@@ -133,6 +165,7 @@ class StripeController {
                 metadata: {
                     userID: userID,
                     userRole: userRole,
+                    addressId: address.id,
                     cartSummary: JSON.stringify(items.map(i => ({ productId: i.productId, itemType: i.itemType || 'PRODUCT', quantity: i.quantity })))
                 },
 
@@ -164,7 +197,35 @@ class StripeController {
                 return res.json({ success: false, message: 'Payment not completed.' });
             }
 
-            const { cartSummary } = session.metadata;
+            const { cartSummary, addressId, userID } = session.metadata || {};
+            if (userID !== customerId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'This payment session does not belong to the signed-in customer.',
+                });
+            }
+
+            if (!cartSummary || !addressId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Payment session is missing delivery information.',
+                });
+            }
+
+            const address = await prisma.address.findFirst({
+                where: {
+                    id: addressId,
+                    userId: customerId,
+                },
+                select: { id: true },
+            });
+            if (!address) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'The delivery address for this payment is no longer available.',
+                });
+            }
+
             const parsedItems = JSON.parse(cartSummary);
 
             // Separate product IDs and car part IDs
@@ -204,14 +265,28 @@ class StripeController {
                 });
             }
 
+            // Generate order number prefix
+            const timestamp = Date.now().toString(36).toUpperCase();
+            const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+            const orderPrefix = `ORD-${timestamp}-${randomPart}`;
+
             // Create one order per seller
             const createdOrders = [];
-            for (const sellerGroup of Object.values(groupedBySeller)) {
+            let orderIndex = 1;
+            const sellerGroups = Object.values(groupedBySeller);
+            
+            for (const sellerGroup of sellerGroups) {
                 const subtotal = sellerGroup.items.reduce((sum, i) => sum + i.total, 0);
+                const orderNumber = sellerGroups.length > 1 
+                    ? `${orderPrefix}-${orderIndex}` 
+                    : orderPrefix;
+
                 const order = await prisma.order.create({
                     data: {
+                        orderNumber,
                         customerId,
                         salesmanId: sellerGroup.sellerId,
+                        addressId: address.id,
                         subtotal,
                         total: subtotal,
                         status: 'PENDING',
@@ -232,6 +307,7 @@ class StripeController {
                     },
                 });
                 createdOrders.push({ order, subtotal });
+                orderIndex++;
             }
 
             // ============================================================

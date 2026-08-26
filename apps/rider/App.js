@@ -3,8 +3,8 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
-import { Animated, Text, Easing, View, StyleSheet, Platform } from 'react-native';
-import { Provider, useDispatch } from 'react-redux';
+import { Alert, Animated, Text, Easing, View, StyleSheet, Platform } from 'react-native';
+import { Provider, useDispatch, useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import { ClerkProvider, ClerkLoaded } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
@@ -23,16 +23,18 @@ import ProfileHubScreen from './screens/ProfileHubScreen';
 import PerformanceDashboardScreen from './screens/PerformanceDashboardScreen';
 import WalletScreen from './screens/WalletScreen';
 import RealtimeDispatchLayer from './components/RealtimeDispatchLayer';
+import { useLiveLocationTracking } from './hooks/useLiveLocationTracking';
 
 import { getAccessToken, getRefreshToken } from './services/storage';
-import { requestLocationPermission } from './services/location';
+import { setSessionExpiredHandler } from './services/api';
+import { requestLocationPermission, stopLocationTracking } from './services/location';
 import { initOneSignal, registerPushForToken } from './services/onesignal';
 
 import { flushPendingNavigation, navigationRef } from './services/navigation';
 import { colors, shadows } from './styles/theme';
 import store from './store';
 import { hydrateAvailability } from './store/slices/availabilitySlice';
-import { fetchDriverHome } from './store/slices/homeSlice';
+import { fetchDriverHome, selectActiveDelivery } from './store/slices/homeSlice';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -185,16 +187,56 @@ function MainTabs() {
     );
 }
 
+function RiderLocationTrackingLayer({ isAuthenticated }) {
+    const activeDelivery = useSelector(selectActiveDelivery);
+    const lastShownError = useRef(null);
+    const { trackingError } = useLiveLocationTracking({
+        jobId: isAuthenticated ? activeDelivery?.id : null,
+        status: isAuthenticated ? activeDelivery?.status : null,
+        intervalMs: 7000,
+    });
+
+    useEffect(() => {
+        if (!trackingError || trackingError === lastShownError.current) return;
+        lastShownError.current = trackingError;
+        Alert.alert('Live location needs attention', trackingError);
+    }, [trackingError]);
+
+    return null;
+}
+
 function AppContent() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const dispatch = useDispatch();
+
+    const handleAuthenticated = React.useCallback(async () => {
+        setIsAuthenticated(true);
+        const token = await getAccessToken();
+        if (token) {
+            registerPushForToken(token);
+        }
+        dispatch(hydrateAvailability());
+        dispatch(fetchDriverHome());
+    }, [dispatch]);
 
     useEffect(() => {
         // Initialise push once at launch (no-ops in Expo Go / web).
         initOneSignal();
         checkAuth();
         requestLocationPermission();
+        void stopLocationTracking();
+    }, []);
+
+    useEffect(() => {
+        setSessionExpiredHandler(() => {
+            setIsAuthenticated(false);
+            if (navigationRef.isReady()) {
+                navigationRef.reset({ index: 0, routes: [{ name: 'Login' }] });
+            }
+        });
+
+        return () => setSessionExpiredHandler(null);
     }, []);
 
 
@@ -264,16 +306,16 @@ function AppContent() {
                         component={ProofOfDeliveryScreen}
                         options={{ title: 'Proof of Delivery' }}
                     />
-                    <Stack.Screen
-                        name="Login"
-                        component={LoginScreen}
-                        options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                        name="Register"
-                        component={RegisterScreen}
-                        options={{ headerShown: false }}
-                    />
+                    <Stack.Screen name="Login" options={{ headerShown: false }}>
+                        {(props) => (
+                            <LoginScreen {...props} onAuthenticated={handleAuthenticated} />
+                        )}
+                    </Stack.Screen>
+                    <Stack.Screen name="Register" options={{ headerShown: false }}>
+                        {(props) => (
+                            <RegisterScreen {...props} onAuthenticated={handleAuthenticated} />
+                        )}
+                    </Stack.Screen>
                     <Stack.Screen
                         name="ForgotPassword"
                         component={ForgotPasswordScreen}
@@ -281,6 +323,7 @@ function AppContent() {
                     />
                 </Stack.Navigator>
             </NavigationContainer>
+            <RiderLocationTrackingLayer isAuthenticated={isAuthenticated} />
             <RealtimeDispatchLayer isAuthenticated={isAuthenticated} />
         </>
     );
@@ -288,6 +331,16 @@ function AppContent() {
 
 export default function App() {
     const clerkKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+    if (!clerkKey) {
+        console.warn('⚠️ EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is not set. Google Sign-In with Clerk will be disabled.');
+        return (
+            <Provider store={store}>
+                <AppContent />
+            </Provider>
+        );
+    }
+
     return (
         <ClerkProvider publishableKey={clerkKey} tokenCache={tokenCache}>
             <ClerkLoaded>

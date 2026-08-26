@@ -15,6 +15,12 @@ const ACTIVE_JOB_STATUSES = ['assigned', 'accepted', 'arrived_at_pickup', 'picke
 // "Rider is nearby" push tuning: how close (km) counts as nearby, and a guard so
 // each job only fires the push once (in-memory; resets on restart, which is fine).
 const RIDER_NEARBY_KM = Number(process.env.RIDER_NEARBY_KM || 0.5);
+const DELIVERY_CHECKPOINT_RADIUS_KM = Number(
+  process.env.DELIVERY_CHECKPOINT_RADIUS_KM || 0.3
+);
+const DELIVERY_DEPARTURE_MIN_KM = Number(
+  process.env.DELIVERY_DEPARTURE_MIN_KM || 0.05
+);
 const nearbyNotifiedJobs = new Set();
 
 const distanceKmBetween = (lat1, lon1, lat2, lon2) => {
@@ -26,6 +32,112 @@ const distanceKmBetween = (lat1, lon1, lat2, lon2) => {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const formatDistanceForMessage = (distanceKm) =>
+  distanceKm < 1
+    ? `${Math.round(distanceKm * 1000)} m`
+    : `${distanceKm.toFixed(1)} km`;
+
+const validateDeliveryCheckpoint = ({ status, latitude, longitude, job }) => {
+  const requiresCurrentLocation = [
+    'arrived_at_pickup',
+    'picked_up',
+    'in_transit',
+    'arrived_at_dropoff',
+  ].includes(status);
+
+  if (!requiresCurrentLocation) return null;
+
+  if (!isFloatInRange(latitude, -90, 90) || !isFloatInRange(longitude, -180, 180)) {
+    return {
+      statusCode: 400,
+      message: 'Current GPS location is required for this delivery step',
+    };
+  }
+
+  const isPickupCheckpoint = ['arrived_at_pickup', 'picked_up'].includes(status);
+  const isDropoffCheckpoint = status === 'arrived_at_dropoff';
+
+  if (isPickupCheckpoint) {
+    if (
+      !isFloatInRange(job.pickup_latitude, -90, 90) ||
+      !isFloatInRange(job.pickup_longitude, -180, 180)
+    ) {
+      return {
+        statusCode: 409,
+        message: 'The shop GPS location is unavailable. Ask the shop to correct the delivery request.',
+      };
+    }
+
+    const distanceFromPickupKm = distanceKmBetween(
+      latitude,
+      longitude,
+      job.pickup_latitude,
+      job.pickup_longitude
+    );
+
+    if (distanceFromPickupKm > DELIVERY_CHECKPOINT_RADIUS_KM) {
+      return {
+        statusCode: 409,
+        message: `You must be within ${Math.round(DELIVERY_CHECKPOINT_RADIUS_KM * 1000)} m of the shop for this step. You are currently ${formatDistanceForMessage(distanceFromPickupKm)} away.`,
+      };
+    }
+  }
+
+  if (status === 'in_transit') {
+    if (
+      !isFloatInRange(job.pickup_latitude, -90, 90) ||
+      !isFloatInRange(job.pickup_longitude, -180, 180)
+    ) {
+      return {
+        statusCode: 409,
+        message: 'The shop GPS location is unavailable. Ask the shop to correct the delivery request.',
+      };
+    }
+
+    const distanceFromPickupKm = distanceKmBetween(
+      latitude,
+      longitude,
+      job.pickup_latitude,
+      job.pickup_longitude
+    );
+
+    if (distanceFromPickupKm < DELIVERY_DEPARTURE_MIN_KM) {
+      return {
+        statusCode: 409,
+        message: `Move at least ${Math.round(DELIVERY_DEPARTURE_MIN_KM * 1000)} m away from the shop before starting transit.`,
+      };
+    }
+  }
+
+  if (isDropoffCheckpoint) {
+    if (
+      !isFloatInRange(job.dropoff_latitude, -90, 90) ||
+      !isFloatInRange(job.dropoff_longitude, -180, 180)
+    ) {
+      return {
+        statusCode: 409,
+        message: 'The customer GPS location is unavailable. Ask the customer or shop to correct the address.',
+      };
+    }
+
+    const distanceFromDropoffKm = distanceKmBetween(
+      latitude,
+      longitude,
+      job.dropoff_latitude,
+      job.dropoff_longitude
+    );
+
+    if (distanceFromDropoffKm > DELIVERY_CHECKPOINT_RADIUS_KM) {
+      return {
+        statusCode: 409,
+        message: `You must be within ${Math.round(DELIVERY_CHECKPOINT_RADIUS_KM * 1000)} m of the customer for this step. You are currently ${formatDistanceForMessage(distanceFromDropoffKm)} away.`,
+      };
+    }
+  }
+
+  return null;
 };
 
 const formatRiderJob = (job, riderLocation = null) => {
@@ -201,6 +313,25 @@ export const acceptRiderRequestOffer = async (req, res, next) => {
     if (!result.success) {
       return res.status(result.statusCode || 400).json({ success: false, message: result.message });
     }
+
+    // resolveOffer commits the rider assignment. Mirror that accepted step to
+    // the marketplace immediately so the customer sees the rider without
+    // waiting for the next checkpoint.
+    void (async () => {
+      const syncClient = await getRiderClient();
+      try {
+        await syncClient.query('BEGIN');
+        await syncMarketplaceOrderStatus(syncClient, result.data.id, 'accepted');
+        await syncClient.query('COMMIT');
+      } catch (syncError) {
+        await syncClient.query('ROLLBACK');
+        console.error('Failed to sync accepted rider offer:', syncError.message);
+      } finally {
+        syncClient.release();
+      }
+    })().catch((syncError) => {
+      console.error('Failed to start accepted rider sync:', syncError.message);
+    });
 
     return res.json({
       success: true,
@@ -426,7 +557,7 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   };
 
   const jobResult = await client.query(
-    'SELECT marketplace_order_id FROM "DeliveryJob" WHERE id = $1 AND marketplace_order_id IS NOT NULL',
+    'SELECT marketplace_order_id, partner_id FROM "DeliveryJob" WHERE id = $1 AND marketplace_order_id IS NOT NULL',
     [jobId]
   );
 
@@ -471,6 +602,8 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   if (global.io) {
     const payload = {
       orderId: marketplaceOrderId,
+      deliveryId: jobId,
+      riderId: jobResult.rows[0]?.partner_id ?? null,
       status: effectiveStatus,
       riderStep: riderStatus,            // Detailed rider step (for tracking + ship gating)
       readyToShip: riderStatus === 'picked_up',
@@ -506,7 +639,7 @@ export const updateRiderJobStatus = async (req, res, next) => {
   const client = await getRiderClient();
 
   try {
-    const allowedStatuses = ['accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff', 'delivered', 'failed'];
+    const allowedStatuses = ['accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff', 'failed'];
     const { status, reason, latitude, longitude } = req.body;
 
     if (!allowedStatuses.includes(status)) {
@@ -516,7 +649,14 @@ export const updateRiderJobStatus = async (req, res, next) => {
     const jobId = Number.parseInt(req.params.id, 10);
     await client.query('BEGIN');
 
-    const currentJobRes = await client.query('SELECT status, partner_id FROM "DeliveryJob" WHERE id = $1', [jobId]);
+    const currentJobRes = await client.query(
+      `SELECT status, partner_id,
+              pickup_latitude, pickup_longitude,
+              dropoff_latitude, dropoff_longitude
+         FROM "DeliveryJob"
+        WHERE id = $1`,
+      [jobId]
+    );
 
     if (currentJobRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -543,6 +683,26 @@ export const updateRiderJobStatus = async (req, res, next) => {
     if (status !== 'failed' && (!transitions[currentStatus] || !transitions[currentStatus].includes(status))) {
       await client.query('ROLLBACK');
       return res.status(400).json({ success: false, message: `Invalid transition from ${currentStatus} to ${status}` });
+    }
+
+    if (!ACTIVE_JOB_STATUSES.includes(currentStatus)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ success: false, message: 'This delivery is no longer active' });
+    }
+
+    const checkpointError = validateDeliveryCheckpoint({
+      status,
+      latitude,
+      longitude,
+      job: currentJobRes.rows[0],
+    });
+
+    if (checkpointError) {
+      await client.query('ROLLBACK');
+      return res.status(checkpointError.statusCode).json({
+        success: false,
+        message: checkpointError.message,
+      });
     }
 
     const timestampMap = {
@@ -589,6 +749,7 @@ export const updateRiderJobStatus = async (req, res, next) => {
 
     await syncMarketplaceOrderStatus(client, jobId, status);
     await client.query('COMMIT');
+
     if (status === 'delivered' || status === 'failed') {
       await recordRiderAvailability(
         { query: riderQuery },
@@ -610,34 +771,67 @@ export const updateRiderJobStatus = async (req, res, next) => {
 };
 
 export const addRiderJobLocation = async (req, res, next) => {
+  const client = await getRiderClient();
+
   try {
     const jobId = Number.parseInt(req.params.id, 10);
-    const { latitude, longitude, accuracy, speed, heading } = req.body;
+    const { latitude, longitude, accuracy, speed, heading, timestamp } = req.body;
+
+    if (!Number.isInteger(jobId)) {
+      return validationError(res, 'Invalid delivery job id');
+    }
 
     if (!isFloatInRange(latitude, -90, 90) || !isFloatInRange(longitude, -180, 180)) {
       return validationError(res, 'Invalid location data');
     }
 
-    const jobCheck = await riderQuery(
+    const optionalNumberIsValid = (value, min, max) =>
+      value === undefined || value === null || value === '' || isFloatInRange(value, min, max);
+
+    if (
+      !optionalNumberIsValid(accuracy, 0, 10000) ||
+      !optionalNumberIsValid(speed, -1, 200) ||
+      !optionalNumberIsValid(heading, -1, 360)
+    ) {
+      return validationError(res, 'Invalid location telemetry');
+    }
+
+    if (timestamp !== undefined && timestamp !== null) {
+      const clientTimestamp = Number(timestamp);
+      const now = Date.now();
+      if (!Number.isFinite(clientTimestamp) || clientTimestamp < now - 86400000 || clientTimestamp > now + 300000) {
+        return validationError(res, 'Invalid location timestamp');
+      }
+    }
+
+    await client.query('BEGIN');
+    const jobCheck = await client.query(
       `SELECT id, marketplace_order_id, status, order_number,
               dropoff_latitude, dropoff_longitude
          FROM "DeliveryJob"
         WHERE id = $1
-          AND partner_id = $2`,
+          AND partner_id = $2
+        FOR UPDATE`,
       [jobId, req.user.id]
     );
 
     if (jobCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Job not found or not assigned to you' });
     }
 
-    await riderQuery(
+    if (!ACTIVE_JOB_STATUSES.includes(jobCheck.rows[0].status)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ success: false, message: 'Location updates are allowed only for an active delivery' });
+    }
+
+    await client.query(
       `INSERT INTO "DeliveryTracking" (job_id, partner_id, latitude, longitude, accuracy, speed, heading)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [jobId, req.user.id, latitude, longitude, accuracy || null, speed || null, heading || null]
+      [jobId, req.user.id, latitude, longitude, accuracy ?? null, speed ?? null, heading ?? null]
     );
 
-    await riderQuery(
+    await client.query(
       `UPDATE "Rider"
           SET current_latitude = $1,
               current_longitude = $2
@@ -645,9 +839,13 @@ export const addRiderJobLocation = async (req, res, next) => {
       [latitude, longitude, req.user.id]
     );
 
+    await client.query('COMMIT');
+
     const marketplaceOrderId = jobCheck.rows[0].marketplace_order_id;
 
-    if (marketplaceOrderId && global.io) {
+    const customerCanTrack = ['picked_up', 'in_transit', 'arrived_at_dropoff'].includes(jobCheck.rows[0].status);
+
+    if (marketplaceOrderId && customerCanTrack && global.io) {
       const orderResult = await riderQuery(
         `SELECT "customerId"
            FROM "Order"
@@ -691,7 +889,14 @@ export const addRiderJobLocation = async (req, res, next) => {
 
     return res.json({ success: true, message: 'Location tracked successfully' });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // The transaction may already be committed or may not have started.
+    }
     return next(error);
+  } finally {
+    client.release();
   }
 };
 
@@ -708,20 +913,10 @@ export const submitRiderProof = async (req, res, next) => {
     const files = Array.isArray(req.files) ? req.files : [];
     const findUploadedFileUrl = (fieldNames) => {
       const match = files.find((file) => fieldNames.includes(file.fieldname));
-      const file = match || files[0];
-      return file?.filename ? `/uploads/${file.filename}` : null;
+      return match?.filename ? `/uploads/${match.filename}` : null;
     };
 
-    const photoUrl =
-      body.photoUrl ||
-      body.photo_url ||
-      body.photo ||
-      body.deliveryPhoto ||
-      body.delivery_photo ||
-      body.proofImage ||
-      body.proof_image ||
-      body.image ||
-      findUploadedFileUrl([
+    const photoUrl = findUploadedFileUrl([
         'photo',
         'photoUrl',
         'photo_url',
@@ -731,14 +926,18 @@ export const submitRiderProof = async (req, res, next) => {
         'proofImage',
         'proof_image',
         'image',
-      ]) ||
-      null;
-    const signatureData =
-      body.signatureData ||
-      body.signature_data ||
-      body.signature ||
-      findUploadedFileUrl(['signature', 'signatureData', 'signature_data']) ||
-      null;
+      ]);
+    const rawSignature = body.signatureData || body.signature_data || body.signature || null;
+    const uploadedSignature = findUploadedFileUrl(['signature', 'signatureData', 'signature_data']);
+    const signatureIsValid =
+      typeof rawSignature === 'string' &&
+      rawSignature.length <= 7_000_000 &&
+      /^data:image\/(png|jpe?g);base64,[A-Za-z0-9+/=\s]+$/i.test(rawSignature);
+    const signatureData = uploadedSignature || (signatureIsValid ? rawSignature : null);
+
+    if (rawSignature && !signatureIsValid) {
+      return validationError(res, 'Signature must be a valid PNG or JPEG data image');
+    }
     const recipientName = body.recipientName || body.recipient_name || body.receiverName || body.receiver_name || null;
     const notes = body.notes || body.note || null;
     const latitude = body.latitude ?? body.deliveryLatitude ?? body.delivery_latitude ?? null;
@@ -752,10 +951,25 @@ export const submitRiderProof = async (req, res, next) => {
       });
     }
 
+    if (
+      (latitude !== null && !isFloatInRange(latitude, -90, 90)) ||
+      (longitude !== null && !isFloatInRange(longitude, -180, 180)) ||
+      ((latitude === null) !== (longitude === null))
+    ) {
+      return validationError(res, 'Valid proof latitude and longitude are required together');
+    }
+
     await client.query('BEGIN');
 
     const jobCheck = await client.query(
-      'SELECT id, order_number, status, delivered_at FROM "DeliveryJob" WHERE id = $1 AND partner_id = $2',
+      `SELECT id, order_number, status, delivered_at,
+              dropoff_latitude, dropoff_longitude,
+              proof_photo_url AS photo_url, proof_signature_data AS signature_data,
+              proof_recipient_name AS recipient_name, proof_notes AS notes,
+              proof_created_at AS created_at
+         FROM "DeliveryJob"
+        WHERE id = $1 AND partner_id = $2
+        FOR UPDATE`,
       [jobId, req.user.id]
     );
 
@@ -765,9 +979,64 @@ export const submitRiderProof = async (req, res, next) => {
     }
 
     const job = jobCheck.rows[0];
-    if (!['assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff', 'delivered'].includes(job.status)) {
+    if (job.status === 'delivered') {
+      await client.query('COMMIT');
+      return res.json({
+        success: true,
+        message: 'Delivery was already completed',
+        data: {
+          id: jobId,
+          orderNumber: job.order_number,
+          status: 'delivered',
+          deliveredAt: job.delivered_at,
+          proof: {
+            photo_url: job.photo_url,
+            signature_data: job.signature_data,
+            recipient_name: job.recipient_name,
+            notes: job.notes,
+            created_at: job.created_at,
+          },
+        },
+      });
+    }
+
+    if (job.status !== 'arrived_at_dropoff') {
       await client.query('ROLLBACK');
-      return res.status(400).json({ success: false, message: 'Proof can only be submitted when the delivery is ready to complete' });
+      return res.status(400).json({
+        success: false,
+        message: 'Confirm arrival at the customer before submitting delivery proof',
+      });
+    }
+
+    if (latitude === null || longitude === null) {
+      await client.query('ROLLBACK');
+      return validationError(res, 'Current GPS location is required to complete delivery');
+    }
+
+    const distanceFromDropoffKm = distanceKmBetween(
+      latitude,
+      longitude,
+      job.dropoff_latitude,
+      job.dropoff_longitude
+    );
+
+    if (
+      !isFloatInRange(job.dropoff_latitude, -90, 90) ||
+      !isFloatInRange(job.dropoff_longitude, -180, 180)
+    ) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        message: 'The customer GPS location is unavailable. Ask the customer or shop to correct the address.',
+      });
+    }
+
+    if (distanceFromDropoffKm > DELIVERY_CHECKPOINT_RADIUS_KM) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        message: `You must be within ${Math.round(DELIVERY_CHECKPOINT_RADIUS_KM * 1000)} m of the customer to complete delivery. You are currently ${formatDistanceForMessage(distanceFromDropoffKm)} away.`,
+      });
     }
 
     const proofResult = await client.query(
@@ -782,35 +1051,33 @@ export const submitRiderProof = async (req, res, next) => {
         WHERE id = $7 AND partner_id = $8
         RETURNING id, proof_photo_url AS photo_url, proof_signature_data AS signature_data, 
                   proof_recipient_name AS recipient_name, proof_notes AS notes, proof_created_at AS created_at`,
-      [photoUrl, signatureData, recipientName, proofNotes, latitude || null, longitude || null, jobId, req.user.id]
+      [photoUrl, signatureData, recipientName, proofNotes, latitude ?? null, longitude ?? null, jobId, req.user.id]
     );
 
-    let deliveredAt = job.delivered_at;
+    const deliveryResult = await client.query(
+      `UPDATE "DeliveryJob"
+          SET status = 'delivered', delivered_at = NOW()
+        WHERE id = $1 AND status = 'arrived_at_dropoff'
+        RETURNING delivered_at`,
+      [jobId]
+    );
+    const deliveredAt = deliveryResult.rows[0]?.delivered_at ?? null;
 
-    if (job.status !== 'delivered') {
-      const deliveryResult = await client.query(
-        `UPDATE "DeliveryJob" SET status = 'delivered', delivered_at = NOW() WHERE id = $1 RETURNING delivered_at`,
-        [jobId]
-      );
-      deliveredAt = deliveryResult.rows[0]?.delivered_at ?? null;
+    await client.query(
+      `UPDATE "Rider" SET status = 'online', total_deliveries = total_deliveries + 1 WHERE id = $1`,
+      [req.user.id]
+    );
 
-      await client.query(
-        `UPDATE "Rider" SET status = 'online', total_deliveries = total_deliveries + 1 WHERE id = $1`,
-        [req.user.id]
-      );
-
-      await syncMarketplaceOrderStatus(client, jobId, 'delivered');
-    }
+    await syncMarketplaceOrderStatus(client, jobId, 'delivered');
 
     await client.query('COMMIT');
-    if (job.status !== 'delivered') {
-      await recordRiderAvailability(
-        { query: riderQuery },
-        req.user.id,
-        'online',
-        'delivery_completed'
-      );
-    }
+
+    await recordRiderAvailability(
+      { query: riderQuery },
+      req.user.id,
+      'online',
+      'delivery_completed'
+    );
     dispatchAvailableJobs().catch((error) => {
       console.error('Failed to dispatch available jobs after proof submission:', error);
     });

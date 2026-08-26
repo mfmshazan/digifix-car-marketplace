@@ -6,19 +6,12 @@ import {
     Alert,
     ScrollView,
     ActivityIndicator,
-    Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import { Button, Input, Dropdown, SurfaceCard, SectionHeader, StatusBadge } from '../components/Common';
+import { Button, Input, Dropdown, SurfaceCard, SectionHeader } from '../components/Common';
 import { partnerAPI, authAPI, reviewsAPI } from '../services/api';
 import { clearTokens, getRefreshToken } from '../services/storage';
-import { colors, spacing, typography, radii } from '../styles/theme';
-
-const formatRating = (value) => {
-    const rating = Number(value);
-    return Number.isFinite(rating) ? rating.toFixed(1) : '0.0';
-};
+import { colors, spacing, shadows } from '../styles/theme';
 
 const createProfileForm = (profile) => ({
     full_name: profile?.full_name || '',
@@ -54,43 +47,17 @@ export default function ProfileScreen({ navigation }) {
         } catch (error) {
             Alert.alert('Error', 'Failed to load profile');
         }
-        // Load feedback summary separately so it never blocks the profile page
+
         try {
             const feedbackRes = await reviewsAPI.getDriverSummary();
             setFeedbackSummary(feedbackRes.data?.data || null);
         } catch (_) {
-            // Silently ignore — feedback is optional
+            // Silently ignore optional feedback
         }
     };
 
     const handleChange = (key, value) => {
         setFormData((current) => ({ ...current, [key]: value }));
-    };
-
-    const handlePhotoPick = async () => {
-        if (!editing) return;
-
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (permission.status !== 'granted') {
-            Alert.alert('Permission needed', 'Photo library permission is required.');
-            return;
-        }
-
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.7,
-        });
-
-        if (!result.canceled) {
-            handleChange('profile_photo_url', result.assets[0].uri);
-        }
-    };
-
-    const handleRemovePhoto = () => {
-        if (!editing) return;
-        handleChange('profile_photo_url', '');
     };
 
     const handleSave = async () => {
@@ -127,11 +94,11 @@ export default function ProfileScreen({ navigation }) {
     const handleDeleteProfile = async () => {
         Alert.alert(
             'Delete Profile',
-            'This will remove your partner profile and sign you out. This action cannot be undone.',
+            'This will permanently delete your rider partner account and sign you out. This action cannot be undone.',
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
-                    text: 'Delete',
+                    text: 'Delete Account',
                     style: 'destructive',
                     onPress: async () => {
                         setDeleting(true);
@@ -146,8 +113,8 @@ export default function ProfileScreen({ navigation }) {
                                             index: 0,
                                             routes: [{ name: 'Login' }],
                                         });
-                                    }
-                                }
+                                    },
+                                },
                             ]);
                         } catch (error) {
                             Alert.alert(
@@ -164,7 +131,7 @@ export default function ProfileScreen({ navigation }) {
     };
 
     const handleLogout = async () => {
-        Alert.alert('Logout', 'Are you sure you want to logout?', [
+        Alert.alert('Logout', 'Are you sure you want to sign out?', [
             { text: 'Cancel', style: 'cancel' },
             {
                 text: 'Logout',
@@ -195,132 +162,59 @@ export default function ProfileScreen({ navigation }) {
         );
     }
 
-    const photoUri = editing ? formData.profile_photo_url : partner.profile_photo_url;
-    const initials = (partner.full_name || 'DP')
-        .split(' ')
-        .map((part) => part[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase();
-
     return (
         <ScrollView
             style={styles.container}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
         >
-            <SurfaceCard style={styles.heroCard}>
-                <View style={styles.heroGlowLarge} />
-                <View style={styles.heroGlowSmall} />
-                <View style={styles.heroTopRow}>
-                    <Text style={styles.heroEyebrow}>RIDER PROFILE</Text>
-                    <StatusBadge
-                        label={partner.status || 'online'}
-                        tone={partner.status === 'offline' ? 'danger' : 'success'}
-                    />
-                </View>
-
-                <View style={styles.profileHeader}>
-                    <View style={styles.avatarWrap}>
-                        {photoUri ? (
-                            <Image source={{ uri: photoUri }} style={styles.avatar} />
-                        ) : (
-                            <View style={styles.avatarFallback}>
-                                <Text style={styles.avatarInitials}>{initials}</Text>
-                            </View>
-                        )}
-                    </View>
-
-                    <View style={styles.heroCopy}>
-                        <Text style={styles.heroTitle}>{partner.full_name}</Text>
-                        <Text style={styles.heroSubtitle}>{partner.email}</Text>
-                        <Text style={styles.heroMeta}>
-                            {partner.vehicle_type || 'Vehicle not set'}
-                            {partner.vehicle_number ? ` • ${partner.vehicle_number}` : ''}
-                        </Text>
-                    </View>
-                </View>
-
-                <View style={styles.heroStats}>
-                    <View style={styles.heroStat}>
-                        <View style={styles.heroStatIcon}>
-                            <Ionicons name="checkmark-done-outline" size={17} color="#A7F3D0" />
-                        </View>
-                        <View>
-                            <Text style={styles.heroStatValue}>{partner.total_deliveries || 0}</Text>
-                            <Text style={styles.heroStatLabel}>Deliveries</Text>
-                        </View>
-                    </View>
-                    <View style={styles.heroStatDivider} />
-                    <View style={styles.heroStat}>
-                        <View style={styles.heroStatIcon}>
-                            <Ionicons name="star" size={17} color="#FDE68A" />
-                        </View>
-                        <View>
-                            <Text style={styles.heroStatValue}>{formatRating(partner.rating)}</Text>
-                            <Text style={styles.heroStatLabel}>Rating</Text>
-                        </View>
-                    </View>
-                </View>
-
-                {editing ? (
-                    <View style={styles.photoActions}>
-                        <Button
-                            title="Change Photo"
-                            icon="camera-outline"
-                            onPress={handlePhotoPick}
-                            variant="outline"
-                            style={styles.photoButton}
-                        />
-                        <Button
-                            title="Remove Photo"
-                            icon="trash-outline"
-                            onPress={handleRemovePhoto}
-                            variant="ghost"
-                            style={styles.photoButton}
-                        />
-                    </View>
-                ) : null}
-            </SurfaceCard>
-
+            {/* Personal Information */}
             <SectionHeader
-                eyebrow="Partner information"
-                title="Account Details"
-                subtitle="Keep your contact, vehicle, and emergency information accurate for delivery operations."
+                eyebrow="Profile details"
+                title="Personal Information"
+                subtitle="Your basic contact details visible to customers during active deliveries."
             />
 
             <SurfaceCard style={styles.formCard}>
                 <View style={styles.formSectionTitle}>
                     <View style={styles.formSectionIcon}>
-                        <Ionicons name="person-outline" size={19} color={colors.secondary} />
+                        <Ionicons name="person-circle-outline" size={20} color={colors.primary} />
                     </View>
                     <View style={styles.formSectionCopy}>
-                        <Text style={styles.formSectionHeading}>Personal & vehicle information</Text>
+                        <Text style={styles.formSectionHeading}>Personal & Contact</Text>
                         <Text style={styles.formSectionCaption}>
-                            {editing ? 'Fields are unlocked for editing.' : 'Tap Edit Profile to update these details.'}
+                            {editing ? 'Editing enabled. Make your updates below.' : 'Locked. Tap Edit Profile to change.'}
                         </Text>
                     </View>
                 </View>
+
                 <Input
                     label="Full Name"
+                    placeholder="Enter your full name"
                     value={formData.full_name}
                     onChangeText={(text) => handleChange('full_name', text)}
                     editable={editing}
                 />
-                <Input label="Email" value={formData.email} editable={false} />
+
                 <Input
-                    label="Phone"
+                    label="Email Address"
+                    value={formData.email}
+                    editable={false}
+                />
+
+                <Input
+                    label="Phone Number"
                     placeholder="7x xxx xxxx"
                     value={(() => {
                         let displayVal = formData.phone || '';
                         if (displayVal.startsWith('+94')) displayVal = displayVal.slice(3);
                         else if (displayVal.startsWith('0')) displayVal = displayVal.slice(1);
-                        
+
                         const cleaned = displayVal.replace(/\D/g, '').slice(0, 9);
                         let formatted = cleaned;
                         if (cleaned.length > 2) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2);
                         if (cleaned.length > 5) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2, 5) + ' ' + cleaned.slice(5);
-                        return formatted ? `+94 ${formatted}` : '';
+                        return formatted ? '+94 ' + formatted : '';
                     })()}
                     onChangeText={(text) => {
                         const cleaned = text.replace(/\D/g, '');
@@ -333,68 +227,107 @@ export default function ProfileScreen({ navigation }) {
                     editable={editing}
                     keyboardType="phone-pad"
                 />
+
+                <Input
+                    label="Address"
+                    placeholder="Your residential address"
+                    value={formData.address}
+                    onChangeText={(text) => handleChange('address', text)}
+                    editable={editing}
+                    multiline
+                    numberOfLines={2}
+                />
+
+                <Input
+                    label="Driver Bio"
+                    placeholder="Short note or experience summary"
+                    value={formData.bio}
+                    onChangeText={(text) => handleChange('bio', text)}
+                    editable={editing}
+                    multiline
+                    numberOfLines={3}
+                />
+            </SurfaceCard>
+
+            {/* Vehicle Information */}
+            <SectionHeader
+                eyebrow="Delivery equipment"
+                title="Vehicle Information"
+                subtitle="Your registered vehicle used to fulfill order dispatches."
+            />
+
+            <SurfaceCard style={styles.formCard}>
+                <View style={styles.formSectionTitle}>
+                    <View style={[styles.formSectionIcon, { backgroundColor: '#EFF6FF' }]}>
+                        <Ionicons name="car-sport-outline" size={20} color="#2563EB" />
+                    </View>
+                    <View style={styles.formSectionCopy}>
+                        <Text style={styles.formSectionHeading}>Vehicle Specifications</Text>
+                        <Text style={styles.formSectionCaption}>Determines suitable package weights and order types.</Text>
+                    </View>
+                </View>
+
                 <Dropdown
                     label="Vehicle Type"
                     placeholder="Select vehicle type"
                     value={formData.vehicle_type}
                     onSelect={(text) => handleChange('vehicle_type', text)}
-                    options={['Car', 'Motorcycle', 'Lorry']}
+                    options={['Motorcycle', 'Car', 'Van', 'Lorry', 'Three Wheeler']}
                     disabled={!editing}
                 />
+
                 <Input
-                    label="Vehicle Number"
+                    label="Vehicle Number Plate"
+                    placeholder="e.g. WP ABC-1234"
                     value={formData.vehicle_number}
-                    onChangeText={(text) => handleChange('vehicle_number', text.toUpperCase().replace(/[\s-]/g, ''))}
-                    editable={editing}
-                />
-                <Input
-                    label="Bio"
-                    value={formData.bio}
-                    onChangeText={(text) => handleChange('bio', text)}
-                    editable={editing}
-                    multiline
-                    numberOfLines={4}
-                />
-                <Input
-                    label="Address"
-                    value={formData.address}
-                    onChangeText={(text) => handleChange('address', text)}
-                    editable={editing}
-                    multiline
-                    numberOfLines={3}
-                />
-                <Input
-                    label="Emergency Contact Name"
-                    value={formData.emergency_contact_name}
-                    onChangeText={(text) => handleChange('emergency_contact_name', text)}
-                    editable={editing}
-                />
-                <Input
-                    label="Emergency Contact Phone"
-                    value={formData.emergency_contact_phone}
-                    onChangeText={(text) => handleChange('emergency_contact_phone', text)}
+                    onChangeText={(text) => handleChange('vehicle_number', text.toUpperCase())}
                     editable={editing}
                 />
             </SurfaceCard>
 
+            {/* Emergency Contact */}
+            <SectionHeader
+                eyebrow="Safety & support"
+                title="Emergency Contact"
+                subtitle="Designated person for critical delivery situations."
+            />
 
-            <View style={styles.statsRow}>
-                <SurfaceCard style={styles.statCard}>
-                    <Text style={styles.statValue}>{partner.total_deliveries}</Text>
-                    <Text style={styles.statLabel}>Total Deliveries</Text>
-                </SurfaceCard>
-                <SurfaceCard style={styles.statCard}>
-                    <Text style={styles.statValue}>{formatRating(partner.rating)}</Text>
-                    <Text style={styles.statLabel}>Rating</Text>
-                </SurfaceCard>
-            </View>
+            <SurfaceCard style={styles.formCard}>
+                <View style={styles.formSectionTitle}>
+                    <View style={[styles.formSectionIcon, { backgroundColor: '#FEF2F2' }]}>
+                        <Ionicons name="call-outline" size={20} color="#DC2626" />
+                    </View>
+                    <View style={styles.formSectionCopy}>
+                        <Text style={styles.formSectionHeading}>Emergency Contact Details</Text>
+                        <Text style={styles.formSectionCaption}>Reachable contact in case of on-road emergencies.</Text>
+                    </View>
+                </View>
 
-            {/* Feedback Summary */}
+                <Input
+                    label="Emergency Contact Name"
+                    placeholder="e.g. Relative's name"
+                    value={formData.emergency_contact_name}
+                    onChangeText={(text) => handleChange('emergency_contact_name', text)}
+                    editable={editing}
+                />
+
+                <Input
+                    label="Emergency Contact Phone"
+                    placeholder="Phone number"
+                    value={formData.emergency_contact_phone}
+                    onChangeText={(text) => handleChange('emergency_contact_phone', text)}
+                    editable={editing}
+                    keyboardType="phone-pad"
+                />
+            </SurfaceCard>
+
+            {/* Customer Feedback & Reviews */}
             {!editing && feedbackSummary && (
                 <View style={styles.feedbackSection}>
                     <SectionHeader
-                        title="Customer Feedback"
-                        subtitle="Recent ratings and comments from your deliveries"
+                        eyebrow="Reputation"
+                        title="Customer Reviews"
+                        subtitle="Recent ratings and feedback from your completed deliveries."
                     />
                     {feedbackSummary.recentFeedback?.length > 0 ? (
                         feedbackSummary.recentFeedback.map((review, index) => (
@@ -402,7 +335,12 @@ export default function ProfileScreen({ navigation }) {
                                 <View style={styles.feedbackHeader}>
                                     <View style={styles.starsRow}>
                                         {[1, 2, 3, 4, 5].map((s) => (
-                                            <Text key={s} style={{ color: s <= review.rating ? '#FFB800' : '#E2E8F0', fontSize: 16 }}>★</Text>
+                                            <Ionicons
+                                                key={s}
+                                                name={s <= review.rating ? 'star' : 'star-outline'}
+                                                size={15}
+                                                color={s <= review.rating ? '#F59E0B' : '#CBD5E1'}
+                                            />
                                         ))}
                                     </View>
                                     <Text style={styles.feedbackDate}>
@@ -412,21 +350,25 @@ export default function ProfileScreen({ navigation }) {
                                 {review.comment ? (
                                     <Text style={styles.feedbackComment}>"{review.comment}"</Text>
                                 ) : (
-                                    <Text style={styles.feedbackCommentEmpty}>No comment provided</Text>
+                                    <Text style={styles.feedbackCommentEmpty}>5-star delivery without written comment</Text>
                                 )}
                             </SurfaceCard>
                         ))
                     ) : (
-                        <Text style={styles.noFeedbackText}>No recent feedback.</Text>
+                        <SurfaceCard style={styles.emptyFeedbackCard}>
+                            <Ionicons name="chatbubble-ellipses-outline" size={28} color={colors.textMuted} />
+                            <Text style={styles.noFeedbackText}>No customer reviews yet.</Text>
+                            <Text style={styles.noFeedbackSubtext}>Ratings from your deliveries will appear here.</Text>
+                        </SurfaceCard>
                     )}
                 </View>
             )}
 
-
+            {/* Actions & Controls */}
             {editing ? (
                 <View style={styles.actions}>
                     <Button
-                        title="Save Details"
+                        title="Save Changes"
                         icon="checkmark-circle-outline"
                         onPress={handleSave}
                         loading={saving}
@@ -450,9 +392,14 @@ export default function ProfileScreen({ navigation }) {
                         onPress={() => setEditing(true)}
                         style={styles.actionButton}
                     />
-                    <Button title="Logout" icon="log-out-outline" onPress={handleLogout} variant="outline" />
                     <Button
-                        title="Delete Profile"
+                        title="Sign Out"
+                        icon="log-out-outline"
+                        onPress={handleLogout}
+                        variant="outline"
+                    />
+                    <Button
+                        title="Delete Partner Account"
                         icon="trash-outline"
                         onPress={handleDeleteProfile}
                         variant="danger"
@@ -476,140 +423,17 @@ const styles = StyleSheet.create({
         backgroundColor: colors.background,
     },
     content: {
-        padding: spacing.lg,
-        paddingBottom: 120,
-    },
-    heroCard: {
-        position: 'relative',
-        backgroundColor: colors.primary,
-        marginBottom: spacing.lg,
-        overflow: 'hidden',
-        borderColor: colors.primary,
-        padding: spacing.lg,
-    },
-    heroGlowLarge: {
-        position: 'absolute',
-        width: 190,
-        height: 190,
-        borderRadius: 95,
-        backgroundColor: 'rgba(59,130,246,0.18)',
-        right: -70,
-        top: -100,
-    },
-    heroGlowSmall: {
-        position: 'absolute',
-        width: 110,
-        height: 110,
-        borderRadius: 55,
-        backgroundColor: 'rgba(139,92,246,0.14)',
-        right: 55,
-        bottom: -75,
-    },
-    heroTopRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    heroEyebrow: {
-        ...typography.overline,
-        color: '#93C5FD',
-    },
-    profileHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.md,
-        marginTop: spacing.md,
-    },
-    avatarWrap: {
-        width: 88,
-        height: 88,
-        borderRadius: radii.pill,
-        overflow: 'hidden',
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        borderWidth: 3,
-        borderColor: 'rgba(255,255,255,0.22)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    avatar: {
-        width: '100%',
-        height: '100%',
-    },
-    avatarFallback: {
-        width: '100%',
-        height: '100%',
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.14)',
-    },
-    avatarInitials: {
-        ...typography.h2,
-        color: colors.surface,
-    },
-    heroCopy: {
-        flex: 1,
-    },
-    heroTitle: {
-        ...typography.h2,
-        color: colors.surface,
-    },
-    heroSubtitle: {
-        ...typography.bodySmall,
-        color: 'rgba(255,255,255,0.8)',
-        marginTop: spacing.xs,
-    },
-    heroMeta: {
-        ...typography.bodySmall,
-        color: 'rgba(255,255,255,0.72)',
-        marginTop: spacing.xs,
-    },
-    heroStats: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: spacing.lg,
-        paddingTop: spacing.md,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.12)',
-    },
-    heroStat: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-    },
-    heroStatIcon: {
-        width: 36,
-        height: 36,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.09)',
-    },
-    heroStatValue: {
-        ...typography.h3,
-        color: colors.textOnDark,
-    },
-    heroStatLabel: {
-        ...typography.caption,
-        color: colors.textOnDarkMuted,
-    },
-    heroStatDivider: {
-        width: 1,
-        height: 34,
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        marginHorizontal: spacing.md,
-    },
-    photoActions: {
-        flexDirection: 'row',
-        gap: spacing.sm,
-        marginTop: spacing.md,
-    },
-    photoButton: {
-        flex: 1,
+        padding: spacing.md,
+        paddingBottom: 130,
     },
     formCard: {
         marginBottom: spacing.lg,
         padding: spacing.lg,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: colors.borderSubtle,
+        backgroundColor: colors.surface,
+        ...shadows.small,
     },
     formSectionTitle: {
         flexDirection: 'row',
@@ -621,38 +445,43 @@ const styles = StyleSheet.create({
         borderBottomColor: colors.borderSubtle,
     },
     formSectionIcon: {
-        width: 42,
-        height: 42,
-        borderRadius: 14,
+        width: 40,
+        height: 40,
+        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: colors.secondarySoft,
+        backgroundColor: 'rgba(0, 0, 46, 0.06)',
     },
     formSectionCopy: {
         flex: 1,
     },
     formSectionHeading: {
-        ...typography.body,
-        color: colors.text,
+        fontSize: 14,
         fontWeight: '800',
+        color: colors.text,
     },
     formSectionCaption: {
-        ...typography.caption,
+        fontSize: 11,
         color: colors.textSecondary,
         marginTop: 2,
     },
     actions: {
         gap: spacing.sm,
+        marginTop: spacing.sm,
     },
     actionButton: {
         marginBottom: 0,
     },
     feedbackSection: {
-        marginBottom: spacing.xl,
+        marginBottom: spacing.lg,
     },
     feedbackCard: {
         padding: spacing.md,
         marginBottom: spacing.sm,
+        borderRadius: 16,
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.borderSubtle,
     },
     feedbackHeader: {
         flexDirection: 'row',
@@ -665,23 +494,37 @@ const styles = StyleSheet.create({
         gap: 2,
     },
     feedbackDate: {
-        ...typography.bodySmall,
-        color: colors.textSecondary,
+        fontSize: 11,
+        color: colors.textMuted,
     },
     feedbackComment: {
-        ...typography.bodyMedium,
+        fontSize: 13,
         fontStyle: 'italic',
         color: colors.text,
+        lineHeight: 18,
     },
     feedbackCommentEmpty: {
-        ...typography.bodyMedium,
+        fontSize: 12,
         fontStyle: 'italic',
-        color: colors.textLight,
+        color: colors.textMuted,
+    },
+    emptyFeedbackCard: {
+        padding: spacing.xl,
+        alignItems: 'center',
+        borderRadius: 16,
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.borderSubtle,
     },
     noFeedbackText: {
-        ...typography.bodyMedium,
+        fontSize: 14,
+        fontWeight: '700',
+        color: colors.text,
+        marginTop: spacing.sm,
+    },
+    noFeedbackSubtext: {
+        fontSize: 12,
         color: colors.textSecondary,
-        textAlign: 'center',
-        marginTop: spacing.md,
+        marginTop: 2,
     },
 });

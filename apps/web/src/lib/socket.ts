@@ -3,20 +3,7 @@ import { io, Socket } from 'socket.io-client';
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3000';
 
 let socket: Socket | null = null;
-let joinedUserId: string | null = null;
-let joinedRole: string | null = null;
 let listenersAttached = false;
-
-const joinUserRoom = (userId?: string | null): void => {
-  if (!userId || !socket?.connected) return;
-  socket.emit('join', userId);
-};
-
-// Admins need a shared room so cancellation events reach all admin sessions, not just one tab
-const joinRoleRoom = (role?: string | null): void => {
-  if (!role || !socket?.connected) return;
-  socket.emit('joinRole', role);
-};
 
 const attachSocketListeners = (): void => {
   if (!socket || listenersAttached) return;
@@ -24,9 +11,7 @@ const attachSocketListeners = (): void => {
 
   // 'connect' fires on every successful connection AND every reconnection in socket.io-client v4
   socket.on('connect', () => {
-    // Rejoin rooms after reconnect so no events are missed during a brief disconnect
-    joinUserRoom(joinedUserId);
-    joinRoleRoom(joinedRole);
+    // The backend derives and rejoins rooms from the verified JWT.
   });
 
   socket.on('connect_error', (error) => {
@@ -50,19 +35,23 @@ export function getSocket(): Socket {
 }
 
 // Accepts an optional role so admins can also join role:ADMIN alongside their personal room
-export function connectSocket(userId: string, role?: string): Socket {
+export function connectSocket(_userId?: string, _role?: string): Socket {
   const s = getSocket();
-  joinedUserId = userId;
-  if (role) joinedRole = role;
+  const token = typeof window !== 'undefined'
+    ? localStorage.getItem('digifix_token')
+    : null;
+
+  if (!token) {
+    console.warn('Socket connection skipped: authentication token is unavailable');
+    return s;
+  }
+
+  s.auth = { token };
 
   if (!s.connected) {
     s.connect();
-  } else {
-    // Already connected — join rooms immediately
-    joinUserRoom(userId);
-    if (role) joinRoleRoom(role);
   }
-
+  // An existing authenticated socket is reused until logout disconnects it.
   return s;
 }
 
@@ -73,6 +62,4 @@ export function disconnectSocket(): void {
     socket = null;
     listenersAttached = false;
   }
-  joinedUserId = null;
-  joinedRole = null;
 }

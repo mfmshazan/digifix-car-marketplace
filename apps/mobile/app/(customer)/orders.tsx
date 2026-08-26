@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import MapView, { Marker, Polyline } from "react-native-maps";
+import MapView, { AnimatedRegion, Marker, Polyline } from "react-native-maps";
 import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../../src/api/orders";
 import { submitReviews } from "../../src/api/reviews";
 import { connectSocket } from "../../src/lib/socket";
@@ -84,6 +84,20 @@ const DELIVERY_STEPS = [
   { key: "delivered", title: "Delivered" },
 ];
 
+const RIDER_DELIVERY_STEPS = [
+  { key: "assigned", title: "Assigned" },
+  { key: "accepted", title: "Accepted" },
+  { key: "arrived_at_pickup", title: "At Shop" },
+  { key: "picked_up", title: "Picked Up" },
+  { key: "in_transit", title: "En Route" },
+  { key: "arrived_at_dropoff", title: "Arrived" },
+  { key: "delivered", title: "Delivered" },
+];
+
+const RIDER_DELIVERY_STEP_KEYS = new Set(
+  RIDER_DELIVERY_STEPS.map((step) => step.key)
+);
+
 // Labels shown in the tracking card's status heading (detailed rider step labels)
 const DELIVERY_STATUS_LABELS: Record<string, string> = {
   // Order-level statuses (from DB)
@@ -143,10 +157,11 @@ const formatEta = (minutes: number | null) => {
 };
 
 const OrderStepper = ({ currentStatus, riderStep }: { currentStatus: string; riderStep?: string }) => {
-  const steps = DELIVERY_STEPS;
-  // Use riderStep to override the step if it maps to a known stepper key
-  const stepperKey = riderStep
-    ? riderStepToStepperKey(riderStep)
+  const normalizedRiderStep = normalizeDeliveryStatus(riderStep);
+  const showsRiderProgress = RIDER_DELIVERY_STEP_KEYS.has(normalizedRiderStep);
+  const steps = showsRiderProgress ? RIDER_DELIVERY_STEPS : DELIVERY_STEPS;
+  const stepperKey = showsRiderProgress
+    ? normalizedRiderStep
     : riderStepToStepperKey(currentStatus);
   let currentIndex = steps.findIndex((s) => s.key === stepperKey);
   if (currentIndex === -1) currentIndex = 0;
@@ -181,10 +196,16 @@ const OrderStepper = ({ currentStatus, riderStep }: { currentStatus: string; rid
         return (
           <React.Fragment key={step.key}>
             {/* Step Circle & Label */}
-            <View style={styles.stepWrapper}>
+            <View
+              style={[
+                styles.stepWrapper,
+                showsRiderProgress && styles.riderStepWrapper,
+              ]}
+            >
               <View
                 style={[
                   styles.stepCircle,
+                  showsRiderProgress && styles.riderStepCircle,
                   isCompleted && styles.stepCircleCompleted,
                   isActive && styles.stepCircleActive,
                   isInactive && styles.stepCircleInactive,
@@ -193,6 +214,7 @@ const OrderStepper = ({ currentStatus, riderStep }: { currentStatus: string; rid
                 <Text
                   style={[
                     styles.stepNumber,
+                    showsRiderProgress && styles.riderStepNumber,
                     isCompleted && styles.stepNumberCompleted,
                     isActive && styles.stepNumberActive,
                     isInactive && styles.stepNumberInactive,
@@ -204,9 +226,10 @@ const OrderStepper = ({ currentStatus, riderStep }: { currentStatus: string; rid
               <Text
                 style={[
                   styles.stepLabel,
+                  showsRiderProgress && styles.riderStepLabel,
                   (isCompleted || isActive) ? styles.stepLabelActive : styles.stepLabelInactive,
                 ]}
-                numberOfLines={1}
+                numberOfLines={showsRiderProgress ? 2 : 1}
               >
                 {step.title}
               </Text>
@@ -214,7 +237,12 @@ const OrderStepper = ({ currentStatus, riderStep }: { currentStatus: string; rid
 
             {/* Connecting Line */}
             {!isLast && (
-              <View style={styles.lineWrapper}>
+              <View
+                style={[
+                  styles.lineWrapper,
+                  showsRiderProgress && styles.riderLineWrapper,
+                ]}
+              >
                 <View
                   style={[
                     styles.lineBase,
@@ -225,6 +253,7 @@ const OrderStepper = ({ currentStatus, riderStep }: { currentStatus: string; rid
                   <Animated.View
                     style={[
                       styles.lineAnimated,
+                      showsRiderProgress && styles.riderLineAnimated,
                       {
                         width: pulseAnim.interpolate({
                           inputRange: [0, 1],
@@ -247,6 +276,15 @@ export default function OrdersScreen() {
   const trackingMapRef = React.useRef<MapView | null>(null);
   const hasFitTrackingMap = React.useRef(false);
   const trackingOrderRef = React.useRef<Order | null>(null);
+  const animatedRiderCoordinate = React.useRef(
+    new AnimatedRegion({
+      latitude: 0,
+      longitude: 0,
+      latitudeDelta: 0,
+      longitudeDelta: 0,
+    })
+  ).current;
+  const hasAnimatedRiderLocation = React.useRef(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -279,6 +317,20 @@ export default function OrdersScreen() {
   const [lastTrackingUpdate, setLastTrackingUpdate] = useState<Date | null>(null);
 
   const activeDeliveryStatus = normalizeDeliveryStatus(liveDeliveryStatus || trackingOrder?.status);
+  const riderVisualStatus = normalizeDeliveryStatus(
+    liveRiderStep || liveDeliveryStatus || trackingOrder?.status
+  );
+  const displayedRiderLocation = React.useMemo(() => {
+    const customerTrackableStatuses = [
+      "picked_up",
+      "in_transit",
+      "arrived_at_dropoff",
+      "delivered",
+    ];
+    return customerTrackableStatuses.includes(riderVisualStatus)
+      ? riderLocation
+      : null;
+  }, [riderLocation, riderVisualStatus]);
   const etaMinutes = roadRoute?.etaMinutes ?? null;
   const etaLabel = formatEta(etaMinutes);
   // Show detailed rider step label if available, otherwise fall back to order status label
@@ -286,13 +338,52 @@ export default function OrdersScreen() {
     (liveRiderStep && DELIVERY_STATUS_LABELS[liveRiderStep]) ||
     DELIVERY_STATUS_LABELS[activeDeliveryStatus] ||
     formatStatus(activeDeliveryStatus);
-  const lastUpdatedLabel = lastTrackingUpdate
-    ? lastTrackingUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-    : "Waiting";
+  const locationAgeSeconds = lastTrackingUpdate
+    ? Math.max(0, Math.floor((Date.now() - lastTrackingUpdate.getTime()) / 1000))
+    : null;
+  const isLocationStale = locationAgeSeconds === null || locationAgeSeconds > 30;
+  const lastUpdatedLabel = locationAgeSeconds === null
+    ? "waiting for GPS"
+    : locationAgeSeconds < 5
+      ? "just now"
+      : locationAgeSeconds < 60
+        ? `${locationAgeSeconds}s ago`
+        : `${Math.floor(locationAgeSeconds / 60)}m ago`;
+  const fallbackRouteCoordinates = React.useMemo(() => {
+    if (!displayedRiderLocation || !deliveryRoute) return [];
+
+    const nextStop = ["accepted", "arrived_at_pickup"].includes(activeDeliveryStatus)
+      ? deliveryRoute.pickup
+      : deliveryRoute.dropoff;
+
+    return [displayedRiderLocation, nextStop];
+  }, [activeDeliveryStatus, deliveryRoute, displayedRiderLocation]);
 
   useEffect(() => {
     trackingOrderRef.current = trackingOrder;
   }, [trackingOrder]);
+
+  useEffect(() => {
+    if (!displayedRiderLocation) return;
+
+    if (!hasAnimatedRiderLocation.current) {
+      animatedRiderCoordinate.setValue({
+        latitude: displayedRiderLocation.latitude,
+        longitude: displayedRiderLocation.longitude,
+        latitudeDelta: 0,
+        longitudeDelta: 0,
+      });
+      hasAnimatedRiderLocation.current = true;
+      return;
+    }
+
+    (animatedRiderCoordinate.timing as any)({
+      latitude: displayedRiderLocation.latitude,
+      longitude: displayedRiderLocation.longitude,
+      duration: 2500,
+      useNativeDriver: false,
+    }).start();
+  }, [animatedRiderCoordinate, displayedRiderLocation]);
 
   // Poll rider's GPS every few seconds while the tracking modal is open.
   useEffect(() => {
@@ -305,6 +396,7 @@ export default function OrdersScreen() {
       setLiveRiderStep(null);
       setLastTrackingUpdate(null);
       hasFitTrackingMap.current = false;
+      hasAnimatedRiderLocation.current = false;
       return;
     }
 
@@ -316,6 +408,11 @@ export default function OrdersScreen() {
         if (cancelled) return;
         if (res?.success && res.data?.riderLocation) {
           setRiderLocation(res.data.riderLocation);
+          setLastTrackingUpdate(
+            res.data.riderLocation.recordedAt
+              ? new Date(res.data.riderLocation.recordedAt)
+              : null
+          );
         }
         if (res?.success && res.data?.route?.pickup && res.data?.route?.dropoff) {
           setDeliveryRoute(res.data.route);
@@ -332,8 +429,8 @@ export default function OrdersScreen() {
         }
         if (res?.success && res.data?.status) {
           setLiveDeliveryStatus(res.data.status);
+          setLiveRiderStep(res.data.status);
         }
-        setLastTrackingUpdate(new Date());
       } catch {
         // silently ignore network errors between polls
       }
@@ -354,7 +451,7 @@ export default function OrdersScreen() {
       ? roadRoute.coordinates
       : [
         deliveryRoute.pickup,
-        ...(riderLocation ? [riderLocation] : []),
+        ...(displayedRiderLocation ? [displayedRiderLocation] : []),
         deliveryRoute.dropoff,
       ];
 
@@ -367,7 +464,7 @@ export default function OrdersScreen() {
     }, 250);
 
     return () => clearTimeout(timeoutId);
-  }, [trackingOrder, deliveryRoute, roadRoute, riderLocation]);
+  }, [trackingOrder, deliveryRoute, displayedRiderLocation, roadRoute]);
 
   const fetchOrders = async (showRefresh = false) => {
     try {
@@ -420,10 +517,12 @@ export default function OrdersScreen() {
         // even when the app is closed (backend targets by this user id).
         loginOneSignal(userId);
 
-        const socket = connectSocket(userId);
+        const socket = connectSocket(token);
 
         const handleStatusUpdate = (payload: {
           orderId: string;
+          deliveryId?: number;
+          riderId?: number | null;
           orderNumber?: string;
           status: string;
           riderStep?: string;    // Detailed rider step from the backend
@@ -432,16 +531,34 @@ export default function OrdersScreen() {
           // Update the order's main status (user-facing: SHIPPED, DELIVERED, etc.)
           setOrders((prev) =>
             prev.map((o) =>
-              o.id === payload.orderId ? { ...o, status: payload.status } : o
+              String(o.id) === String(payload.orderId)
+                ? {
+                    ...o,
+                    status: payload.status,
+                    ...(payload.deliveryId
+                      ? {
+                          riderDeliveryJobs: [
+                            {
+                              ...(o.riderDeliveryJobs?.[0] || {}),
+                              id: payload.deliveryId,
+                              status: payload.riderStep,
+                              partnerId: payload.riderId,
+                            },
+                          ],
+                        }
+                      : {}),
+                  }
+                : o
             )
           );
-          // If the tracking modal is open for this order, update the detailed label
-          if (payload.riderStep) {
-            setLiveRiderStep(payload.riderStep);
-          }
-          // Also update the live status shown in the tracking panel
-          if (payload.status) {
-            setLiveDeliveryStatus(payload.status);
+          // Only change the open tracking panel when this event belongs to it.
+          if (String(trackingOrderRef.current?.id) === String(payload.orderId)) {
+            if (payload.riderStep) {
+              setLiveRiderStep(payload.riderStep);
+            }
+            if (payload.status) {
+              setLiveDeliveryStatus(payload.status);
+            }
           }
         };
 
@@ -459,7 +576,10 @@ export default function OrdersScreen() {
           };
         }) => {
           const currentTrackingOrder = trackingOrderRef.current;
-          if (!currentTrackingOrder || payload.orderId !== currentTrackingOrder.id) {
+          if (
+            !currentTrackingOrder ||
+            String(payload.orderId) !== String(currentTrackingOrder.id)
+          ) {
             return;
           }
 
@@ -539,6 +659,13 @@ export default function OrdersScreen() {
     const canRequestAction = ['PENDING', 'CONFIRMED', 'DELIVERED'].includes(normalizedStatus);
     const isMenuOpen = actionMenuOrderId === item.id;
     const hasReviews = item.reviews && item.reviews.length > 0;
+    const deliveryJob = item.riderDeliveryJobs?.[0];
+    const canTrackOrder = Boolean(
+      deliveryJob?.partnerId &&
+      !['awaiting_dispatch', 'pending', 'available', 'failed', 'cancelled'].includes(
+        String(deliveryJob.status || '').toLowerCase()
+      )
+    );
 
     return (
       <TouchableOpacity style={[styles.orderCard, isMenuOpen && styles.orderCardMenuOpen]}>
@@ -620,7 +747,7 @@ export default function OrdersScreen() {
               </View>
             </View>
             {item.reviews?.[0]?.comment ? (
-              <Text style={styles.reviewComment}>"{item.reviews?.[0]?.comment}"</Text>
+              <Text style={styles.reviewComment}>“{item.reviews?.[0]?.comment}”</Text>
             ) : null}
 
             {item.reviews?.[0]?.replies && item.reviews?.[0].replies.length > 0 && (
@@ -635,18 +762,20 @@ export default function OrdersScreen() {
         )}
 
         <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.trackButton, { flex: 1 }]}
-            onPress={() => {
-              setActionMenuOrderId(null);
-              setTrackingOrder(item);
-            }}
-          >
-            <Ionicons name="location" size={16} color="#FF6B35" />
-            <Text style={styles.trackButtonText}>
-              {isDelivered && !hasReviews ? "Track" : "Track Order"}
-            </Text>
-          </TouchableOpacity>
+          {canTrackOrder && (
+            <TouchableOpacity
+              style={[styles.trackButton, { flex: 1 }]}
+              onPress={() => {
+                setActionMenuOrderId(null);
+                setTrackingOrder(item);
+              }}
+            >
+              <Ionicons name="location" size={16} color="#FF6B35" />
+              <Text style={styles.trackButtonText}>
+                {isDelivered && !hasReviews ? "Track" : "Track Order"}
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {isDelivered && !hasReviews && (
             <TouchableOpacity
@@ -794,16 +923,17 @@ export default function OrdersScreen() {
             <View style={{ width: 28 }} />
           </View>
 
-          <MapView
-            ref={trackingMapRef}
-            style={styles.map}
-            initialRegion={{
-              latitude: riderLocation?.latitude ?? deliveryRoute?.pickup.latitude ?? 6.9271,
-              longitude: riderLocation?.longitude ?? deliveryRoute?.pickup.longitude ?? 79.8612,
-              latitudeDelta: 0.035,
-              longitudeDelta: 0.035,
-            }}
-          >
+          {deliveryRoute ? (
+            <MapView
+              ref={trackingMapRef}
+              style={styles.map}
+              initialRegion={{
+                latitude: displayedRiderLocation?.latitude ?? deliveryRoute.pickup.latitude,
+                longitude: displayedRiderLocation?.longitude ?? deliveryRoute.pickup.longitude,
+                latitudeDelta: 0.035,
+                longitudeDelta: 0.035,
+              }}
+            >
             {deliveryRoute && (
               <>
                 {roadRoute && roadRoute.coordinates.length >= 2 && (
@@ -811,6 +941,16 @@ export default function OrdersScreen() {
                     coordinates={roadRoute.coordinates}
                     strokeColor="#FF6B35"
                     strokeWidth={5}
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                )}
+                {!roadRoute && fallbackRouteCoordinates.length >= 2 && (
+                  <Polyline
+                    coordinates={fallbackRouteCoordinates}
+                    strokeColor="#FF6B35"
+                    strokeWidth={4}
+                    lineDashPattern={[10, 7]}
                     lineCap="round"
                     lineJoin="round"
                   />
@@ -829,27 +969,42 @@ export default function OrdersScreen() {
                 />
               </>
             )}
-            {riderLocation && (
-              <Marker
-                coordinate={{ latitude: riderLocation.latitude, longitude: riderLocation.longitude }}
+            {displayedRiderLocation && (
+              <Marker.Animated
+                coordinate={animatedRiderCoordinate as any}
                 title="Rider Location"
                 description={`ETA ${etaLabel}`}
               >
                 <View style={styles.markerContainer}>
                   <Ionicons name="bicycle" size={24} color="#FFF" />
                 </View>
-              </Marker>
+              </Marker.Animated>
             )}
-          </MapView>
+            </MapView>
+          ) : (
+            <View style={[styles.map, styles.mapLoadingState]}>
+              <ActivityIndicator size="large" color="#FF6B35" />
+              <Text style={styles.noRiderText}>Loading delivery locations...</Text>
+            </View>
+          )}
 
-          {!riderLocation && (
+          {!displayedRiderLocation && (
             <View style={styles.noRiderBanner} pointerEvents="none">
               <Ionicons name="location-outline" size={32} color="#999" />
               <Text style={styles.noRiderText}>Waiting for rider location…</Text>
             </View>
           )}
 
-          {roadRouteError && riderLocation && (
+          {displayedRiderLocation && isLocationStale && (
+            <View style={styles.routeErrorBanner} pointerEvents="none">
+              <Ionicons name="cloud-offline-outline" size={18} color="#B45309" />
+              <Text style={styles.routeErrorText}>
+                Location temporarily unavailable. Last update: {lastUpdatedLabel}.
+              </Text>
+            </View>
+          )}
+
+          {roadRouteError && displayedRiderLocation && (
             <View style={styles.routeErrorBanner} pointerEvents="none">
               <Ionicons name="warning-outline" size={18} color="#B45309" />
               <Text style={styles.routeErrorText}>{roadRouteError}</Text>
@@ -868,8 +1023,8 @@ export default function OrdersScreen() {
               </View>
             </View>
             <View style={styles.liveMetaRow}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveMetaText}>Live GPS + road routing</Text>
+              <View style={[styles.liveDot, isLocationStale && { backgroundColor: '#D97706' }]} />
+              <Text style={styles.liveMetaText}>Rider GPS tracking</Text>
               <Text style={styles.liveMetaText}>Updated {lastUpdatedLabel}</Text>
             </View>
             <OrderStepper currentStatus={activeDeliveryStatus} riderStep={liveRiderStep ?? undefined} />
@@ -1485,6 +1640,12 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
+  mapLoadingState: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    backgroundColor: "#F3F4F6",
+  },
   markerContainer: {
     backgroundColor: "#FF6B35",
     padding: 8,
@@ -1565,6 +1726,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     width: 36,
   },
+  riderStepWrapper: {
+    width: 28,
+  },
   stepCircle: {
     width: 24,
     height: 24,
@@ -1574,6 +1738,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     marginBottom: 6,
     backgroundColor: "#FFF",
+  },
+  riderStepCircle: {
+    width: 21,
+    height: 21,
+    borderRadius: 11,
+    marginBottom: 5,
   },
   stepCircleCompleted: {
     backgroundColor: "#00002E",
@@ -1589,6 +1759,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
   },
+  riderStepNumber: {
+    fontSize: 10,
+  },
   stepNumberCompleted: {
     color: "#FFF",
   },
@@ -1601,6 +1774,10 @@ const styles = StyleSheet.create({
   stepLabel: {
     fontSize: 9,
     textAlign: "center",
+  },
+  riderStepLabel: {
+    fontSize: 7.5,
+    lineHeight: 9,
   },
   stepLabelActive: {
     color: "#00002E",
@@ -1615,6 +1792,10 @@ const styles = StyleSheet.create({
     height: 24,
     justifyContent: "center",
     paddingHorizontal: 4,
+  },
+  riderLineWrapper: {
+    height: 21,
+    paddingHorizontal: 1,
   },
   lineBase: {
     height: 3,
@@ -1633,6 +1814,9 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: "#00002E",
     borderRadius: 2,
+  },
+  riderLineAnimated: {
+    left: 1,
   },
   cancelButton: {
     flexDirection: "row",

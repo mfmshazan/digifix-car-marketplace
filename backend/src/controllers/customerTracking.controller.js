@@ -85,8 +85,9 @@ export const getRiderLiveLocation = async (req, res) => {
     );
 
     const pt = trackingResult.rows[0];
+    const customerCanTrack = ['picked_up', 'in_transit', 'arrived_at_dropoff'].includes(job.status);
 
-    const riderLocation = pt
+    const riderLocation = customerCanTrack && pt
       ? {
           latitude: parseFloat(pt.latitude),
           longitude: parseFloat(pt.longitude),
@@ -95,11 +96,11 @@ export const getRiderLiveLocation = async (req, res) => {
           heading: pt.heading,
           recordedAt: pt.recorded_at,
         }
-      : job.current_latitude
+      : customerCanTrack && job.current_latitude
       ? {
           latitude: parseFloat(job.current_latitude),
           longitude: parseFloat(job.current_longitude),
-          recordedAt: new Date().toISOString(),
+          recordedAt: null,
         }
       : null;
 
@@ -185,8 +186,7 @@ export const getOrderDeliveryStatus = async (req, res) => {
               rdj.distance_km,
               rdj.assigned_at, rdj.picked_up_at, rdj.delivered_at,
               rdp.full_name AS rider_name, rdp.phone AS rider_phone,
-              rdp.vehicle_type, rdp.vehicle_number, rdp.rating AS rider_rating,
-              rdp.current_latitude, rdp.current_longitude
+              rdp.vehicle_type, rdp.vehicle_number, rdp.rating AS rider_rating
        FROM "DeliveryJob" rdj
        LEFT JOIN "Rider" rdp ON rdj.partner_id = rdp.id
        WHERE rdj.marketplace_order_id = $1
@@ -219,13 +219,6 @@ export const getOrderDeliveryStatus = async (req, res) => {
               rating: job.rider_rating,
             }
           : null,
-        riderLocation:
-          job.current_latitude && job.current_longitude
-            ? {
-                latitude: parseFloat(job.current_latitude),
-                longitude: parseFloat(job.current_longitude),
-              }
-            : null,
         timeline: {
           assignedAt: job.assigned_at,
           pickedUpAt: job.picked_up_at,

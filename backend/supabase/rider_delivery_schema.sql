@@ -154,10 +154,6 @@ CREATE INDEX IF NOT EXISTS idx_rider_dispatch_offers_job_id ON rider_delivery_re
 CREATE INDEX IF NOT EXISTS idx_rider_dispatch_offers_partner_id ON rider_delivery_request_offers(partner_id);
 CREATE INDEX IF NOT EXISTS idx_rider_dispatch_offers_status ON rider_delivery_request_offers(offer_status, expires_at);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_rider_dispatch_single_pending_job
-    ON rider_delivery_request_offers(job_id)
-    WHERE offer_status = 'pending';
-
 CREATE UNIQUE INDEX IF NOT EXISTS idx_rider_dispatch_single_pending_partner
     ON rider_delivery_request_offers(partner_id)
     WHERE offer_status = 'pending';

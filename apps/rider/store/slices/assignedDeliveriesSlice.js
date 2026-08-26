@@ -21,10 +21,15 @@ export const acceptAssignedDelivery = createAsyncThunk(
     async (deliveryId, { dispatch, rejectWithValue }) => {
         try {
             const response = await jobsAPI.acceptAssigned(deliveryId);
-            await Promise.all([
-                dispatch(fetchAssignedDeliveries()),
-                dispatch(fetchDriverHome()),
-            ]);
+
+            // The accept response is enough to open Active Delivery. Refresh
+            // dashboard data in the background so two additional API rounds do
+            // not block navigation after the rider taps Accept.
+            setTimeout(() => {
+                void dispatch(fetchAssignedDeliveries());
+                void dispatch(fetchDriverHome());
+            }, 300);
+
             return response?.data?.data ?? null;
         } catch (error) {
             return rejectWithValue(

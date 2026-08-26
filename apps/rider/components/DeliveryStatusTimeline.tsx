@@ -44,6 +44,11 @@ const TIMELINE_STEPS: readonly {
         hint: 'Heading to the customer',
     },
     {
+        status: DeliveryWorkflowStatus.ARRIVED_DROPOFF,
+        label: 'At Customer',
+        hint: 'Ready for the verified handoff',
+    },
+    {
         status: DeliveryWorkflowStatus.DELIVERED,
         label: 'Delivered',
         hint: 'Final handoff completed',

@@ -2,10 +2,10 @@
   "name": "backend",
   "version": "1.0.0",
   "type": "module",
-  "main": "src/index.js",
+  "main": "src/server.js",
   "scripts": {
-    "dev": "prisma generate && nodemon src/index.js",
-    "start": "node src/index.js",
+    "dev": "prisma generate && nodemon src/server.js",
+    "start": "node src/server.js",
     "seed": "node src/seed.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

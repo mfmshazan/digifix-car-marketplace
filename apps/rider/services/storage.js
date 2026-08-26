@@ -103,6 +103,7 @@ export const clearTokens = async () => {
         await storage.removeItem(KEYS.ACCESS_TOKEN);
         await storage.removeItem(KEYS.REFRESH_TOKEN);
         await storage.removeItem(KEYS.USER_DATA);
+        await import('./location').then((m) => m.stopLocationTracking());
         // Detach this device so a signed-out rider stops receiving delivery push.
         import('./onesignal').then((m) => m.logoutOneSignal()).catch(() => { });
     } catch (error) {

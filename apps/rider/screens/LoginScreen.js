@@ -19,7 +19,7 @@ import { colors, spacing, typography, radii } from '../styles/theme';
 import { useGoogleSignIn, syncClerkWithBackend } from '../services/googleSignin';
 import { useAuth } from '@clerk/expo';
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen({ navigation, onAuthenticated }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -64,6 +64,7 @@ export default function LoginScreen({ navigation }) {
 
             await saveTokens(accessToken, refreshToken);
             await saveUserData(partner);
+            onAuthenticated?.();
             navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
         } catch (error) {
             const message = error.response?.data?.message || error.message || 'Please check your credentials';
@@ -107,9 +108,17 @@ export default function LoginScreen({ navigation }) {
     const handleBackendSync = async (clerkToken, sessionId) => {
         const response = await syncClerkWithBackend(clerkToken, 'DELIVERY_PARTNER', sessionId);
         if (response.success && response.data) {
-            const { token, user } = response.data;
-            await saveTokens(token, '');
-            await saveUserData(user);
+            const accessToken = response.data.accessToken || response.data.token;
+            const refreshToken = response.data.refreshToken;
+            const partner = response.data.partner || response.data.user;
+
+            if (!accessToken || !refreshToken) {
+                throw new Error('The backend did not return a complete rider session.');
+            }
+
+            await saveTokens(accessToken, refreshToken);
+            await saveUserData(partner);
+            onAuthenticated?.();
             navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
         } else {
             const msg = response.message || 'Backend sync failed. Please try again.';

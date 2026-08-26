@@ -28,6 +28,9 @@
  */
 
 const toNumberOrNull = (value) => {
+    if (value === null || value === undefined || String(value).trim() === '') {
+        return null;
+    }
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
 };
@@ -58,6 +61,26 @@ export const normalizeDelivery = (raw = {}) => ({
     acceptedAt: raw.accepted_at ?? null,
     createdAt: raw.created_at ?? null,
     etaMinutes: toNumberOrNull(raw.pickup_eta_minutes),
+    riderLocation: raw.riderLocation
+        ? {
+            latitude: toNumberOrNull(raw.riderLocation.latitude),
+            longitude: toNumberOrNull(raw.riderLocation.longitude),
+            accuracy: toNumberOrNull(raw.riderLocation.accuracy),
+            speed: toNumberOrNull(raw.riderLocation.speed),
+            heading: toNumberOrNull(raw.riderLocation.heading),
+            recordedAt: raw.riderLocation.recordedAt ?? null,
+        }
+        : toNumberOrNull(raw.current_latitude) !== null &&
+            toNumberOrNull(raw.current_longitude) !== null
+            ? {
+                latitude: toNumberOrNull(raw.current_latitude),
+                longitude: toNumberOrNull(raw.current_longitude),
+                accuracy: null,
+                speed: null,
+                heading: null,
+                recordedAt: null,
+            }
+            : null,
 });
 
 /**

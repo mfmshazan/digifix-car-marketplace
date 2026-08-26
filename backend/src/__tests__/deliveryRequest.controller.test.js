@@ -18,6 +18,7 @@ import { riderQuery } from '../lib/riderDb.js';
 import { dispatchJobToSelectedDriver } from '../services/riderRealtimeDispatch.js';
 import {
   createDeliveryRequest,
+  getDeliveryRequest,
   getShopPickupLocation,
   updateShopPickupLocation,
 } from '../controllers/deliveryRequest.controller.js';
@@ -149,6 +150,49 @@ describe('createDeliveryRequest', () => {
     expect(res._status).toBe(409);
     expect(res._body.message).toMatch(/no longer available/i);
     expect(dispatchJobToSelectedDriver).not.toHaveBeenCalled();
+  });
+
+  it('returns a conflict when the database rejects a concurrent duplicate request', async () => {
+    riderQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockRejectedValueOnce(Object.assign(new Error('duplicate'), { code: '23505' }));
+
+    const res = makeRes();
+    await createDeliveryRequest(makeReq(), res);
+
+    expect(res._status).toBe(409);
+    expect(res._body.message).toMatch(/already exists/i);
+  });
+});
+
+describe('getDeliveryRequest authorization', () => {
+  const delivery = {
+    id: 73,
+    marketplace_order_id: 'order-1',
+    order_number: 'ORD-1',
+    status: 'in_transit',
+  };
+
+  it('allows a member of the order shop to read status', async () => {
+    riderQuery.mockResolvedValueOnce({ rows: [delivery] });
+    prisma.order.findUnique.mockResolvedValueOnce({ salesmanId: 'manager-1' });
+    const res = makeRes();
+
+    await getDeliveryRequest({ params: { id: 'order-1' }, user: makeReq().user }, res);
+
+    expect(res._status).toBe(200);
+    expect(res._body.data.id).toBe(73);
+  });
+
+  it('rejects a shop member reading another shop delivery', async () => {
+    riderQuery.mockResolvedValueOnce({ rows: [delivery] });
+    prisma.order.findUnique.mockResolvedValueOnce({ salesmanId: 'other-manager' });
+    const res = makeRes();
+
+    await getDeliveryRequest({ params: { id: 'order-1' }, user: makeReq().user }, res);
+
+    expect(res._status).toBe(403);
+    expect(res._body.message).toBe('Access denied');
   });
 });
 

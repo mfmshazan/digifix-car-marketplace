@@ -28,6 +28,7 @@ import { getAllCategories, getPartsByCategoryName, Category } from "../../src/ap
 import { useCart } from "../../src/store/cartStore";
 import { useVehicleStore } from "../../src/store/vehicleStore";
 import type { CompatibleProduct, CompatiblePartType } from "../../src/api/vehicle";
+import { formatCurrency } from "../../src/lib/currency";
 
 // Icon mapping for category names
 const categoryIconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -264,11 +265,11 @@ export default function CategoriesScreen() {
           </Text>
           <View style={styles.priceRow}>
             <Text style={styles.partPrice}>
-              Rs. {effectivePrice.toLocaleString()}
+              {formatCurrency(effectivePrice)}
             </Text>
             {item.discountPrice && (
               <Text style={styles.originalPrice}>
-                Rs. {item.price.toLocaleString()}
+                {formatCurrency(item.price)}
               </Text>
             )}
           </View>

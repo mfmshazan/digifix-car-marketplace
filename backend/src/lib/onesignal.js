@@ -27,7 +27,7 @@ export async function sendNewOrderNotificationToSalesman({ salesmanId, orderNumb
     target_channel: 'push',
     headings: { en: 'New Order Received!' },
     contents: {
-      en: `Order ${orderNumber} was just placed. Total: Rs. ${Number(total).toLocaleString()}`,
+      en: `Order ${orderNumber} was just placed. Total: ${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Number(total))}`,
     },
     url: process.env.WEB_URL || 'http://localhost:3001/dashboard/salesman',
     web_icon: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/favicon.ico`,
@@ -328,7 +328,7 @@ async function sendPush({ externalIds, heading, message, data, url }) {
  * request so an offline/backgrounded rider still gets a chance to grab the job.
  */
 export async function sendNewJobOfferToRider({ riderId, jobId, orderNumber, pickupAddress, dropoffAddress, paymentAmount, distanceKm, secondsToRespond }) {
-  const money = paymentAmount != null ? `Rs. ${Number(paymentAmount).toLocaleString()}` : 'a new delivery';
+  const money = paymentAmount != null ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Number(paymentAmount)) : 'a new delivery';
   const dist = distanceKm != null ? ` • ${Number(distanceKm).toFixed(1)} km` : '';
   const res = await sendPush({
     externalIds: riderId,

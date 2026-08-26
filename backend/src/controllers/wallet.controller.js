@@ -390,7 +390,7 @@ class WalletController {
 
                 return res.status(200).json({
                     success: true,
-                    msg: `Rs. ${payoutAmount.toLocaleString()} transferred to your bank account.`,
+                    msg: `${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(payoutAmount)} transferred to your bank account.`,
                     stripeTransferId: transfer.id,
                 });
 

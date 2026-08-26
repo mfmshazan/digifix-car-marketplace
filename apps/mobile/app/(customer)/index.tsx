@@ -41,6 +41,7 @@ import {
 } from "../../src/api/vehicle";
 import { getProducts } from "../../src/api/products";
 import { getCustomerOrders } from "../../src/api/orders";
+import { formatCurrency } from "../../src/lib/currency";
 
 // ─── Sample registration numbers (seeded data) — tap to try the search ───────
 const samplePlates = [
@@ -76,6 +77,12 @@ const promotions = [
     title: "Find Parts Fast",
     description: "Enter your vehicle registration number to see only parts that fit your car",
     gradient: ["#00002E", "#001060"],
+  },
+  {
+    id: "2",
+    title: "Free Delivery",
+    description: "On orders over $5,000",
+    gradient: ["#1A1A1A", "#2D2D2D"],
   },
   {
     id: "3",
@@ -530,11 +537,11 @@ export default function CustomerHomeScreen() {
           </Text>
           <View style={styles.productPriceRow}>
             <Text style={styles.productPrice}>
-              Rs. {effectivePrice.toLocaleString()}
+              {formatCurrency(effectivePrice)}
             </Text>
             {item.discountPrice && (
               <Text style={styles.productOriginalPrice}>
-                Rs. {item.price.toLocaleString()}
+                {formatCurrency(item.price)}
               </Text>
             )}
           </View>
@@ -665,7 +672,7 @@ export default function CustomerHomeScreen() {
                 {/* Price */}
                 <View style={styles.detailPriceRow}>
                   <Text style={styles.detailPrice}>
-                    Rs. {effectivePrice.toLocaleString()}
+                    {formatCurrency(effectivePrice)}
                   </Text>
                   {p.discountPrice && (
                     <View style={styles.discountBadge}>
@@ -680,7 +687,7 @@ export default function CustomerHomeScreen() {
                 </View>
                 {p.discountPrice && (
                   <Text style={styles.detailOriginalPrice}>
-                    MRP Rs. {p.price.toLocaleString()}
+                    MRP {formatCurrency(p.price)}
                   </Text>
                 )}
 

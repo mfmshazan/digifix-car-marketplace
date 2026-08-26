@@ -20,6 +20,7 @@ import { getApiUrl, getExpoDeepLinkBase } from "../../src/config/api.config";
 import { getToken } from "../../src/api/storage";
 import { getMyWallet } from "../../src/api/wallet";
 import { CustomerAddress, getAddresses } from "../../src/api/addresses";
+import { formatCurrency } from "../../src/lib/currency";
 
 export default function CartScreen() {
   const { items, updateQuantity, removeItem, clearCart, getTotalPrice, isLoading } = useCart();
@@ -212,7 +213,7 @@ export default function CartScreen() {
           : orderResponse.data?.total || orderResponse.data?.orders?.[0]?.total;
         Alert.alert(
           "Order Placed! 🎉",
-          `Your order ${orderNum} has been placed successfully!\n\nTotal: Rs. ${orderTotal?.toLocaleString()}\n\nThe seller has been notified.`,
+          `Your order ${orderNum} has been placed successfully!\n\nTotal: ${formatCurrency(orderTotal)}\n\nThe seller has been notified.`,
           [
             { text: "View Orders", onPress: () => router.push("/(customer)/orders") },
             { text: "Continue Shopping", onPress: () => router.push("/(customer)") }
@@ -335,11 +336,11 @@ export default function CartScreen() {
         <View style={styles.priceRow}>
           {item.discountPrice ? (
             <>
-              <Text style={styles.itemPrice}>Rs. {item.discountPrice.toLocaleString()}</Text>
-              <Text style={styles.originalPrice}>Rs. {item.price.toLocaleString()}</Text>
+              <Text style={styles.itemPrice}>{formatCurrency(item.discountPrice)}</Text>
+              <Text style={styles.originalPrice}>{formatCurrency(item.price)}</Text>
             </>
           ) : (
-            <Text style={styles.itemPrice}>Rs. {item.price.toLocaleString()}</Text>
+            <Text style={styles.itemPrice}>{formatCurrency(item.price)}</Text>
           )}
         </View>
       </View>
@@ -451,17 +452,17 @@ export default function CartScreen() {
             </TouchableOpacity>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>Rs. {subtotal.toLocaleString()}</Text>
+              <Text style={styles.summaryValue}>{formatCurrency(subtotal)}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Delivery</Text>
               <Text style={styles.summaryValue}>
-                {selectedAddressId ? `Rs. ${deliveryFee.toLocaleString()}` : "Select address"}
+                {selectedAddressId ? formatCurrency(deliveryFee) : "Select address"}
               </Text>
             </View>
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>Rs. {total.toLocaleString()}</Text>
+              <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
             </View>
             
             <TouchableOpacity 

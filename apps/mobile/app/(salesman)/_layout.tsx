@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { usePendingOrders } from "../../src/store/pendingOrdersStore";
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
+import { formatCurrency } from "../../src/lib/currency";
 
 function TabBarIconWithBadge({
   name,
@@ -61,7 +62,7 @@ export default function SalesmanTabLayout() {
           incrementPendingCount();
           Alert.alert(
             '🛒 New Order!',
-            `Order ${payload.orderNumber} received${payload.total ? ` — Rs. ${payload.total.toLocaleString()}` : ''}.`,
+            `Order ${payload.orderNumber} received${payload.total ? ` — ${formatCurrency(payload.total)}` : ''}.`,
             [{ text: 'OK' }]
           );
         };

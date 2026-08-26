@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { getAllCategories, getPartsByCategoryName, Category } from "../../src/api/categories";
 import { useCart } from "../../src/store/cartStore";
+import { formatCurrency } from "../../src/lib/currency";
 
 // We normalize similar backend category labels to one icon so UI stays consistent even if naming varies.
 const categoryIconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -165,11 +166,11 @@ export default function CategoriesScreen() {
         <Text style={styles.partName} numberOfLines={2}>{item.name}</Text>
         <View style={styles.priceRow}>
           <Text style={styles.partPrice}>
-            Rs. {(item.discountPrice || item.price).toLocaleString()}
+            {formatCurrency(item.discountPrice || item.price)}
           </Text>
           {item.discountPrice && (
             <Text style={styles.originalPrice}>
-              Rs. {item.price.toLocaleString()}
+              {formatCurrency(item.price)}
             </Text>
           )}
         </View>

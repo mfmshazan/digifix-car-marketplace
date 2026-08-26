@@ -4,7 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { Animated, Text, Easing, View, StyleSheet, Platform } from 'react-native';
-import { Provider, useDispatch, useSelector } from 'react-redux';
+import { Provider, useDispatch } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import { ClerkProvider, ClerkLoaded } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
@@ -25,7 +25,7 @@ import WalletScreen from './screens/WalletScreen';
 import RealtimeDispatchLayer from './components/RealtimeDispatchLayer';
 
 import { getAccessToken, getRefreshToken } from './services/storage';
-import { requestLocationPermission } from './services/location';
+import { requestLocationPermission, stopLocationTracking } from './services/location';
 import { initOneSignal, registerPushForToken } from './services/onesignal';
 
 import { flushPendingNavigation, navigationRef } from './services/navigation';
@@ -33,8 +33,6 @@ import { colors, shadows } from './styles/theme';
 import store from './store';
 import { hydrateAvailability } from './store/slices/availabilitySlice';
 import { fetchDriverHome } from './store/slices/homeSlice';
-import { selectActiveDelivery } from './store/slices/homeSlice';
-import { useLiveLocationTracking } from './hooks/useLiveLocationTracking';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -187,21 +185,6 @@ function MainTabs() {
     );
 }
 
-// Own live GPS at app level instead of inside a particular screen. This keeps
-// customer tracking alive while the rider checks another tab or opens external
-// turn-by-turn navigation.
-function ActiveDeliveryLocationTracker() {
-    const activeDelivery = useSelector(selectActiveDelivery);
-
-    useLiveLocationTracking({
-        jobId: activeDelivery?.id,
-        status: activeDelivery?.status,
-        intervalMs: 7000,
-    });
-
-    return null;
-}
-
 function AppContent() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -222,6 +205,7 @@ function AppContent() {
         initOneSignal();
         checkAuth();
         requestLocationPermission();
+        void stopLocationTracking();
     }, []);
 
 
@@ -308,7 +292,6 @@ function AppContent() {
                     />
                 </Stack.Navigator>
             </NavigationContainer>
-            <ActiveDeliveryLocationTracker />
             <RealtimeDispatchLayer isAuthenticated={isAuthenticated} />
         </>
     );

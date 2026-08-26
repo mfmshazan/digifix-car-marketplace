@@ -205,17 +205,21 @@ export const acceptRiderRequestOffer = async (req, res, next) => {
     // resolveOffer commits the rider assignment. Mirror that accepted step to
     // the marketplace immediately so the customer sees the rider without
     // waiting for the next checkpoint.
-    const syncClient = await getRiderClient();
-    try {
-      await syncClient.query('BEGIN');
-      await syncMarketplaceOrderStatus(syncClient, result.data.id, 'accepted');
-      await syncClient.query('COMMIT');
-    } catch (syncError) {
-      await syncClient.query('ROLLBACK');
-      console.error('Failed to sync accepted rider offer:', syncError.message);
-    } finally {
-      syncClient.release();
-    }
+    void (async () => {
+      const syncClient = await getRiderClient();
+      try {
+        await syncClient.query('BEGIN');
+        await syncMarketplaceOrderStatus(syncClient, result.data.id, 'accepted');
+        await syncClient.query('COMMIT');
+      } catch (syncError) {
+        await syncClient.query('ROLLBACK');
+        console.error('Failed to sync accepted rider offer:', syncError.message);
+      } finally {
+        syncClient.release();
+      }
+    })().catch((syncError) => {
+      console.error('Failed to start accepted rider sync:', syncError.message);
+    });
 
     return res.json({
       success: true,
@@ -604,6 +608,7 @@ export const updateRiderJobStatus = async (req, res, next) => {
 
     await syncMarketplaceOrderStatus(client, jobId, status);
     await client.query('COMMIT');
+
     if (status === 'delivered' || status === 'failed') {
       await recordRiderAvailability(
         { query: riderQuery },
@@ -821,6 +826,7 @@ export const submitRiderProof = async (req, res, next) => {
     }
 
     await client.query('COMMIT');
+
     if (job.status !== 'delivered') {
       await recordRiderAvailability(
         { query: riderQuery },

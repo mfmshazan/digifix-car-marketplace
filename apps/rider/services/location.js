@@ -1,6 +1,4 @@
 import * as Location from 'expo-location';
-import * as TaskManager from 'expo-task-manager';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Platform } from 'react-native';
 import { jobsAPI } from './api';
 import { isMockSession } from './storage';
@@ -12,41 +10,9 @@ let currentIntervalMs = 7000;
 let trackingPaused = false;
 let trackingInFlight = false;
 let lastTrackingError = null;
-let usingBackgroundTask = false;
 
-const BACKGROUND_LOCATION_TASK = 'digifix-active-delivery-location';
-const ACTIVE_JOB_STORAGE_KEY = '@digifix/active-delivery-job-id';
-
-// Background tasks must be registered in module scope so Android/iOS can invoke
-// them even when the rider has opened an external navigation application.
-if (!TaskManager.isTaskDefined(BACKGROUND_LOCATION_TASK)) {
-    TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
-        if (error) {
-            console.error('Background location task failed:', error.message);
-            return;
-        }
-
-        const locations = data?.locations;
-        const latestLocation = Array.isArray(locations)
-            ? locations[locations.length - 1]
-            : null;
-        const jobId = await AsyncStorage.getItem(ACTIVE_JOB_STORAGE_KEY);
-
-        if (!latestLocation || !jobId) {
-            return;
-        }
-
-        try {
-            await jobsAPI.addLocation(jobId, mapCoordsToLocation(latestLocation));
-        } catch (taskError) {
-            console.error(
-                'Background location upload failed:',
-                taskError?.message || taskError
-            );
-        }
-    });
-}
-
+// Development fallback location for mock sessions. isMockSession() currently
+// returns false, so normal app runs use real device GPS instead.
 const SRI_LANKA_MOCK_LOCATION = {
     latitude: 6.9077,
     longitude: 79.8673,
@@ -62,6 +28,7 @@ export const LOCATION_ERROR_CODES = {
     UNKNOWN: 'UNKNOWN',
 };
 
+//getting location coordinates from the device and mapping it to a location object with latitude, longitude, accuracy, speed, heading, and timestamp properties.    
 const mapCoordsToLocation = (location) => ({
     latitude: location.coords.latitude,
     longitude: location.coords.longitude,
@@ -111,7 +78,6 @@ export const getLocationTrackingState = () => ({
     intervalMs: currentJobId ? currentIntervalMs : null,
     isTracking: Boolean(currentJobId) && !trackingPaused,
     isPaused: Boolean(currentJobId) && trackingPaused,
-    isBackgroundTracking: Boolean(currentJobId) && usingBackgroundTask,
     lastError: lastTrackingError,
 });
 
@@ -173,6 +139,8 @@ const normalizePermissionResult = (permission) => ({
 
 export const requestForegroundLocationPermission = async () => {
     if (Platform.OS === 'web') {
+        // Browser location permission is handled differently, so web is treated
+        // as already allowed by this native Expo helper layer.
         return {
             granted: true,
             canAskAgain: true,
@@ -229,6 +197,7 @@ export const getCurrentLocation = async () => {
 
         await ensureForegroundLocationPermission();
 
+        // Device API: Expo Location reads the rider's current GPS position.
         const location = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.High,
         });
@@ -258,13 +227,11 @@ const handleAppStateChange = (nextAppState) => {
 
     if (nextAppState === 'active') {
         trackingPaused = false;
-        if (!usingBackgroundTask) {
-            scheduleNextTrackingTick(0);
-        }
+        scheduleNextTrackingTick(0);
         return;
     }
 
-    trackingPaused = !usingBackgroundTask;
+    trackingPaused = true;
     clearTrackingTimer();
 };
 
@@ -288,6 +255,8 @@ const sendTrackedLocation = async () => {
 
     try {
         const location = await getCurrentLocation();
+        // Backend database write through API: saves this delivery's latest GPS
+        // coordinates using POST /jobs/:jobId/location.
         await jobsAPI.addLocation(currentJobId, location);
         lastTrackingError = null;
     } catch (error) {
@@ -296,50 +265,14 @@ const sendTrackedLocation = async () => {
     } finally {
         trackingInFlight = false;
 
-        if (currentJobId && !trackingPaused && !usingBackgroundTask) {
+        if (currentJobId && !trackingPaused) {
             scheduleNextTrackingTick();
         }
     }
 };
 
-const startBackgroundLocationTask = async (jobId, intervalMs) => {
-    if (Platform.OS === 'web' || !(await TaskManager.isAvailableAsync())) {
-        return false;
-    }
-
-    const backgroundPermission = await Location.requestBackgroundPermissionsAsync();
-    if (!backgroundPermission.granted) {
-        return false;
-    }
-
-    await AsyncStorage.setItem(ACTIVE_JOB_STORAGE_KEY, String(jobId));
-
-    const alreadyStarted = await Location.hasStartedLocationUpdatesAsync(
-        BACKGROUND_LOCATION_TASK
-    );
-    if (alreadyStarted) {
-        await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-    }
-
-    await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-        accuracy: Location.Accuracy.High,
-        timeInterval: intervalMs,
-        distanceInterval: 5,
-        deferredUpdatesInterval: intervalMs,
-        pausesUpdatesAutomatically: false,
-        activityType: Location.ActivityType.AutomotiveNavigation,
-        showsBackgroundLocationIndicator: true,
-        foregroundService: {
-            notificationTitle: 'Digifix delivery in progress',
-            notificationBody: 'Sharing your live location with the customer',
-            notificationColor: '#1A7A4A',
-            killServiceOnDestroy: false,
-        },
-    });
-
-    return true;
-};
-
+//every 7 seconds, the rider's current location is sent to the backend API for the active job. 
+// If the app is in the background or inactive, tracking is paused until it becomes active again.
 export const startLocationTracking = async (jobId, options = {}) => {
     const intervalMs = clampTrackingInterval(options.intervalMs ?? 7000);
 
@@ -362,10 +295,7 @@ export const startLocationTracking = async (jobId, options = {}) => {
         const isDuplicateStart =
             currentJobId === jobId &&
             currentIntervalMs === intervalMs &&
-            (trackingTimer !== null ||
-                trackingInFlight ||
-                trackingPaused ||
-                usingBackgroundTask);
+            (trackingTimer !== null || trackingInFlight || trackingPaused);
 
         if (isDuplicateStart) {
             return getLocationTrackingState();
@@ -383,25 +313,10 @@ export const startLocationTracking = async (jobId, options = {}) => {
 
         ensureAppStateSubscription();
 
-        try {
-            usingBackgroundTask = await startBackgroundLocationTask(
-                jobId,
-                intervalMs
-            );
-        } catch (backgroundError) {
-            usingBackgroundTask = false;
-            console.warn(
-                'Background tracking unavailable; using foreground tracking:',
-                getLocationErrorMessage(backgroundError)
-            );
-        }
-
-        // Upload immediately so the customer sees the rider as soon as the job
-        // is accepted. The OS-managed task supplies subsequent background points.
-        await sendTrackedLocation();
-
-        if (!usingBackgroundTask && !trackingPaused) {
-            scheduleNextTrackingTick();
+        if (!trackingPaused) {
+            // Starts the repeating location loop immediately, then again every
+            // currentIntervalMs while this delivery remains active.
+            scheduleNextTrackingTick(0);
         }
 
         console.log('Location tracking started for job:', jobId);
@@ -423,23 +338,10 @@ export const stopLocationTracking = async () => {
 
     const hadTrackingSession = Boolean(currentJobId || trackingInFlight);
 
-    try {
-        if (
-            Platform.OS !== 'web' &&
-            (await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK))
-        ) {
-            await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-        }
-        await AsyncStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
-    } catch (error) {
-        console.warn('Could not stop background location task:', error?.message || error);
-    }
-
     currentJobId = null;
     currentIntervalMs = 7000;
     trackingPaused = false;
     trackingInFlight = false;
-    usingBackgroundTask = false;
     lastTrackingError = null;
 
     if (hadTrackingSession) {
@@ -449,6 +351,8 @@ export const stopLocationTracking = async () => {
     return getLocationTrackingState();
 };
 
+//calculates the distance between two geographic coordinates (latitude and longitude) using the Haversine formula. 
+// The result is returned in kilometers.
 export const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371;
     const dLat = ((lat2 - lat1) * Math.PI) / 180;

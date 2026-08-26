@@ -348,9 +348,10 @@ export const getSalesmanOrders = async (req, res) => {
       where.status = status;
     }
 
-    const orders = await prisma.order.findMany({
-      where,
-      include: {
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        include: {
         items: {
           include: {
             product: {
@@ -384,13 +385,15 @@ export const getSalesmanOrders = async (req, res) => {
           select: { id: true },
           take: 1
         }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
-      skip: (page - 1) * limit,
-      take: parseInt(limit)
-    });
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        skip: (page - 1) * limit,
+        take: parseInt(limit)
+      }),
+      prisma.order.count({ where }),
+    ]);
 
     // Format orders to include proper item names and images
     const formattedOrders = orders.map(order => ({
@@ -410,8 +413,6 @@ export const getSalesmanOrders = async (req, res) => {
         };
       })
     }));
-
-    const total = await prisma.order.count({ where });
 
     res.json({
       success: true,
@@ -644,8 +645,9 @@ export const updateOrderStatus = async (req, res) => {
         updatedAt: updatedOrder.updatedAt,
       });
       // Also broadcast to the manager and every salesman in the shop
-      const shopMemberIds = await getShopMemberIds(shopOwnerId);
-      for (const memberId of shopMemberIds) {
+      // These ids were already resolved for authorization above. Reuse them
+      // instead of performing the same user/member database queries again.
+      for (const memberId of shopOrderOwnerIds) {
         io.to(`user:${memberId}`).emit('orderStatusUpdated', {
           orderId: id,
           orderNumber: updatedOrder.orderNumber,
@@ -653,7 +655,7 @@ export const updateOrderStatus = async (req, res) => {
           updatedAt: updatedOrder.updatedAt,
         });
       }
-      console.log(`📡 Emitted orderStatusUpdated for order ${id} → customer ${updatedOrder.customerId} + ${shopMemberIds.length} shop member(s)`);
+      console.log(`📡 Emitted orderStatusUpdated for order ${id} → customer ${updatedOrder.customerId} + ${shopOrderOwnerIds.length} shop member(s)`);
     }
 
     // 🔔 Push notification to the customer (reaches them even if the app is closed).
@@ -905,11 +907,12 @@ export const createOrder = async (req, res) => {
     const itemIds = items.map(item => item.productId);
     
     // First, try to find items as Products
-    const products = await prisma.product.findMany({
-      where: {
-        id: { in: itemIds }
-      },
-      include: {
+    const [products, carParts] = await Promise.all([
+      prisma.product.findMany({
+        where: {
+          id: { in: itemIds }
+        },
+        include: {
         salesman: {
           select: {
             id: true,
@@ -925,15 +928,16 @@ export const createOrder = async (req, res) => {
             }
           }
         }
-      }
-    });
+        }
+      }),
 
-    // Then, find items as CarParts
-    const carParts = await prisma.carPart.findMany({
-      where: {
-        id: { in: itemIds }
-      },
-      include: {
+      // Product and car-part lookups are independent, so do not pay for two
+      // sequential database round trips when placing an order.
+      prisma.carPart.findMany({
+        where: {
+          id: { in: itemIds }
+        },
+        include: {
         seller: {
           select: {
             id: true,
@@ -949,8 +953,9 @@ export const createOrder = async (req, res) => {
             }
           }
         }
-      }
-    });
+        }
+      }),
+    ]);
 
     // Combine both types into a unified format
     const allItems = [];

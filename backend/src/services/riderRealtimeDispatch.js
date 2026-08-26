@@ -554,12 +554,14 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
       await client.query(`UPDATE "Rider" SET status = 'busy' WHERE id = $1`, [offer.partner_id]);
       const job = await fetchJobDetails(offer.job_id, client);
       await client.query('COMMIT');
-      await recordRiderAvailability(
+      void recordRiderAvailability(
         { query: riderQuery },
         offer.partner_id,
         'busy',
         'delivery_accepted'
-      );
+      ).catch((error) => {
+        console.error('Failed to record accepted rider availability:', error.message);
+      });
 
       clearOfferTimer(offerId);
       emitToPartner(offer.partner_id, 'order_request_resolved', {

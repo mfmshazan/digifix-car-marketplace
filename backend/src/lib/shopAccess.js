@@ -39,17 +39,27 @@ export const resolveShopOwnerId = async (reqUser) => {
 export const getShopMemberIds = async (shopOwnerOrMemberId) => {
   if (!shopOwnerOrMemberId) return [];
 
-  const user = await prisma.user.findUnique({
-    where: { id: shopOwnerOrMemberId },
-    select: { role: true, managerId: true },
-  });
+  // Most callers pass the manager id. Resolve that user and its direct reports
+  // together so the common path costs one database round trip instead of two.
+  const [user, directSalesmen] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: shopOwnerOrMemberId },
+      select: { role: true, managerId: true },
+    }),
+    prisma.user.findMany({
+      where: { managerId: shopOwnerOrMemberId },
+      select: { id: true },
+    }),
+  ]);
   const shopOwnerId = user?.role === 'SALESMAN' && user.managerId
     ? user.managerId
     : shopOwnerOrMemberId;
 
-  const salesmen = await prisma.user.findMany({
-    where: { managerId: shopOwnerId },
-    select: { id: true },
-  });
+  const salesmen = shopOwnerId === shopOwnerOrMemberId
+    ? directSalesmen
+    : await prisma.user.findMany({
+        where: { managerId: shopOwnerId },
+        select: { id: true },
+      });
   return [shopOwnerId, ...salesmen.map((s) => s.id)];
 };

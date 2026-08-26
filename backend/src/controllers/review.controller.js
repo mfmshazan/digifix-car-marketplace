@@ -219,32 +219,68 @@ export const changeReviewStatus = async (req, res) => {
 
 export const getDriverSummary = async (req, res) => {
   try {
-    const driverId = req.user.id;
+    const rawId = req.user.id;
+    const riderId = parseInt(rawId, 10);
+    let marketplaceUserId = null;
+
+    if (isNaN(riderId)) {
+      marketplaceUserId = rawId;
+      const user = await prisma.user.findUnique({
+        where: { id: rawId },
+        select: { id: true, email: true },
+      });
+      if (user?.email) {
+        const riderRes = await prisma.$queryRawUnsafe(
+          `SELECT id FROM "Rider" WHERE LOWER(email) = LOWER($1)`,
+          user.email
+        );
+        if (riderRes && riderRes.length > 0) {
+          riderId = riderRes[0].id;
+        }
+      }
+    } else {
+      const riderRes = await prisma.$queryRawUnsafe(
+        `SELECT rider.id, rider.email, u.id AS marketplace_user_id
+           FROM "Rider" rider
+           LEFT JOIN "User" u ON LOWER(u.email) = LOWER(rider.email)
+          WHERE rider.id = $1`,
+        riderId
+      );
+      if (riderRes && riderRes.length > 0) {
+        marketplaceUserId = riderRes[0].marketplace_user_id;
+      }
+    }
+
+    const allTargetIds = [
+      !isNaN(riderId) ? String(riderId) : null,
+      marketplaceUserId,
+      String(rawId),
+    ].filter(Boolean);
 
     // Fetch all reviews for this driver (anonymized)
     const reviews = await prisma.review.findMany({
       where: {
-        targetId: driverId,
+        targetId: { in: allTargetIds },
         targetType: 'DELIVERY_PARTNER',
         status: 'PUBLISHED'
       },
       select: {
+        id: true,
         rating: true,
         comment: true,
         createdAt: true,
-        // Notice we DO NOT select userId or user relation
       },
       orderBy: { createdAt: 'desc' }
     });
 
     const averageRating = reviews.length > 0 
       ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length 
-      : 5.0;
+      : 0.0;
 
     res.status(200).json({
       success: true,
       data: {
-        averageRating,
+        averageRating: Number(averageRating.toFixed(2)),
         totalReviews: reviews.length,
         recentFeedback: reviews.slice(0, 100)
       }

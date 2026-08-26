@@ -29,8 +29,16 @@ const isPublicAuthRequest = (request = {}) => {
     return PUBLIC_AUTH_ENDPOINTS.some((endpoint) => url.endsWith(endpoint));
 };
 
-const hasAuthorizationHeader = (request = {}) =>
-    Boolean(request.headers?.Authorization || request.headers?.authorization);
+let sessionExpiredHandler = null;
+
+export const setSessionExpiredHandler = (handler) => {
+    sessionExpiredHandler = typeof handler === 'function' ? handler : null;
+};
+
+const expireSession = async (error) => {
+    await clearTokens();
+    sessionExpiredHandler?.(error);
+};
 
 /**
  * Subscribe to token refresh
@@ -80,13 +88,13 @@ api.interceptors.response.use(
         const originalRequest = error.config;
 
         // Public login/register failures are credential errors, not expired sessions.
-        // Refresh only protected requests that were actually sent with an access token.
+        // A protected request without an Authorization header can still be
+        // recovered when SecureStore contains a valid refresh token.
         if (
             (error.response?.status === 401 || error.response?.status === 403) &&
             originalRequest &&
             !originalRequest._retry &&
-            !isPublicAuthRequest(originalRequest) &&
-            hasAuthorizationHeader(originalRequest)
+            !isPublicAuthRequest(originalRequest)
         ) {
             if (isRefreshing) {
                 // Wait for the ongoing refresh to complete
@@ -112,7 +120,7 @@ api.interceptors.response.use(
                     const sessionError = new Error('Your rider session has expired. Please sign in again.');
                     isRefreshing = false;
                     onRefreshFailed(sessionError);
-                    await clearTokens();
+                    await expireSession(sessionError);
                     return Promise.reject(sessionError);
                 }
 
@@ -140,7 +148,7 @@ api.interceptors.response.use(
             } catch (refreshError) {
                 isRefreshing = false;
                 onRefreshFailed(refreshError);
-                await clearTokens();
+                await expireSession(refreshError);
                 return Promise.reject(refreshError);
             }
         }

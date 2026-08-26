@@ -18,6 +18,7 @@ import {
 import DeliveryActionControls from '../components/DeliveryActionControls';
 import DeliveryStatusTimeline from '../components/DeliveryStatusTimeline';
 import { useDeliveryRoute } from '../hooks/useDeliveryRoute';
+import { getCurrentLocation } from '../services/location';
 import { fetchDriverHome, selectActiveDelivery } from '../store/slices/homeSlice';
 import { colors, spacing, typography, radii } from '../styles/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -101,6 +102,7 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
     const sheetGestureStartRef = useRef(collapsedTranslateY);
     const [isSheetExpanded, setIsSheetExpanded] = useState(false);
     const [job, setJob] = useState(initialJob);
+    const [liveDriverCoordinate, setLiveDriverCoordinate] = useState(null);
 
     const moveSheet = (expanded) => {
         const nextPosition = expanded ? 0 : collapsedTranslateY;
@@ -165,15 +167,37 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
     }, [dispatch, job, routeJobId]);
 
     useEffect(() => {
-        if (navigationRoute.params?.job) {
-            setJob(navigationRoute.params.job);
-            return;
-        }
-
         if (activeDelivery && (!routeJobId || activeDelivery.id === routeJobId)) {
             setJob(activeDelivery);
         }
-    }, [activeDelivery, navigationRoute.params?.job, routeJobId]);
+    }, [activeDelivery, routeJobId]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const refreshDriverLocation = async () => {
+            try {
+                const location = await getCurrentLocation();
+                if (isMounted) {
+                    setLiveDriverCoordinate(
+                        toCoordinate(location.latitude, location.longitude)
+                    );
+                }
+            } catch (error) {
+                // Keep the most recent server location when a GPS reading is
+                // temporarily unavailable; never invent a map coordinate.
+                console.warn('Live rider GPS unavailable:', error?.message);
+            }
+        };
+
+        void refreshDriverLocation();
+        const timer = setInterval(refreshDriverLocation, 7000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(timer);
+        };
+    }, [job?.id]);
 
     const pickupCoordinate = useMemo(
         () => toCoordinate(job?.pickupLatitude ?? job?.pickup_latitude, job?.pickupLongitude ?? job?.pickup_longitude),
@@ -184,28 +208,11 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
         [job]
     );
     const driverCoordinate = useMemo(
-        () => {
-            if (['assigned', 'accepted'].includes(job?.status) && pickupCoordinate) {
-                return {
-                    latitude: pickupCoordinate.latitude - 0.0022,
-                    longitude: pickupCoordinate.longitude + 0.0022,
-                };
-            }
-
-            if (
-                ['arrived_at_pickup', 'picked_up', 'in_transit'].includes(job?.status) &&
-                pickupCoordinate
-            ) {
-                return pickupCoordinate;
-            }
-
-            if (['arrived_at_dropoff', 'delivered'].includes(job?.status) && dropoffCoordinate) {
-                return dropoffCoordinate;
-            }
-
-            return null;
-        },
-        [dropoffCoordinate, job?.status, pickupCoordinate]
+        () => liveDriverCoordinate || toCoordinate(
+            job?.riderLocation?.latitude ?? job?.current_latitude,
+            job?.riderLocation?.longitude ?? job?.current_longitude
+        ),
+        [job?.current_latitude, job?.current_longitude, job?.riderLocation, liveDriverCoordinate]
     );
 
     const nextStopCoordinate = useMemo(() => {

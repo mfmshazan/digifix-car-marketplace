@@ -98,15 +98,10 @@ export default function DeliveryDetailsScreen({
     }, [delivery, deliveryId, dispatch]);
 
     useEffect(() => {
-        if (route.params.delivery) {
-            setDelivery(route.params.delivery);
-            return;
-        }
-
         if (matchedDelivery) {
             setDelivery(matchedDelivery);
         }
-    }, [matchedDelivery, route.params.delivery]);
+    }, [matchedDelivery]);
 
     if (!delivery) {
         return (

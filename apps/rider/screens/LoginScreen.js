@@ -108,9 +108,16 @@ export default function LoginScreen({ navigation, onAuthenticated }) {
     const handleBackendSync = async (clerkToken, sessionId) => {
         const response = await syncClerkWithBackend(clerkToken, 'DELIVERY_PARTNER', sessionId);
         if (response.success && response.data) {
-            const { token, user } = response.data;
-            await saveTokens(token, '');
-            await saveUserData(user);
+            const accessToken = response.data.accessToken || response.data.token;
+            const refreshToken = response.data.refreshToken;
+            const partner = response.data.partner || response.data.user;
+
+            if (!accessToken || !refreshToken) {
+                throw new Error('The backend did not return a complete rider session.');
+            }
+
+            await saveTokens(accessToken, refreshToken);
+            await saveUserData(partner);
             onAuthenticated?.();
             navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
         } else {

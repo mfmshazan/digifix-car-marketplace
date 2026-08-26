@@ -25,6 +25,7 @@ import WalletScreen from './screens/WalletScreen';
 import RealtimeDispatchLayer from './components/RealtimeDispatchLayer';
 
 import { getAccessToken, getRefreshToken } from './services/storage';
+import { setSessionExpiredHandler } from './services/api';
 import { requestLocationPermission, stopLocationTracking } from './services/location';
 import { initOneSignal, registerPushForToken } from './services/onesignal';
 
@@ -206,6 +207,17 @@ function AppContent() {
         checkAuth();
         requestLocationPermission();
         void stopLocationTracking();
+    }, []);
+
+    useEffect(() => {
+        setSessionExpiredHandler(() => {
+            setIsAuthenticated(false);
+            if (navigationRef.isReady()) {
+                navigationRef.reset({ index: 0, routes: [{ name: 'Login' }] });
+            }
+        });
+
+        return () => setSessionExpiredHandler(null);
     }, []);
 
 

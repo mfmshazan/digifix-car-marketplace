@@ -206,7 +206,14 @@ describe('proof-gated idempotent completion', () => {
   it('accepts the valid picked_up to in_transit workflow transition', async () => {
     client.query.mockImplementation(async (sql) => {
       if (sql.includes('SELECT status, partner_id')) {
-        return { rows: [{ status: 'picked_up', partner_id: 8 }] };
+        return { rows: [{
+          status: 'picked_up',
+          partner_id: 8,
+          pickup_latitude: 7.2,
+          pickup_longitude: 80.3,
+          dropoff_latitude: 7.3,
+          dropoff_longitude: 80.4,
+        }] };
       }
       if (sql.includes('RETURNING id, order_number, status')) {
         return { rows: [{ id: 44, order_number: 'ORD-44', status: 'in_transit' }] };
@@ -219,7 +226,7 @@ describe('proof-gated idempotent completion', () => {
     await updateRiderJobStatus({
       params: { id: '44' },
       user: { id: 8 },
-      body: { status: 'in_transit', latitude: 7.2, longitude: 80.3 },
+      body: { status: 'in_transit', latitude: 7.201, longitude: 80.3 },
     }, res, vi.fn());
 
     expect(res._status).toBe(200);
@@ -239,10 +246,126 @@ describe('proof-gated idempotent completion', () => {
     expect(client.query).not.toHaveBeenCalled();
   });
 
+  it('rejects arrival at pickup when the rider is far from the shop', async () => {
+    client.query.mockImplementation(async (sql) => {
+      if (sql.includes('SELECT status, partner_id')) {
+        return { rows: [{
+          status: 'accepted',
+          partner_id: 8,
+          pickup_latitude: 7.25,
+          pickup_longitude: 80.34,
+          dropoff_latitude: 7.3,
+          dropoff_longitude: 80.4,
+        }] };
+      }
+      return { rows: [] };
+    });
+    const res = makeRes();
+
+    await updateRiderJobStatus({
+      params: { id: '44' },
+      user: { id: 8 },
+      body: { status: 'arrived_at_pickup', latitude: 7.3, longitude: 80.4 },
+    }, res, vi.fn());
+
+    expect(res._status).toBe(409);
+    expect(res._body.message).toMatch(/within 300 m of the shop/i);
+    expect(client.query.mock.calls.some(([sql]) => sql.includes('UPDATE "DeliveryJob"'))).toBe(false);
+  });
+
+  it('allows pickup confirmation when the rider is near the shop', async () => {
+    client.query.mockImplementation(async (sql) => {
+      if (sql.includes('SELECT status, partner_id')) {
+        return { rows: [{
+          status: 'arrived_at_pickup',
+          partner_id: 8,
+          pickup_latitude: 7.25,
+          pickup_longitude: 80.34,
+          dropoff_latitude: 7.3,
+          dropoff_longitude: 80.4,
+        }] };
+      }
+      if (sql.includes('RETURNING id, order_number, status')) {
+        return { rows: [{ id: 44, order_number: 'ORD-44', status: 'picked_up' }] };
+      }
+      if (sql.includes('SELECT marketplace_order_id')) return { rows: [] };
+      return { rows: [] };
+    });
+    const res = makeRes();
+
+    await updateRiderJobStatus({
+      params: { id: '44' },
+      user: { id: 8 },
+      body: { status: 'picked_up', latitude: 7.2505, longitude: 80.34 },
+    }, res, vi.fn());
+
+    expect(res._status).toBe(200);
+    expect(res._body.data.status).toBe('picked_up');
+  });
+
+  it('requires the rider to move away from the shop before starting transit', async () => {
+    client.query.mockImplementation(async (sql) => {
+      if (sql.includes('SELECT status, partner_id')) {
+        return { rows: [{
+          status: 'picked_up',
+          partner_id: 8,
+          pickup_latitude: 7.25,
+          pickup_longitude: 80.34,
+          dropoff_latitude: 7.3,
+          dropoff_longitude: 80.4,
+        }] };
+      }
+      return { rows: [] };
+    });
+    const res = makeRes();
+
+    await updateRiderJobStatus({
+      params: { id: '44' },
+      user: { id: 8 },
+      body: { status: 'in_transit', latitude: 7.25, longitude: 80.34 },
+    }, res, vi.fn());
+
+    expect(res._status).toBe(409);
+    expect(res._body.message).toMatch(/move at least 50 m/i);
+  });
+
+  it('rejects arrival at drop-off when the rider is far from the customer', async () => {
+    client.query.mockImplementation(async (sql) => {
+      if (sql.includes('SELECT status, partner_id')) {
+        return { rows: [{
+          status: 'in_transit',
+          partner_id: 8,
+          pickup_latitude: 7.25,
+          pickup_longitude: 80.34,
+          dropoff_latitude: 7.3,
+          dropoff_longitude: 80.4,
+        }] };
+      }
+      return { rows: [] };
+    });
+    const res = makeRes();
+
+    await updateRiderJobStatus({
+      params: { id: '44' },
+      user: { id: 8 },
+      body: { status: 'arrived_at_dropoff', latitude: 7.25, longitude: 80.34 },
+    }, res, vi.fn());
+
+    expect(res._status).toBe(409);
+    expect(res._body.message).toMatch(/within 300 m of the customer/i);
+  });
+
   it('completes from arrived_at_dropoff and updates rider exactly once', async () => {
     client.query.mockImplementation(async (sql) => {
       if (sql.includes('proof_photo_url AS photo_url')) {
-        return { rows: [{ id: 44, order_number: 'ORD-44', status: 'arrived_at_dropoff', delivered_at: null }] };
+        return { rows: [{
+          id: 44,
+          order_number: 'ORD-44',
+          status: 'arrived_at_dropoff',
+          delivered_at: null,
+          dropoff_latitude: 7.2,
+          dropoff_longitude: 80.3,
+        }] };
       }
       if (sql.includes('RETURNING id, proof_photo_url')) {
         return { rows: [{ id: 44, photo_url: '/uploads/proof.jpg' }] };
@@ -274,6 +397,34 @@ describe('proof-gated idempotent completion', () => {
       orderId: 'order-1',
       status: 'DELIVERED',
     }));
+  });
+
+  it('rejects proof completion when the rider is far from the customer', async () => {
+    client.query.mockImplementation(async (sql) => {
+      if (sql.includes('proof_photo_url AS photo_url')) {
+        return { rows: [{
+          id: 44,
+          order_number: 'ORD-44',
+          status: 'arrived_at_dropoff',
+          delivered_at: null,
+          dropoff_latitude: 7.3,
+          dropoff_longitude: 80.4,
+        }] };
+      }
+      return { rows: [] };
+    });
+    const res = makeRes();
+
+    await submitRiderProof({
+      params: { id: '44' },
+      user: { id: 8 },
+      body: { latitude: 7.2, longitude: 80.3 },
+      files: [{ fieldname: 'photo', filename: 'proof.jpg' }],
+    }, res, vi.fn());
+
+    expect(res._status).toBe(409);
+    expect(res._body.message).toMatch(/within 300 m of the customer/i);
+    expect(client.query.mock.calls.some(([sql]) => sql.includes("SET status = 'delivered'"))).toBe(false);
   });
 
   it('returns an idempotent success for a repeated completion without incrementing stats', async () => {

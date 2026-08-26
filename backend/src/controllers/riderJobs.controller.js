@@ -15,6 +15,12 @@ const ACTIVE_JOB_STATUSES = ['assigned', 'accepted', 'arrived_at_pickup', 'picke
 // "Rider is nearby" push tuning: how close (km) counts as nearby, and a guard so
 // each job only fires the push once (in-memory; resets on restart, which is fine).
 const RIDER_NEARBY_KM = Number(process.env.RIDER_NEARBY_KM || 0.5);
+const DELIVERY_CHECKPOINT_RADIUS_KM = Number(
+  process.env.DELIVERY_CHECKPOINT_RADIUS_KM || 0.3
+);
+const DELIVERY_DEPARTURE_MIN_KM = Number(
+  process.env.DELIVERY_DEPARTURE_MIN_KM || 0.05
+);
 const nearbyNotifiedJobs = new Set();
 
 const distanceKmBetween = (lat1, lon1, lat2, lon2) => {
@@ -26,6 +32,112 @@ const distanceKmBetween = (lat1, lon1, lat2, lon2) => {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const formatDistanceForMessage = (distanceKm) =>
+  distanceKm < 1
+    ? `${Math.round(distanceKm * 1000)} m`
+    : `${distanceKm.toFixed(1)} km`;
+
+const validateDeliveryCheckpoint = ({ status, latitude, longitude, job }) => {
+  const requiresCurrentLocation = [
+    'arrived_at_pickup',
+    'picked_up',
+    'in_transit',
+    'arrived_at_dropoff',
+  ].includes(status);
+
+  if (!requiresCurrentLocation) return null;
+
+  if (!isFloatInRange(latitude, -90, 90) || !isFloatInRange(longitude, -180, 180)) {
+    return {
+      statusCode: 400,
+      message: 'Current GPS location is required for this delivery step',
+    };
+  }
+
+  const isPickupCheckpoint = ['arrived_at_pickup', 'picked_up'].includes(status);
+  const isDropoffCheckpoint = status === 'arrived_at_dropoff';
+
+  if (isPickupCheckpoint) {
+    if (
+      !isFloatInRange(job.pickup_latitude, -90, 90) ||
+      !isFloatInRange(job.pickup_longitude, -180, 180)
+    ) {
+      return {
+        statusCode: 409,
+        message: 'The shop GPS location is unavailable. Ask the shop to correct the delivery request.',
+      };
+    }
+
+    const distanceFromPickupKm = distanceKmBetween(
+      latitude,
+      longitude,
+      job.pickup_latitude,
+      job.pickup_longitude
+    );
+
+    if (distanceFromPickupKm > DELIVERY_CHECKPOINT_RADIUS_KM) {
+      return {
+        statusCode: 409,
+        message: `You must be within ${Math.round(DELIVERY_CHECKPOINT_RADIUS_KM * 1000)} m of the shop for this step. You are currently ${formatDistanceForMessage(distanceFromPickupKm)} away.`,
+      };
+    }
+  }
+
+  if (status === 'in_transit') {
+    if (
+      !isFloatInRange(job.pickup_latitude, -90, 90) ||
+      !isFloatInRange(job.pickup_longitude, -180, 180)
+    ) {
+      return {
+        statusCode: 409,
+        message: 'The shop GPS location is unavailable. Ask the shop to correct the delivery request.',
+      };
+    }
+
+    const distanceFromPickupKm = distanceKmBetween(
+      latitude,
+      longitude,
+      job.pickup_latitude,
+      job.pickup_longitude
+    );
+
+    if (distanceFromPickupKm < DELIVERY_DEPARTURE_MIN_KM) {
+      return {
+        statusCode: 409,
+        message: `Move at least ${Math.round(DELIVERY_DEPARTURE_MIN_KM * 1000)} m away from the shop before starting transit.`,
+      };
+    }
+  }
+
+  if (isDropoffCheckpoint) {
+    if (
+      !isFloatInRange(job.dropoff_latitude, -90, 90) ||
+      !isFloatInRange(job.dropoff_longitude, -180, 180)
+    ) {
+      return {
+        statusCode: 409,
+        message: 'The customer GPS location is unavailable. Ask the customer or shop to correct the address.',
+      };
+    }
+
+    const distanceFromDropoffKm = distanceKmBetween(
+      latitude,
+      longitude,
+      job.dropoff_latitude,
+      job.dropoff_longitude
+    );
+
+    if (distanceFromDropoffKm > DELIVERY_CHECKPOINT_RADIUS_KM) {
+      return {
+        statusCode: 409,
+        message: `You must be within ${Math.round(DELIVERY_CHECKPOINT_RADIUS_KM * 1000)} m of the customer for this step. You are currently ${formatDistanceForMessage(distanceFromDropoffKm)} away.`,
+      };
+    }
+  }
+
+  return null;
 };
 
 const formatRiderJob = (job, riderLocation = null) => {
@@ -445,7 +557,7 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   };
 
   const jobResult = await client.query(
-    'SELECT marketplace_order_id FROM "DeliveryJob" WHERE id = $1 AND marketplace_order_id IS NOT NULL',
+    'SELECT marketplace_order_id, partner_id FROM "DeliveryJob" WHERE id = $1 AND marketplace_order_id IS NOT NULL',
     [jobId]
   );
 
@@ -490,6 +602,8 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   if (global.io) {
     const payload = {
       orderId: marketplaceOrderId,
+      deliveryId: jobId,
+      riderId: jobResult.rows[0]?.partner_id ?? null,
       status: effectiveStatus,
       riderStep: riderStatus,            // Detailed rider step (for tracking + ship gating)
       readyToShip: riderStatus === 'picked_up',
@@ -535,7 +649,14 @@ export const updateRiderJobStatus = async (req, res, next) => {
     const jobId = Number.parseInt(req.params.id, 10);
     await client.query('BEGIN');
 
-    const currentJobRes = await client.query('SELECT status, partner_id FROM "DeliveryJob" WHERE id = $1', [jobId]);
+    const currentJobRes = await client.query(
+      `SELECT status, partner_id,
+              pickup_latitude, pickup_longitude,
+              dropoff_latitude, dropoff_longitude
+         FROM "DeliveryJob"
+        WHERE id = $1`,
+      [jobId]
+    );
 
     if (currentJobRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -567,6 +688,21 @@ export const updateRiderJobStatus = async (req, res, next) => {
     if (!ACTIVE_JOB_STATUSES.includes(currentStatus)) {
       await client.query('ROLLBACK');
       return res.status(409).json({ success: false, message: 'This delivery is no longer active' });
+    }
+
+    const checkpointError = validateDeliveryCheckpoint({
+      status,
+      latitude,
+      longitude,
+      job: currentJobRes.rows[0],
+    });
+
+    if (checkpointError) {
+      await client.query('ROLLBACK');
+      return res.status(checkpointError.statusCode).json({
+        success: false,
+        message: checkpointError.message,
+      });
     }
 
     const timestampMap = {
@@ -827,6 +963,7 @@ export const submitRiderProof = async (req, res, next) => {
 
     const jobCheck = await client.query(
       `SELECT id, order_number, status, delivered_at,
+              dropoff_latitude, dropoff_longitude,
               proof_photo_url AS photo_url, proof_signature_data AS signature_data,
               proof_recipient_name AS recipient_name, proof_notes AS notes,
               proof_created_at AS created_at
@@ -868,6 +1005,37 @@ export const submitRiderProof = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: 'Confirm arrival at the customer before submitting delivery proof',
+      });
+    }
+
+    if (latitude === null || longitude === null) {
+      await client.query('ROLLBACK');
+      return validationError(res, 'Current GPS location is required to complete delivery');
+    }
+
+    const distanceFromDropoffKm = distanceKmBetween(
+      latitude,
+      longitude,
+      job.dropoff_latitude,
+      job.dropoff_longitude
+    );
+
+    if (
+      !isFloatInRange(job.dropoff_latitude, -90, 90) ||
+      !isFloatInRange(job.dropoff_longitude, -180, 180)
+    ) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        message: 'The customer GPS location is unavailable. Ask the customer or shop to correct the address.',
+      });
+    }
+
+    if (distanceFromDropoffKm > DELIVERY_CHECKPOINT_RADIUS_KM) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        message: `You must be within ${Math.round(DELIVERY_CHECKPOINT_RADIUS_KM * 1000)} m of the customer to complete delivery. You are currently ${formatDistanceForMessage(distanceFromDropoffKm)} away.`,
       });
     }
 

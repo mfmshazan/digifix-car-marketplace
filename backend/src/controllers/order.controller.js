@@ -766,8 +766,8 @@ export const getCustomerOrders = async (req, res) => {
               }
             }
           },
-          where: {
-            status: 'delivered'
+          orderBy: {
+            createdAt: 'desc'
           },
           take: 1
         }

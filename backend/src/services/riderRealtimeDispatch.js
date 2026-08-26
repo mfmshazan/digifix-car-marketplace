@@ -6,7 +6,7 @@ import { recordRiderAvailability } from './riderAvailability.js';
 import { sendNewJobOfferToRider, sendJobAssignedToRider } from '../lib/onesignal.js';
 
 export const REQUEST_WINDOW_SECONDS = Number(process.env.DISPATCH_REQUEST_WINDOW_SECONDS || 30);
-const MATCH_RADIUS_KM = Number(process.env.RIDER_MATCH_RADIUS_KM || 2);
+const MATCH_RADIUS_KM = Number(process.env.RIDER_MATCH_RADIUS_KM || 5);
 const OFFER_BATCH_SIZE = Math.max(1, Number(process.env.RIDER_OFFER_BATCH_SIZE || 5));
 
 const ACTIVE_JOB_STATUSES = [

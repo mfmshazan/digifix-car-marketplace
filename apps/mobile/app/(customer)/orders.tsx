@@ -277,8 +277,8 @@ export default function OrdersScreen() {
   const trackingOrderRef = React.useRef<Order | null>(null);
   const animatedRiderCoordinate = React.useRef(
     new AnimatedRegion({
-      latitude: 6.9271,
-      longitude: 79.8612,
+      latitude: 0,
+      longitude: 0,
       latitudeDelta: 0,
       longitudeDelta: 0,
     })
@@ -520,6 +520,8 @@ export default function OrdersScreen() {
 
         const handleStatusUpdate = (payload: {
           orderId: string;
+          deliveryId?: number;
+          riderId?: number | null;
           orderNumber?: string;
           status: string;
           riderStep?: string;    // Detailed rider step from the backend
@@ -529,7 +531,22 @@ export default function OrdersScreen() {
           setOrders((prev) =>
             prev.map((o) =>
               String(o.id) === String(payload.orderId)
-                ? { ...o, status: payload.status }
+                ? {
+                    ...o,
+                    status: payload.status,
+                    ...(payload.deliveryId
+                      ? {
+                          riderDeliveryJobs: [
+                            {
+                              ...(o.riderDeliveryJobs?.[0] || {}),
+                              id: payload.deliveryId,
+                              status: payload.riderStep,
+                              partnerId: payload.riderId,
+                            },
+                          ],
+                        }
+                      : {}),
+                  }
                 : o
             )
           );
@@ -641,6 +658,13 @@ export default function OrdersScreen() {
     const canRequestAction = ['PENDING', 'CONFIRMED', 'DELIVERED'].includes(normalizedStatus);
     const isMenuOpen = actionMenuOrderId === item.id;
     const hasReviews = item.reviews && item.reviews.length > 0;
+    const deliveryJob = item.riderDeliveryJobs?.[0];
+    const canTrackOrder = Boolean(
+      deliveryJob?.partnerId &&
+      !['awaiting_dispatch', 'pending', 'available', 'failed', 'cancelled'].includes(
+        String(deliveryJob.status || '').toLowerCase()
+      )
+    );
 
     return (
       <TouchableOpacity style={[styles.orderCard, isMenuOpen && styles.orderCardMenuOpen]}>
@@ -737,18 +761,20 @@ export default function OrdersScreen() {
         )}
 
         <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.trackButton, { flex: 1 }]}
-            onPress={() => {
-              setActionMenuOrderId(null);
-              setTrackingOrder(item);
-            }}
-          >
-            <Ionicons name="location" size={16} color="#FF6B35" />
-            <Text style={styles.trackButtonText}>
-              {isDelivered && !hasReviews ? "Track" : "Track Order"}
-            </Text>
-          </TouchableOpacity>
+          {canTrackOrder && (
+            <TouchableOpacity
+              style={[styles.trackButton, { flex: 1 }]}
+              onPress={() => {
+                setActionMenuOrderId(null);
+                setTrackingOrder(item);
+              }}
+            >
+              <Ionicons name="location" size={16} color="#FF6B35" />
+              <Text style={styles.trackButtonText}>
+                {isDelivered && !hasReviews ? "Track" : "Track Order"}
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {isDelivered && !hasReviews && (
             <TouchableOpacity
@@ -896,16 +922,17 @@ export default function OrdersScreen() {
             <View style={{ width: 28 }} />
           </View>
 
-          <MapView
-            ref={trackingMapRef}
-            style={styles.map}
-            initialRegion={{
-              latitude: displayedRiderLocation?.latitude ?? deliveryRoute?.pickup.latitude ?? 6.9271,
-              longitude: displayedRiderLocation?.longitude ?? deliveryRoute?.pickup.longitude ?? 79.8612,
-              latitudeDelta: 0.035,
-              longitudeDelta: 0.035,
-            }}
-          >
+          {deliveryRoute ? (
+            <MapView
+              ref={trackingMapRef}
+              style={styles.map}
+              initialRegion={{
+                latitude: displayedRiderLocation?.latitude ?? deliveryRoute.pickup.latitude,
+                longitude: displayedRiderLocation?.longitude ?? deliveryRoute.pickup.longitude,
+                latitudeDelta: 0.035,
+                longitudeDelta: 0.035,
+              }}
+            >
             {deliveryRoute && (
               <>
                 {roadRoute && roadRoute.coordinates.length >= 2 && (
@@ -952,7 +979,13 @@ export default function OrdersScreen() {
                 </View>
               </Marker.Animated>
             )}
-          </MapView>
+            </MapView>
+          ) : (
+            <View style={[styles.map, styles.mapLoadingState]}>
+              <ActivityIndicator size="large" color="#FF6B35" />
+              <Text style={styles.noRiderText}>Loading delivery locations...</Text>
+            </View>
+          )}
 
           {!displayedRiderLocation && (
             <View style={styles.noRiderBanner} pointerEvents="none">
@@ -1605,6 +1638,12 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  mapLoadingState: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    backgroundColor: "#F3F4F6",
   },
   markerContainer: {
     backgroundColor: "#FF6B35",

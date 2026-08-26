@@ -72,13 +72,13 @@ beforeEach(async () => {
 });
 
 describe('eligible rider discovery and competing offers', () => {
-  it('queries only online idle riders and filters connected riders outside the match radius', async () => {
+  it('includes online idle riders within 5 km and filters connected riders outside the match radius', async () => {
     state.riderQuery.mockResolvedValueOnce({ rows: [
       {
         id: 8,
-        full_name: 'Near Rider',
-        current_latitude: 7.251,
-        current_longitude: 80.341,
+        full_name: 'Rider about 4 km away',
+        current_latitude: 7.285,
+        current_longitude: 80.34,
         total_deliveries: 2,
       },
       {

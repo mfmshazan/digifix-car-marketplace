@@ -90,6 +90,7 @@ export const getValidToken = async (): Promise<string | null> => {
 export const removeToken = async (): Promise<void> => {
   try {
     await AsyncStorage.removeItem(TOKEN_KEY);
+    import('../lib/socket').then((m) => m.disconnectSocket()).catch(() => {});
     // Detach this device so the signed-out user stops receiving push.
     import('../lib/onesignal').then((m) => m.logoutOneSignal()).catch(() => {});
   } catch (error) {
@@ -143,6 +144,7 @@ export const removeUser = async (): Promise<void> => {
 export const clearAuthData = async (): Promise<void> => {
   try {
     await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+    import('../lib/socket').then((m) => m.disconnectSocket()).catch(() => {});
     // Detach this device from OneSignal so the next user on this phone
     // doesn't inherit the previous user's push notifications.
     import('../lib/onesignal').then((m) => m.logoutOneSignal()).catch(() => {});

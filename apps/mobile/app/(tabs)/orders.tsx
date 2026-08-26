@@ -104,7 +104,7 @@ export default function OrdersScreen() {
         const userId: string = decoded?.userId || decoded?.id || decoded?.sub;
         if (!userId) return;
 
-        const socket = connectSocket(userId);
+        const socket = connectSocket(token);
 
         const handleStatusUpdate = (payload: {
           orderId: string;

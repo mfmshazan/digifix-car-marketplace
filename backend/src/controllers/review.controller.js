@@ -16,7 +16,16 @@ export const createReviews = async (req, res) => {
 
     // Purchase Validation: Check if the user owns this DELIVERED order
     const order = await prisma.order.findUnique({
-      where: { id: orderId }
+      where: { id: orderId },
+      include: {
+        items: { select: { productId: true, carPartId: true } },
+        riderDeliveryJobs: {
+          where: { status: 'delivered' },
+          orderBy: { deliveredAt: 'desc' },
+          take: 1,
+          select: { partnerId: true },
+        },
+      },
     });
 
     if (!order) {
@@ -31,19 +40,40 @@ export const createReviews = async (req, res) => {
       return res.status(400).json({ success: false, message: 'You can only review delivered orders' });
     }
 
+    const productIds = new Set(order.items.map((item) => item.productId).filter(Boolean));
+    const carPartIds = new Set(order.items.map((item) => item.carPartId).filter(Boolean));
+    const assignedRiderId = order.riderDeliveryJobs[0]?.partnerId;
+    const validTargetTypes = new Set(['PRODUCT', 'CAR_PART', 'SELLER', 'DELIVERY_PARTNER']);
+
+    for (const review of reviews) {
+      const targetId = String(review?.targetId || '');
+      const { targetType } = review || {};
+      const rating = Number(review?.rating);
+
+      if (!targetId || !validTargetTypes.has(targetType)) {
+        return res.status(400).json({ success: false, message: 'Invalid review target' });
+      }
+
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        return res.status(400).json({ success: false, message: 'Rating must be an integer between 1 and 5' });
+      }
+
+      const targetBelongsToOrder =
+        (targetType === 'PRODUCT' && productIds.has(targetId)) ||
+        (targetType === 'CAR_PART' && carPartIds.has(targetId)) ||
+        (targetType === 'SELLER' && targetId === String(order.salesmanId)) ||
+        (targetType === 'DELIVERY_PARTNER' && assignedRiderId !== null && assignedRiderId !== undefined && targetId === String(assignedRiderId));
+
+      if (!targetBelongsToOrder) {
+        return res.status(403).json({ success: false, message: 'This review target is not part of the delivered order' });
+      }
+    }
+
     const createdReviews = [];
 
     // Process each review in the split UI payload
     for (const review of reviews) {
       const { targetId, targetType, rating, comment, title, images } = review;
-
-      if (!targetId || !targetType || !rating) {
-        continue;
-      }
-
-      if (rating < 1 || rating > 5) {
-        return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
-      }
 
       let status = 'PUBLISHED';
       

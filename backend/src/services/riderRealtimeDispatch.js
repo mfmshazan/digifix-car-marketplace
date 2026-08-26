@@ -7,6 +7,7 @@ import { sendNewJobOfferToRider, sendJobAssignedToRider } from '../lib/onesignal
 
 export const REQUEST_WINDOW_SECONDS = Number(process.env.DISPATCH_REQUEST_WINDOW_SECONDS || 30);
 const MATCH_RADIUS_KM = Number(process.env.RIDER_MATCH_RADIUS_KM || 2);
+const OFFER_BATCH_SIZE = Math.max(1, Number(process.env.RIDER_OFFER_BATCH_SIZE || 5));
 
 const ACTIVE_JOB_STATUSES = [
   'assigned',
@@ -193,7 +194,7 @@ const fetchJobDetails = async (jobId, client = null) => {
   return result.rows[0] || null;
 };
 
-const pickNearestEligiblePartner = async (client, jobId, pickupLatitude, pickupLongitude) => {
+const pickNearestEligiblePartners = async (client, jobId, pickupLatitude, pickupLongitude) => {
   const result = await client.query(
     `SELECT dp.id, dp.vehicle_type, dp.current_latitude, dp.current_longitude
        FROM "Rider" dp
@@ -235,7 +236,8 @@ const pickNearestEligiblePartner = async (client, jobId, pickupLatitude, pickupL
       left.distanceToPickupKm === right.distanceToPickupKm
         ? Number(left.id) - Number(right.id)
         : left.distanceToPickupKm - right.distanceToPickupKm
-    )[0] || null;
+    )
+    .slice(0, OFFER_BATCH_SIZE);
 };
 
 export const dispatchJobToNextEligibleDriver = async (jobId) => {
@@ -278,14 +280,14 @@ export const dispatchJobToNextEligibleDriver = async (jobId) => {
       return activeOfferResult.rows[0];
     }
 
-    const nextPartner = await pickNearestEligiblePartner(
+    const nextPartners = await pickNearestEligiblePartners(
       client,
       jobId,
       Number(job.pickup_latitude),
       Number(job.pickup_longitude)
     );
 
-    if (!nextPartner) {
+    if (!nextPartners.length) {
       await client.query('COMMIT');
       return null;
     }
@@ -297,21 +299,26 @@ export const dispatchJobToNextEligibleDriver = async (jobId) => {
       [jobId]
     );
 
-    const offerResult = await client.query(
-      `INSERT INTO "DeliveryOffer" (
-          job_id, partner_id, offer_status, distance_to_pickup_km, expires_at
-       ) VALUES ($1, $2, 'pending', $3, NOW() + ($4 || ' seconds')::interval)
-       RETURNING id,
-                 GREATEST(0, EXTRACT(EPOCH FROM (expires_at - NOW())) * 1000) AS remaining_ms`,
-      [jobId, nextPartner.id, nextPartner.distanceToPickupKm.toFixed(3), REQUEST_WINDOW_SECONDS]
-    );
+    const offers = [];
+    for (const partner of nextPartners) {
+      const offerResult = await client.query(
+        `INSERT INTO "DeliveryOffer" (
+            job_id, partner_id, offer_status, distance_to_pickup_km, expires_at
+         ) VALUES ($1, $2, 'pending', $3, NOW() + ($4 || ' seconds')::interval)
+         RETURNING id,
+                   GREATEST(0, EXTRACT(EPOCH FROM (expires_at - NOW())) * 1000) AS remaining_ms`,
+        [jobId, partner.id, partner.distanceToPickupKm.toFixed(3), REQUEST_WINDOW_SECONDS]
+      );
+      offers.push(offerResult.rows[0]);
+    }
 
     await client.query('COMMIT');
 
-    const offer = offerResult.rows[0];
-    scheduleOfferTimer(offer.id, offer.remaining_ms);
-    await sendPendingOfferToPartner(offer.id);
-    return offer;
+    for (const offer of offers) {
+      scheduleOfferTimer(offer.id, offer.remaining_ms);
+      await sendPendingOfferToPartner(offer.id);
+    }
+    return offers[0] || null;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -541,6 +548,18 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
         [offerId, reason || 'driver_accepted']
       );
 
+      const supersededOffers = await client.query(
+        `UPDATE "DeliveryOffer"
+            SET offer_status = 'cancelled',
+                responded_at = NOW(),
+                response_reason = 'another_rider_accepted'
+          WHERE job_id = $1
+            AND id <> $2
+            AND offer_status = 'pending'
+          RETURNING id, partner_id`,
+        [offer.job_id, offerId]
+      );
+
       await client.query(
         `UPDATE "DeliveryJob"
             SET partner_id = $1,
@@ -569,6 +588,14 @@ export async function resolveOffer({ offerId, partnerId = null, action, reason =
         jobId: offer.job_id,
         resolution: 'accepted',
       });
+      for (const superseded of supersededOffers.rows) {
+        clearOfferTimer(superseded.id);
+        emitToPartner(superseded.partner_id, 'order_request_resolved', {
+          requestId: superseded.id,
+          jobId: offer.job_id,
+          resolution: 'cancelled',
+        });
+      }
 
       // 🔔 Confirm the assignment + pickup address to the rider (persists as a
       // notification they can refer back to). Fire-and-forget.
@@ -764,6 +791,9 @@ export const listEligibleDeliveryPartners = async ({ pickupLatitude, pickupLongi
             )
           : null,
     }))
+    .filter((partner) =>
+      partner.distanceToPickupKm !== null && partner.distanceToPickupKm <= MATCH_RADIUS_KM
+    )
     .sort((a, b) => {
       if (a.distanceToPickupKm === null && b.distanceToPickupKm === null) return Number(a.id) - Number(b.id);
       if (a.distanceToPickupKm === null) return 1;

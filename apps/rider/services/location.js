@@ -1,4 +1,6 @@
 import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
+import * as SecureStore from 'expo-secure-store';
 import { AppState, Platform } from 'react-native';
 import { jobsAPI } from './api';
 import { isMockSession } from './storage';
@@ -10,6 +12,10 @@ let currentIntervalMs = 7000;
 let trackingPaused = false;
 let trackingInFlight = false;
 let lastTrackingError = null;
+let backgroundTrackingActive = false;
+
+const BACKGROUND_LOCATION_TASK = 'digifix-active-delivery-location';
+const BACKGROUND_JOB_ID_KEY = 'active_delivery_tracking_job_id';
 
 // Development fallback location for mock sessions. isMockSession() currently
 // returns false, so normal app runs use real device GPS instead.
@@ -45,6 +51,31 @@ const mapCoordsToLocation = (location) => ({
     timestamp:
         typeof location.timestamp === 'number' ? location.timestamp : Date.now(),
 });
+
+if (Platform.OS !== 'web' && !TaskManager.isTaskDefined(BACKGROUND_LOCATION_TASK)) {
+    TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
+        if (error) {
+            console.error('Background location task error:', error.message);
+            return;
+        }
+
+        const locations = data?.locations;
+        const latestLocation = Array.isArray(locations)
+            ? locations[locations.length - 1]
+            : null;
+        const jobId = await SecureStore.getItemAsync(BACKGROUND_JOB_ID_KEY);
+
+        if (!latestLocation || !jobId) {
+            return;
+        }
+
+        try {
+            await jobsAPI.addLocation(jobId, mapCoordsToLocation(latestLocation));
+        } catch (taskError) {
+            console.error('Background location upload failed:', taskError?.message);
+        }
+    });
+}
 
 const buildMockLocation = () => ({
     ...SRI_LANKA_MOCK_LOCATION,
@@ -225,6 +256,11 @@ const handleAppStateChange = (nextAppState) => {
         return;
     }
 
+    if (backgroundTrackingActive) {
+        trackingPaused = false;
+        return;
+    }
+
     if (nextAppState === 'active') {
         trackingPaused = false;
         scheduleNextTrackingTick(0);
@@ -295,7 +331,7 @@ export const startLocationTracking = async (jobId, options = {}) => {
         const isDuplicateStart =
             currentJobId === jobId &&
             currentIntervalMs === intervalMs &&
-            (trackingTimer !== null || trackingInFlight || trackingPaused);
+            (trackingTimer !== null || trackingInFlight || trackingPaused || backgroundTrackingActive);
 
         if (isDuplicateStart) {
             return getLocationTrackingState();
@@ -308,12 +344,43 @@ export const startLocationTracking = async (jobId, options = {}) => {
         currentJobId = jobId;
         currentIntervalMs = intervalMs;
         lastTrackingError = null;
-        trackingPaused =
-            Platform.OS !== 'web' && AppState.currentState !== 'active';
 
         ensureAppStateSubscription();
 
-        if (!trackingPaused) {
+        if (Platform.OS !== 'web' && await TaskManager.isAvailableAsync()) {
+            const backgroundPermission = await Location.requestBackgroundPermissionsAsync();
+            if (backgroundPermission?.granted) {
+                await SecureStore.setItemAsync(BACKGROUND_JOB_ID_KEY, String(jobId));
+                const alreadyStarted = await Location.hasStartedLocationUpdatesAsync(
+                    BACKGROUND_LOCATION_TASK
+                );
+                if (!alreadyStarted) {
+                    await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+                        accuracy: Location.Accuracy.High,
+                        timeInterval: intervalMs,
+                        distanceInterval: 15,
+                        pausesUpdatesAutomatically: false,
+                        showsBackgroundLocationIndicator: true,
+                        foregroundService: {
+                            notificationTitle: 'Digifix delivery tracking',
+                            notificationBody: 'Sharing location for your active delivery',
+                            notificationColor: '#1a7a4a',
+                        },
+                    });
+                }
+                backgroundTrackingActive = true;
+                trackingPaused = false;
+            } else {
+                lastTrackingError = 'Background location is disabled. Keep the rider app open to share live GPS.';
+            }
+        }
+
+        if (!backgroundTrackingActive) {
+            trackingPaused =
+                Platform.OS !== 'web' && AppState.currentState !== 'active';
+        }
+
+        if (!trackingPaused && !backgroundTrackingActive) {
             // Starts the repeating location loop immediately, then again every
             // currentIntervalMs while this delivery remains active.
             scheduleNextTrackingTick(0);
@@ -336,6 +403,20 @@ export const stopLocationTracking = async () => {
     clearTrackingTimer();
     removeAppStateListener();
 
+    if (Platform.OS !== 'web') {
+        try {
+            const alreadyStarted = await Location.hasStartedLocationUpdatesAsync(
+                BACKGROUND_LOCATION_TASK
+            );
+            if (alreadyStarted) {
+                await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+            }
+            await SecureStore.deleteItemAsync(BACKGROUND_JOB_ID_KEY);
+        } catch (error) {
+            console.warn('Could not stop background location task:', error?.message);
+        }
+    }
+
     const hadTrackingSession = Boolean(currentJobId || trackingInFlight);
 
     currentJobId = null;
@@ -343,6 +424,7 @@ export const stopLocationTracking = async () => {
     trackingPaused = false;
     trackingInFlight = false;
     lastTrackingError = null;
+    backgroundTrackingActive = false;
 
     if (hadTrackingSession) {
         console.log('Location tracking stopped');

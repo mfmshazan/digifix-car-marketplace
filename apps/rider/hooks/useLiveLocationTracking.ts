@@ -39,6 +39,7 @@ export const useLiveLocationTracking = ({
     intervalMs = 7000,
 }: UseLiveLocationTrackingOptions): UseLiveLocationTrackingResult => {
     const [trackingState, setTrackingState] = useState(getLocationTrackingState());
+    const shouldTrack = isTrackableStatus(status);
 
     const syncTrackingState = useCallback(() => {
         setTrackingState(getLocationTrackingState());
@@ -67,13 +68,17 @@ export const useLiveLocationTracking = ({
     }, [syncTrackingState]);
 
     useEffect(() => {
-        if (!jobId || !isTrackableStatus(status)) {
+        if (!jobId || !shouldTrack) {
             void stopTracking();
             return;
         }
 
         void startTracking();
-    }, [jobId, startTracking, status, stopTracking]);
+
+        return () => {
+            void stopLocationTracking();
+        };
+    }, [jobId, shouldTrack, startTracking, stopTracking]);
 
     return {
         isTracking: trackingState.isTracking,

@@ -409,6 +409,9 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
 
                 <SurfaceCard style={styles.actionCard}>
                     <Text style={styles.actionEyebrow}>NEXT DELIVERY STEP</Text>
+                    <Text style={styles.body}>
+                        Live GPS sharing is managed automatically for this active delivery.
+                    </Text>
                     <DeliveryActionControls
                         delivery={job}
                         onDeliveryChange={setJob}
@@ -481,9 +484,18 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                         </Text>
                     ) : null}
                     {job.pickupContactPhone || job.pickup_contact_phone ? (
-                        <Text style={styles.contact}>
-                            Phone: {job.pickupContactPhone ?? job.pickup_contact_phone}
-                        </Text>
+                        <>
+                            <Text style={styles.contact}>
+                                Phone: {job.pickupContactPhone ?? job.pickup_contact_phone}
+                            </Text>
+                            <TouchableOpacity
+                                style={styles.callButton}
+                                onPress={() => Linking.openURL(`tel:${job.pickupContactPhone ?? job.pickup_contact_phone}`)}
+                            >
+                                <Ionicons name="call-outline" size={18} color="#FFFFFF" />
+                                <Text style={styles.callButtonText}>Call Shop</Text>
+                            </TouchableOpacity>
+                        </>
                     ) : null}
                 </SurfaceCard>
 
@@ -510,9 +522,9 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                 </SurfaceCard>
 
                 <SurfaceCard style={styles.detailCard}>
-                    <Text style={styles.cardTitle}>Checkpoint Position</Text>
+                    <Text style={styles.cardTitle}>Live GPS Position</Text>
                     <Text style={styles.body}>
-                        The rider icon stays at the shop after pickup and moves to the customer when drop-off is confirmed.
+                        Your device position is shared with the assigned customer while the package is in transit.
                     </Text>
                 </SurfaceCard>
 

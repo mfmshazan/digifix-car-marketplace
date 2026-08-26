@@ -320,22 +320,16 @@ export default function OrdersScreen() {
     liveRiderStep || liveDeliveryStatus || trackingOrder?.status
   );
   const displayedRiderLocation = React.useMemo(() => {
-    if (!deliveryRoute) return riderLocation;
-
-    if (["assigned", "accepted"].includes(riderVisualStatus)) {
-      return null;
-    }
-
-    if (["arrived_at_pickup", "picked_up", "in_transit"].includes(riderVisualStatus)) {
-      return deliveryRoute.pickup;
-    }
-
-    if (["arrived_at_dropoff", "delivered"].includes(riderVisualStatus)) {
-      return deliveryRoute.dropoff;
-    }
-
-    return riderLocation;
-  }, [deliveryRoute, riderLocation, riderVisualStatus]);
+    const customerTrackableStatuses = [
+      "picked_up",
+      "in_transit",
+      "arrived_at_dropoff",
+      "delivered",
+    ];
+    return customerTrackableStatuses.includes(riderVisualStatus)
+      ? riderLocation
+      : null;
+  }, [riderLocation, riderVisualStatus]);
   const etaMinutes = roadRoute?.etaMinutes ?? null;
   const etaLabel = formatEta(etaMinutes);
   // Show detailed rider step label if available, otherwise fall back to order status label
@@ -343,9 +337,17 @@ export default function OrdersScreen() {
     (liveRiderStep && DELIVERY_STATUS_LABELS[liveRiderStep]) ||
     DELIVERY_STATUS_LABELS[activeDeliveryStatus] ||
     formatStatus(activeDeliveryStatus);
-  const lastUpdatedLabel = lastTrackingUpdate
-    ? lastTrackingUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-    : "Waiting";
+  const locationAgeSeconds = lastTrackingUpdate
+    ? Math.max(0, Math.floor((Date.now() - lastTrackingUpdate.getTime()) / 1000))
+    : null;
+  const isLocationStale = locationAgeSeconds === null || locationAgeSeconds > 30;
+  const lastUpdatedLabel = locationAgeSeconds === null
+    ? "waiting for GPS"
+    : locationAgeSeconds < 5
+      ? "just now"
+      : locationAgeSeconds < 60
+        ? `${locationAgeSeconds}s ago`
+        : `${Math.floor(locationAgeSeconds / 60)}m ago`;
   const fallbackRouteCoordinates = React.useMemo(() => {
     if (!displayedRiderLocation || !deliveryRoute) return [];
 
@@ -405,6 +407,11 @@ export default function OrdersScreen() {
         if (cancelled) return;
         if (res?.success && res.data?.riderLocation) {
           setRiderLocation(res.data.riderLocation);
+          setLastTrackingUpdate(
+            res.data.riderLocation.recordedAt
+              ? new Date(res.data.riderLocation.recordedAt)
+              : null
+          );
         }
         if (res?.success && res.data?.route?.pickup && res.data?.route?.dropoff) {
           setDeliveryRoute(res.data.route);
@@ -423,7 +430,6 @@ export default function OrdersScreen() {
           setLiveDeliveryStatus(res.data.status);
           setLiveRiderStep(res.data.status);
         }
-        setLastTrackingUpdate(new Date());
       } catch {
         // silently ignore network errors between polls
       }
@@ -510,7 +516,7 @@ export default function OrdersScreen() {
         // even when the app is closed (backend targets by this user id).
         loginOneSignal(userId);
 
-        const socket = connectSocket(userId);
+        const socket = connectSocket(token);
 
         const handleStatusUpdate = (payload: {
           orderId: string;
@@ -716,7 +722,7 @@ export default function OrdersScreen() {
               </View>
             </View>
             {item.reviews?.[0]?.comment ? (
-              <Text style={styles.reviewComment}>"{item.reviews?.[0]?.comment}"</Text>
+              <Text style={styles.reviewComment}>“{item.reviews?.[0]?.comment}”</Text>
             ) : null}
 
             {item.reviews?.[0]?.replies && item.reviews?.[0].replies.length > 0 && (
@@ -955,6 +961,15 @@ export default function OrdersScreen() {
             </View>
           )}
 
+          {displayedRiderLocation && isLocationStale && (
+            <View style={styles.routeErrorBanner} pointerEvents="none">
+              <Ionicons name="cloud-offline-outline" size={18} color="#B45309" />
+              <Text style={styles.routeErrorText}>
+                Location temporarily unavailable. Last update: {lastUpdatedLabel}.
+              </Text>
+            </View>
+          )}
+
           {roadRouteError && displayedRiderLocation && (
             <View style={styles.routeErrorBanner} pointerEvents="none">
               <Ionicons name="warning-outline" size={18} color="#B45309" />
@@ -974,8 +989,8 @@ export default function OrdersScreen() {
               </View>
             </View>
             <View style={styles.liveMetaRow}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveMetaText}>Delivery checkpoint tracking</Text>
+              <View style={[styles.liveDot, isLocationStale && { backgroundColor: '#D97706' }]} />
+              <Text style={styles.liveMetaText}>Rider GPS tracking</Text>
               <Text style={styles.liveMetaText}>Updated {lastUpdatedLabel}</Text>
             </View>
             <OrderStepper currentStatus={activeDeliveryStatus} riderStep={liveRiderStep ?? undefined} />

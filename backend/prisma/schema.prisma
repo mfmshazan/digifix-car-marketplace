@@ -463,7 +463,7 @@ model RiderToken {
 model DeliveryJob {
   id                     Int                @id @default(autoincrement())
   partnerId              Int?               @map("partner_id")
-  marketplaceOrderId     String?            @map("marketplace_order_id")
+  marketplaceOrderId     String?            @unique(map: "DeliveryJob_marketplace_order_id_key") @map("marketplace_order_id")
   orderNumber            String             @unique @map("order_number") @db.VarChar(100)
   customerName           String             @map("customer_name") @db.VarChar(255)
   customerPhone          String             @map("customer_phone") @db.VarChar(20)

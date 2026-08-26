@@ -85,7 +85,7 @@ function VerifyOtpContent() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Verify OTP</h1>
             <p className="text-gray-500 text-sm">
-              We've sent a 6-digit verification code to <br />
+              We’ve sent a 6-digit verification code to <br />
               <span className="font-semibold text-gray-800">{email}</span>
             </p>
           </div>
@@ -130,7 +130,7 @@ function VerifyOtpContent() {
           </form>
 
           <div className="mt-8 text-center">
-            <p className="text-sm text-gray-600 mb-2">Didn't receive the code?</p>
+            <p className="text-sm text-gray-600 mb-2">Didn’t receive the code?</p>
             <button
               onClick={() => router.push('/forgot-password')}
               className="text-[#00002E] hover:underline font-semibold text-sm"

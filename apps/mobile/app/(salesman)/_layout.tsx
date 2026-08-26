@@ -54,7 +54,7 @@ export default function SalesmanTabLayout() {
         const userId: string = decoded?.userId || decoded?.id || decoded?.sub;
         if (!userId || cancelled) return;
 
-        const socket = connectSocket(userId);
+        const socket = connectSocket(token);
 
         const handleNewOrder = (payload: { orderNumber: string; total?: number }) => {
           if (cancelled) return;

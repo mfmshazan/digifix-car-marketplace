@@ -60,9 +60,9 @@ export default function WalletDashboard({
   const [actionLoading, setActionLoading] = useState(false);
   const hasLoadedWallet = useRef(false);
 
-  // Customers don't hold a payable wallet — only shop owners/salesmen withdraw funds,
-  // so the Stripe connect/withdraw controls are scoped to them.
-  const canPayout = user?.role === 'SALESMAN' || user?.role === 'SHOP_MANAGER';
+  // Customers and salesmen don't hold a payable wallet — only the shop manager
+  // withdraws funds, so the Stripe connect/withdraw controls are scoped to them.
+  const canPayout = user?.role === 'SHOP_MANAGER';
 
   const loadWallet = async () => {
     try {

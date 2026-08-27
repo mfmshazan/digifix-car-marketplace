@@ -18,8 +18,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { NativeMap, NativeMarker, NativePolyline } from "../../src/components/NativeMaps";
-
+import MapView, { AnimatedRegion, Marker, Polyline } from "react-native-maps";
 import { getCustomerOrders, cancelOrder, getRiderLiveLocation, Order } from "../../src/api/orders";
 import { submitReviews } from "../../src/api/reviews";
 import { connectSocket } from "../../src/lib/socket";
@@ -925,13 +924,12 @@ export default function OrdersScreen() {
           </View>
 
           {deliveryRoute ? (
-            <NativeMap
+            <MapView
               ref={trackingMapRef}
               style={styles.map}
               initialRegion={{
-                latitude: riderLocation?.latitude ?? deliveryRoute?.pickup.latitude ?? 6.9271,
-                longitude: riderLocation?.longitude ?? deliveryRoute?.pickup.longitude ?? 79.8612,
-
+                latitude: displayedRiderLocation?.latitude ?? deliveryRoute.pickup.latitude,
+                longitude: displayedRiderLocation?.longitude ?? deliveryRoute.pickup.longitude,
                 latitudeDelta: 0.035,
                 longitudeDelta: 0.035,
               }}
@@ -939,7 +937,7 @@ export default function OrdersScreen() {
             {deliveryRoute && (
               <>
                 {roadRoute && roadRoute.coordinates.length >= 2 && (
-                  <NativePolyline
+                  <Polyline
                     coordinates={roadRoute.coordinates}
                     strokeColor="#FF6B35"
                     strokeWidth={5}
@@ -947,13 +945,23 @@ export default function OrdersScreen() {
                     lineJoin="round"
                   />
                 )}
-                <NativeMarker
+                {!roadRoute && fallbackRouteCoordinates.length >= 2 && (
+                  <Polyline
+                    coordinates={fallbackRouteCoordinates}
+                    strokeColor="#FF6B35"
+                    strokeWidth={4}
+                    lineDashPattern={[10, 7]}
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                )}
+                <Marker
                   coordinate={deliveryRoute.pickup}
                   title="Pickup"
                   description={deliveryRoute.pickup.address || "Shop pickup location"}
                   pinColor="#2563EB"
                 />
-                <NativeMarker
+                <Marker
                   coordinate={deliveryRoute.dropoff}
                   title="Customer"
                   description={deliveryRoute.dropoff.address || "Customer delivery location"}
@@ -961,19 +969,23 @@ export default function OrdersScreen() {
                 />
               </>
             )}
-            {riderLocation && (
-              <NativeMarker
-                coordinate={{ latitude: riderLocation.latitude, longitude: riderLocation.longitude }}
+            {displayedRiderLocation && (
+              <Marker.Animated
+                coordinate={animatedRiderCoordinate as any}
                 title="Rider Location"
                 description={`ETA ${etaLabel}`}
               >
                 <View style={styles.markerContainer}>
                   <Ionicons name="bicycle" size={24} color="#FFF" />
                 </View>
-              </NativeMarker>
+              </Marker.Animated>
             )}
-            </NativeMap>
-
+            </MapView>
+          ) : (
+            <View style={[styles.map, styles.mapLoadingState]}>
+              <ActivityIndicator size="large" color="#FF6B35" />
+              <Text style={styles.noRiderText}>Loading delivery locations...</Text>
+            </View>
           )}
 
           {!displayedRiderLocation && (

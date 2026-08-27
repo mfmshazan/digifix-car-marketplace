@@ -32,7 +32,6 @@ import { authenticateMarketplaceSocket } from './lib/socketAuth.js';
 import internalPayoutRoutes from './routes/internalPayout.routes.js';
 import receiptRoutes from './routes/receipt.routes.js';
 
-
 // Load environment variables
 dotenv.config({ override: true });
 

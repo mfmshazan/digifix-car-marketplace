@@ -1,7 +1,6 @@
 import prisma from '../lib/prisma.js';
 import Stripe from 'stripe';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
-import { resolveShopOwnerId } from '../lib/shopAccess.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -9,14 +8,16 @@ class WalletController {
 
     /**
      * GET /wallet/my
-     * Returns the wallet + last 30 transactions for the authenticated user's shop.
-     * Salesmen share their manager's wallet — order earnings are credited there
-     * (see resolveShopOwnerId), so a salesman's "my wallet" must resolve the same
-     * way or it always shows zero even after real sales.
+     * Returns the wallet + last 30 transactions for the authenticated user.
+     * Salesmen don't have wallet access — the shop wallet belongs to the
+     * SHOP_MANAGER only.
      */
     getMyWallet = async (req, res) => {
         try {
-            const userId = await resolveShopOwnerId(req.user);
+            if (req.user?.role === 'SALESMAN') {
+                return res.status(403).json({ success: false, msg: 'Salesmen do not have wallet access. Contact your shop manager.' });
+            }
+            const userId = req.user.id;
             let wallet = await prisma.wallet.findUnique({
                 where: { userId },
                 include: {
@@ -56,6 +57,29 @@ class WalletController {
         } catch (error) {
             console.error('getMyWallet error:', error);
             return res.status(500).json({ success: false, msg: 'Failed to fetch wallet' });
+        }
+    }
+
+    /**
+     * GET /wallet/stripe-balance
+     * Admin-only. Returns the platform's actual Stripe account balance
+     * (available + pending), straight from Stripe — separate from the
+     * internal ledger balance tracked in the admin Wallet row.
+     */
+    getStripeBalance = async (req, res) => {
+        try {
+            const balance = await stripe.balance.retrieve();
+            const toUnits = (entries) => (entries || []).map(e => ({ amount: e.amount / 100, currency: e.currency }));
+            return res.status(200).json({
+                success: true,
+                data: {
+                    available: toUnits(balance.available),
+                    pending: toUnits(balance.pending),
+                }
+            });
+        } catch (error) {
+            console.error('getStripeBalance error:', error);
+            return res.status(500).json({ success: false, msg: 'Failed to fetch Stripe balance' });
         }
     }
 
@@ -263,14 +287,16 @@ class WalletController {
 
     /**
      * POST /wallet/payout/salesman
-     * Withdraws the salesman's full wallet balance to their connected Stripe account.
+     * Withdraws the shop's full wallet balance to the manager's connected Stripe account.
      * Uses a two-phase approach: record DB deduction first, then call Stripe.
      * On Stripe failure, the DB deduction is rolled back (idempotent via payoutTxId).
      */
     triggerPayout = async (req, res) => {
         try {
-            // Salesmen share their manager's wallet — see getMyWallet for why.
-            const userId = req.user ? await resolveShopOwnerId(req.user) : req.body.userId;
+            if (req.user?.role === 'SALESMAN') {
+                return res.status(403).json({ success: false, msg: 'Salesmen do not have wallet access. Contact your shop manager.' });
+            }
+            const userId = req.user ? req.user.id : req.body.userId;
 
             // Get wallet + stripeAccountId in one query
             const wallet = await prisma.wallet.findUnique({

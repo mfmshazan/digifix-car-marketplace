@@ -29,13 +29,18 @@ import {
     ChevronLeft,
     ChevronRight,
     Check,
-    Slash
+    Slash,
+    Wallet,
+    ArrowDownCircle,
+    ArrowUpCircle,
+    Clock,
+    Loader2
 } from 'lucide-react';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
 
 
 
-type AdminTab = 'overview' | 'users' | 'finances' | 'catalog' | 'reviews' | 'receipts';
+type AdminTab = 'overview' | 'users' | 'finances' | 'catalog' | 'reviews' | 'receipts' | 'wallet';
 
 interface AdminCancellationNotification {
     id: string;
@@ -166,6 +171,7 @@ export default function AdminDashboard() {
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
         { id: 'users', label: 'User Management', icon: Users },
         { id: 'finances', label: 'System Finances', icon: DollarSign },
+        { id: 'wallet', label: 'Wallet', icon: Wallet },
         { id: 'catalog', label: 'Global Catalog', icon: ShoppingBag },
         { id: 'reviews', label: 'Reviews Moderation', icon: ShieldAlert },
         { id: 'receipts', label: 'Receipt Reviews', icon: Receipt },
@@ -338,6 +344,7 @@ export default function AdminDashboard() {
                         {activeTab === 'overview' && 'System Overview'}
                         {activeTab === 'users' && 'User Management'}
                         {activeTab === 'finances' && 'Platform Finances'}
+                        {activeTab === 'wallet' && 'Platform Wallet'}
                         {activeTab === 'catalog' && 'Global Catalog'}
                         {activeTab === 'reviews' && 'Reviews Moderation'}
                         {activeTab === 'receipts' && 'Receipt Review Queue'}
@@ -346,6 +353,7 @@ export default function AdminDashboard() {
                         {activeTab === 'overview' && 'Monitor key platform metrics and recent activities.'}
                         {activeTab === 'users' && 'Manage customers, salesmen, and account statuses.'}
                         {activeTab === 'finances' && 'Track platform fees, total revenue, and system wallets.'}
+                        {activeTab === 'wallet' && 'Internal ledger balance and the real Stripe account balance, side by side.'}
                         {activeTab === 'catalog' && 'View all products, categories, and active car parts.'}
                         {activeTab === 'reviews' && 'Moderate flagged and pending reviews.'}
                         {activeTab === 'receipts' && 'Review pending repayment receipts, approve valid payments, and reject invalid ones.'}
@@ -356,6 +364,7 @@ export default function AdminDashboard() {
                 {activeTab === 'overview' && <OverviewTab />}
                 {activeTab === 'users' && <UsersTab />}
                 {activeTab === 'finances' && <FinancesTab />}
+                {activeTab === 'wallet' && <AdminWalletTab />}
                 {activeTab === 'catalog' && <CatalogTab />}
                 {activeTab === 'reviews' && <ReviewsModerationTab />}
                 {activeTab === 'receipts' && <AdminReceiptQueueView />}
@@ -498,6 +507,140 @@ function UsersTab() {
                     </table>
                 </div>
             )}
+        </div>
+    );
+}
+
+function AdminWalletTab() {
+    const { data: wallet, isLoading: walletLoading } = useQuery({
+        queryKey: ['admin-wallet'],
+        queryFn: async () => {
+            const res = await adminApi.getMyWallet();
+            return res.success ? res.data : null;
+        },
+    });
+
+    const { data: stripeBalance, isLoading: stripeLoading, isError: stripeErrored } = useQuery({
+        queryKey: ['admin-stripe-balance'],
+        queryFn: async () => {
+            const res = await adminApi.getStripeBalance();
+            if (!res.success) throw new Error(res.msg || 'Failed to fetch Stripe balance');
+            return res.data;
+        },
+        retry: 1,
+    });
+
+    const fmtCurrency = (v: number) => `Rs. ${(v || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}`;
+    const fmtStripeEntries = (entries?: { amount: number; currency: string }[]) => {
+        if (!entries || entries.length === 0) return 'Rs. 0.00';
+        return entries
+            .map((e) => `${e.currency.toUpperCase()} ${e.amount.toLocaleString('en-LK', { minimumFractionDigits: 2 })}`)
+            .join(' · ');
+    };
+    const fmtDate = (d: string) => new Date(d).toLocaleString('en-LK', { dateStyle: 'medium', timeStyle: 'short' });
+
+    const balance = wallet?.balance ?? 0;
+    const transactions = wallet?.transactions ?? [];
+
+    return (
+        <div className="space-y-6">
+            {/* ── Balance Cards ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-[#060618] p-5 rounded-2xl shadow-sm text-white flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0">
+                        <Wallet className="w-5 h-5 text-[#8ec5ff]" />
+                    </div>
+                    <div>
+                        <p className="text-xl font-bold">
+                            {walletLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : fmtCurrency(balance)}
+                        </p>
+                        <p className="text-xs text-slate-300">Platform ledger balance</p>
+                    </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                        <ArrowDownCircle className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div>
+                        <p className="text-xl font-bold text-gray-900">
+                            {stripeLoading ? <Loader2 className="w-5 h-5 animate-spin text-gray-400" /> : stripeErrored ? '—' : fmtStripeEntries(stripeBalance?.available)}
+                        </p>
+                        <p className="text-xs text-gray-500">Stripe available balance</p>
+                    </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                        <Clock className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div>
+                        <p className="text-xl font-bold text-gray-900">
+                            {stripeLoading ? <Loader2 className="w-5 h-5 animate-spin text-gray-400" /> : stripeErrored ? '—' : fmtStripeEntries(stripeBalance?.pending)}
+                        </p>
+                        <p className="text-xs text-gray-500">Stripe pending balance</p>
+                    </div>
+                </div>
+            </div>
+
+            {stripeErrored && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    Couldn&apos;t reach Stripe for the account balance. The ledger balance above is unaffected.
+                </div>
+            )}
+
+            <p className="text-xs text-gray-400">
+                The ledger balance is this app&apos;s internal running total of every deposit, payout, and refund.
+                The Stripe balance is what Stripe actually holds — it differs because Stripe deducts processing
+                fees and holds new charges as &quot;pending&quot; for a few days before they become available.
+            </p>
+
+            {/* ── Recent Transactions ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-gray-900">Recent ledger transactions</h2>
+                    <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Last 30</span>
+                </div>
+
+                {walletLoading ? (
+                    <div className="py-10 flex justify-center">
+                        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                    </div>
+                ) : transactions.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+                        No wallet activity yet.
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {transactions.map((tx: any) => {
+                            const isIncoming = tx.direction === 'IN' || tx.amount >= 0;
+                            const label = tx.description || tx.type || 'Wallet activity';
+                            const counterparty = isIncoming
+                                ? tx.senderWallet?.user?.name || 'System'
+                                : tx.receiverWallet?.user?.name || 'System';
+
+                            return (
+                                <div key={tx.id} className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                                    <div className="flex items-start gap-3">
+                                        <div className={`rounded-full p-2 ${isIncoming ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                                            {isIncoming ? <ArrowDownCircle className="h-4 w-4" /> : <ArrowUpCircle className="h-4 w-4" />}
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-gray-900">{label}</p>
+                                            <p className="text-xs text-gray-500">
+                                                {counterparty} · {tx.createdAt ? fmtDate(tx.createdAt) : 'Recent'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <p className={`text-sm font-bold ${isIncoming ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                        {isIncoming ? '+' : '-'}{fmtCurrency(Math.abs(Number(tx.amount || 0)))}
+                                    </p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

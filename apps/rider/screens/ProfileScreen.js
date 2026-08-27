@@ -524,8 +524,6 @@ const styles = StyleSheet.create({
         color: colors.textSecondary,
         marginTop: 2,
     },
-=======
->>>>>>> origin/muzny
 });
 
 

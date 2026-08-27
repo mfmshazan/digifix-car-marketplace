@@ -1075,7 +1075,6 @@ export const submitRiderProof = async (req, res, next) => {
     await syncMarketplaceOrderStatus(client, jobId, 'delivered');
     await creditDriverDeliveryFee(client, jobId);
 
-
     await client.query('COMMIT');
 
     await recordRiderAvailability(

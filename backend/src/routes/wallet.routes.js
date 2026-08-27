@@ -11,6 +11,7 @@ router.use(authenticate);
 router.get('/my', walletController.getMyWallet);
 
 // Admin only
+router.get('/stripe-balance', authorize('ADMIN'), walletController.getStripeBalance);
 router.get('/', authorize('ADMIN'), walletController.getAllWallets);
 router.post('/user', authorize('ADMIN'), walletController.getWallet);
 router.post('/refund/customer', authorize('ADMIN'), walletController.addCustomersRefund);
@@ -25,7 +26,8 @@ router.post('/earnings/salesman', authorize('ADMIN'), walletController.addPurcha
 // Users trigger their own payout
 router.post('/payout', walletController.triggerPayout);
 
-// Store owner triggers their own payout (manager owns the wallet; salesman kept for legacy accounts)
-router.post('/payout/salesman', authorize('SHOP_MANAGER', 'SALESMAN'), walletController.triggerPayout);
+// Store owner triggers their own payout — the manager owns the shop wallet.
+// Salesmen no longer have wallet access; earnings are the manager's to withdraw.
+router.post('/payout/salesman', authorize('SHOP_MANAGER'), walletController.triggerPayout);
 
 export default router;

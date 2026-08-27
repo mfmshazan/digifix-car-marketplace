@@ -19,7 +19,7 @@ class InternalPayoutController {
     runSalesmenPayouts = async (req, res) => {
         try {
             const result = await runBatchPayout({
-                roles: ['SALESMAN', 'SHOP_MANAGER'],
+                roles: ['SHOP_MANAGER'],
                 description: 'Weekly sales rep payout',
             });
             const hasFailures = result.summary.failedCount > 0;

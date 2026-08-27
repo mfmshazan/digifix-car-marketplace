@@ -328,7 +328,6 @@ function AppContent() {
                             <RegisterScreen {...props} onAuthenticated={handleAuthenticated} />
                         )}
                     </Stack.Screen>
-
                     <Stack.Screen
                         name="ForgotPassword"
                         component={ForgotPasswordScreen}
@@ -449,4 +448,3 @@ const styles = StyleSheet.create({
         backgroundColor: colors.secondarySoft,
     },
 });
-

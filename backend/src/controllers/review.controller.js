@@ -16,7 +16,16 @@ export const createReviews = async (req, res) => {
 
     // Purchase Validation: Check if the user owns this DELIVERED order
     const order = await prisma.order.findUnique({
-      where: { id: orderId }
+      where: { id: orderId },
+      include: {
+        items: { select: { productId: true, carPartId: true } },
+        riderDeliveryJobs: {
+          where: { status: 'delivered' },
+          orderBy: { deliveredAt: 'desc' },
+          take: 1,
+          select: { partnerId: true },
+        },
+      },
     });
 
     if (!order) {
@@ -31,19 +40,40 @@ export const createReviews = async (req, res) => {
       return res.status(400).json({ success: false, message: 'You can only review delivered orders' });
     }
 
+    const productIds = new Set(order.items.map((item) => item.productId).filter(Boolean));
+    const carPartIds = new Set(order.items.map((item) => item.carPartId).filter(Boolean));
+    const assignedRiderId = order.riderDeliveryJobs[0]?.partnerId;
+    const validTargetTypes = new Set(['PRODUCT', 'CAR_PART', 'SELLER', 'DELIVERY_PARTNER']);
+
+    for (const review of reviews) {
+      const targetId = String(review?.targetId || '');
+      const { targetType } = review || {};
+      const rating = Number(review?.rating);
+
+      if (!targetId || !validTargetTypes.has(targetType)) {
+        return res.status(400).json({ success: false, message: 'Invalid review target' });
+      }
+
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        return res.status(400).json({ success: false, message: 'Rating must be an integer between 1 and 5' });
+      }
+
+      const targetBelongsToOrder =
+        (targetType === 'PRODUCT' && productIds.has(targetId)) ||
+        (targetType === 'CAR_PART' && carPartIds.has(targetId)) ||
+        (targetType === 'SELLER' && targetId === String(order.salesmanId)) ||
+        (targetType === 'DELIVERY_PARTNER' && assignedRiderId !== null && assignedRiderId !== undefined && targetId === String(assignedRiderId));
+
+      if (!targetBelongsToOrder) {
+        return res.status(403).json({ success: false, message: 'This review target is not part of the delivered order' });
+      }
+    }
+
     const createdReviews = [];
 
     // Process each review in the split UI payload
     for (const review of reviews) {
       const { targetId, targetType, rating, comment, title, images } = review;
-
-      if (!targetId || !targetType || !rating) {
-        continue;
-      }
-
-      if (rating < 1 || rating > 5) {
-        return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
-      }
 
       let status = 'PUBLISHED';
       
@@ -219,32 +249,68 @@ export const changeReviewStatus = async (req, res) => {
 
 export const getDriverSummary = async (req, res) => {
   try {
-    const driverId = req.user.id;
+    const rawId = req.user.id;
+    const riderId = parseInt(rawId, 10);
+    let marketplaceUserId = null;
+
+    if (isNaN(riderId)) {
+      marketplaceUserId = rawId;
+      const user = await prisma.user.findUnique({
+        where: { id: rawId },
+        select: { id: true, email: true },
+      });
+      if (user?.email) {
+        const riderRes = await prisma.$queryRawUnsafe(
+          `SELECT id FROM "Rider" WHERE LOWER(email) = LOWER($1)`,
+          user.email
+        );
+        if (riderRes && riderRes.length > 0) {
+          riderId = riderRes[0].id;
+        }
+      }
+    } else {
+      const riderRes = await prisma.$queryRawUnsafe(
+        `SELECT rider.id, rider.email, u.id AS marketplace_user_id
+           FROM "Rider" rider
+           LEFT JOIN "User" u ON LOWER(u.email) = LOWER(rider.email)
+          WHERE rider.id = $1`,
+        riderId
+      );
+      if (riderRes && riderRes.length > 0) {
+        marketplaceUserId = riderRes[0].marketplace_user_id;
+      }
+    }
+
+    const allTargetIds = [
+      !isNaN(riderId) ? String(riderId) : null,
+      marketplaceUserId,
+      String(rawId),
+    ].filter(Boolean);
 
     // Fetch all reviews for this driver (anonymized)
     const reviews = await prisma.review.findMany({
       where: {
-        targetId: driverId,
+        targetId: { in: allTargetIds },
         targetType: 'DELIVERY_PARTNER',
         status: 'PUBLISHED'
       },
       select: {
+        id: true,
         rating: true,
         comment: true,
         createdAt: true,
-        // Notice we DO NOT select userId or user relation
       },
       orderBy: { createdAt: 'desc' }
     });
 
     const averageRating = reviews.length > 0 
       ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length 
-      : 5.0;
+      : 0.0;
 
     res.status(200).json({
       success: true,
       data: {
-        averageRating,
+        averageRating: Number(averageRating.toFixed(2)),
         totalReviews: reviews.length,
         recentFeedback: reviews.slice(0, 100)
       }
@@ -282,51 +348,6 @@ export const getTargetReviews = async (req, res) => {
     res.status(200).json({ success: true, data: reviews });
   } catch (error) {
     console.error('Get Target Reviews Error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
-  }
-};
-
-export const getAdminReviews = async (req, res) => {
-  try {
-    const { status, targetType, page = 1, limit = 20 } = req.query;
-    const pageNumber = parseInt(page, 10);
-    const limitNumber = parseInt(limit, 10);
-
-    const where = {};
-    if (targetType) where.targetType = targetType;
-    if (status === 'FLAGGED') {
-      where.OR = [
-        { status: 'FLAGGED' },
-        { status: 'PUBLISHED', rating: { lt: 3 } }
-      ];
-    } else if (status) {
-      where.status = status;
-    }
-
-    const reviews = await prisma.review.findMany({
-      where,
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip: (pageNumber - 1) * limitNumber,
-      take: limitNumber
-    });
-
-    const total = await prisma.review.count({ where });
-
-    res.status(200).json({
-      success: true,
-      data: reviews,
-      meta: {
-        total,
-        page: pageNumber,
-        limit: limitNumber,
-        totalPages: Math.ceil(total / limitNumber)
-      }
-    });
-  } catch (error) {
-    console.error('Get Admin Reviews Error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

@@ -26,17 +26,6 @@ import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-sign
 // import { setOneSignalUserId, setUserRoleTag } from "../../src/config/onesignal.config";
 
 const useNativeDriverForAnim = Platform.OS !== "web";
-const PASSWORD_REQUIREMENTS_ERROR = "Password does not meet the minimum requirements.";
-const PASSWORD_REQUIREMENTS = [
-  { label: "At least 8 characters", test: (value: string) => value.length >= 8 },
-  { label: "One number", test: (value: string) => /\d/.test(value) },
-  { label: "One uppercase letter", test: (value: string) => /[A-Z]/.test(value) },
-  { label: "One lowercase letter", test: (value: string) => /[a-z]/.test(value) },
-  { label: "One symbol", test: (value: string) => /[\W_]/.test(value) },
-];
-const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-
-const isStrongPassword = (value: string) => passwordRegex.test(value);
 
 export default function RegisterScreen() {
   const [name, setName] = useState("");
@@ -50,12 +39,6 @@ export default function RegisterScreen() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
-  const [hasTouchedConfirmPassword, setHasTouchedConfirmPassword] = useState(false);
-  const isConfirmPasswordEntered = confirmPassword.length > 0;
-  const isConfirmPasswordValid = isConfirmPasswordEntered && confirmPassword === password;
-  const shouldShowConfirmPasswordMismatch =
-    hasTouchedConfirmPassword && isConfirmPasswordEntered && !isConfirmPasswordValid;
 
   //Clerk Google auth setup
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -208,14 +191,13 @@ export default function RegisterScreen() {
     }
 
     if (password !== confirmPassword) {
-      setHasTouchedConfirmPassword(true);
       setError("Passwords do not match");
       return;
     }
 
-    if (!isStrongPassword(password)) {
-      setHasTouchedPassword(true);
-      setError(PASSWORD_REQUIREMENTS_ERROR);
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+    if (!passwordRegex.test(password)) {
+      setError("Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.");
       return;
     }
 
@@ -362,7 +344,7 @@ export default function RegisterScreen() {
           >
             <Text style={styles.title}>Create Account</Text>
 
-            {error && error !== PASSWORD_REQUIREMENTS_ERROR && !isLoading ? (
+            {error && !isLoading ? (
               <Text style={styles.errorText}>{error}</Text>
             ) : null}
 
@@ -403,19 +385,9 @@ export default function RegisterScreen() {
               <Text style={styles.countryCode}>+94</Text>
               <TextInput
                 style={styles.input}
-                placeholder="7x xxx xxxx"
+                placeholder="771234567"
                 placeholderTextColor="#999"
-                value={(() => {
-                  let displayVal = phone;
-                  if (displayVal.startsWith('+94')) displayVal = displayVal.slice(3);
-                  else if (displayVal.startsWith('0')) displayVal = displayVal.slice(1);
-                  
-                  const cleaned = displayVal.replace(/\D/g, '').slice(0, 9);
-                  let formatted = cleaned;
-                  if (cleaned.length > 2) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2);
-                  if (cleaned.length > 5) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2, 5) + ' ' + cleaned.slice(5);
-                  return formatted;
-                })()}
+                value={phone}
                 onChangeText={(val) => {
                   const cleaned = val.replace(/\D/g, "");
                   if (cleaned.length <= 9) setPhone(cleaned);
@@ -513,8 +485,7 @@ export default function RegisterScreen() {
                 placeholder="Password"
                 placeholderTextColor="#999"
                 value={password}
-                onChangeText={(text) => { setPassword(text); setError(""); }}
-                onFocus={() => setHasTouchedPassword(true)}
+                onChangeText={setPassword}
                 secureTextEntry={!showPassword}
               />
               <TouchableOpacity
@@ -529,34 +500,7 @@ export default function RegisterScreen() {
               </TouchableOpacity>
             </View>
 
-            {hasTouchedPassword ? (
-              <View style={styles.passwordRequirementsList}>
-                {PASSWORD_REQUIREMENTS.map((requirement) => (
-                  <View key={requirement.label} style={styles.passwordRequirementRow}>
-                    <Ionicons
-                      name={requirement.test(password) ? "checkmark-circle-outline" : "close-circle-outline"}
-                      size={18}
-                      color={requirement.test(password) ? "#10B981" : "#EF4444"}
-                    />
-                    <Text
-                      style={[
-                        styles.passwordRequirementText,
-                        requirement.test(password) ? styles.passwordRequirementValid : styles.passwordRequirementInvalid,
-                      ]}
-                    >
-                      {requirement.label}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-
-            <View
-              style={[
-                styles.inputContainer,
-                shouldShowConfirmPasswordMismatch && styles.inputInvalid,
-              ]}
-            >
+            <View style={styles.inputContainer}>
               <Ionicons
                 name="lock-closed-outline"
                 size={20}
@@ -568,8 +512,7 @@ export default function RegisterScreen() {
                 placeholder="Confirm Password"
                 placeholderTextColor="#999"
                 value={confirmPassword}
-                onChangeText={(text) => { setConfirmPassword(text); setError(""); }}
-                onFocus={() => setHasTouchedConfirmPassword(true)}
+                onChangeText={setConfirmPassword}
                 secureTextEntry={!showConfirmPassword}
               />
               <TouchableOpacity
@@ -583,23 +526,6 @@ export default function RegisterScreen() {
                 />
               </TouchableOpacity>
             </View>
-            {hasTouchedConfirmPassword && isConfirmPasswordEntered ? (
-              <View style={styles.confirmFeedbackRow}>
-                <Ionicons
-                  name={isConfirmPasswordValid ? "checkmark-circle-outline" : "close-circle-outline"}
-                  size={17}
-                  color={isConfirmPasswordValid ? "#10B981" : "#EF4444"}
-                />
-                <Text
-                  style={[
-                    styles.confirmFeedbackText,
-                    isConfirmPasswordValid ? styles.confirmFeedbackValid : styles.confirmFeedbackInvalid,
-                  ]}
-                >
-                  {isConfirmPasswordValid ? "Passwords match" : "Passwords do not match"}
-                </Text>
-              </View>
-            ) : null}
 
             <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
               <Pressable
@@ -715,56 +641,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: "center",
   },
-  passwordRequirementsList: {
-    gap: 8,
-    marginTop: -6,
-    marginBottom: 16,
-  },
-  passwordRequirementRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  passwordRequirementText: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  passwordRequirementValid: {
-    color: "#10B981",
-  },
-  passwordRequirementInvalid: {
-    color: "#EF4444",
-  },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F5F5F5",
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "transparent",
     marginBottom: 16,
     paddingHorizontal: 16,
     height: 56,
-  },
-  inputInvalid: {
-    borderColor: "#EF4444",
-  },
-  confirmFeedbackRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: -8,
-    marginBottom: 16,
-  },
-  confirmFeedbackText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  confirmFeedbackValid: {
-    color: "#10B981",
-  },
-  confirmFeedbackInvalid: {
-    color: "#EF4444",
   },
   inputIcon: {
     marginRight: 12,

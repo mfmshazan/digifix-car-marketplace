@@ -72,6 +72,8 @@ export const ROUTE_PROVIDER = process.env.EXPO_PUBLIC_ROUTE_PROVIDER || 'google'
 export const MAPBOX_ACCESS_TOKEN = normalizeOptionalCredential(
     process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN
 );
+
+//load Google Maps API key from .env, but only if it's not a placeholder value
 export const GOOGLE_MAPS_API_KEY = normalizeOptionalCredential(
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
 );

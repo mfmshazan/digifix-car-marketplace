@@ -28,6 +28,10 @@ import statsRoutes from './routes/stats.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import stripeRoutes from './routes/stripe.routes.js';
 import reviewRoutes from './routes/review.routes.js';
+import { authenticateMarketplaceSocket } from './lib/socketAuth.js';
+import internalPayoutRoutes from './routes/internalPayout.routes.js';
+import receiptRoutes from './routes/receipt.routes.js';
+
 
 // Load environment variables
 dotenv.config({ override: true });
@@ -50,24 +54,29 @@ const io = new Server(httpServer, {
   },
 });
 
+io.use(authenticateMarketplaceSocket);
+
 app.set('io', io);
 // Also expose io globally so controllers without request context (e.g. riderJobs sync) can emit events
 global.io = io;
 
 io.on('connection', (socket) => {
   console.log(`Socket connected: ${socket.id}`);
+  const { id: authenticatedUserId, role: authenticatedRole } = socket.data.user;
+  socket.join(`user:${authenticatedUserId}`);
+  if (authenticatedRole === 'ADMIN') socket.join('role:ADMIN');
 
   // Each client joins their own room for targeted notifications (e.g. order updates)
   socket.on('join', (userId) => {
-    if (userId) {
-      socket.join(`user:${userId}`);
-      console.log(`Socket ${socket.id} joined room user:${userId}`);
+    if (String(userId) === authenticatedUserId) {
+      socket.join(`user:${authenticatedUserId}`);
+      console.log(`Socket ${socket.id} joined room user:${authenticatedUserId}`);
     }
   });
 
   // Admins also join a shared room so we can broadcast cancellation requests to all of them
   socket.on('joinRole', (role) => {
-    if (role === 'ADMIN') {
+    if (role === 'ADMIN' && authenticatedRole === 'ADMIN') {
       socket.join('role:ADMIN');
       console.log(`🛡️ Socket ${socket.id} joined room role:ADMIN`);
     }
@@ -109,6 +118,8 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/internal', internalPayoutRoutes);
+app.use('/api/wallet/receipts', receiptRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

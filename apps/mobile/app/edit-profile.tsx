@@ -216,22 +216,12 @@ export default function EditProfileScreen() {
               <Text style={styles.countryCode}>+94</Text>
               <TextInput
                 style={styles.input}
-                value={(() => {
-                  let displayVal = phone;
-                  if (displayVal.startsWith('+94')) displayVal = displayVal.slice(3);
-                  else if (displayVal.startsWith('0')) displayVal = displayVal.slice(1);
-                  
-                  const cleaned = displayVal.replace(/\D/g, '').slice(0, 9);
-                  let formatted = cleaned;
-                  if (cleaned.length > 2) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2);
-                  if (cleaned.length > 5) formatted = cleaned.slice(0, 2) + ' ' + cleaned.slice(2, 5) + ' ' + cleaned.slice(5);
-                  return formatted;
-                })()}
+                value={phone.startsWith('+94') ? phone.slice(3) : (phone.startsWith('0') ? phone.slice(1) : phone)}
                 onChangeText={(val) => {
                   const cleaned = val.replace(/\D/g, "");
                   if (cleaned.length <= 9) setPhone(cleaned);
                 }}
-                placeholder="7x xxx xxxx"
+                placeholder="771234567"
                 placeholderTextColor="#BDBDBD"
                 keyboardType="phone-pad"
                 returnKeyType="done"

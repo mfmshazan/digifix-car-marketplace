@@ -273,6 +273,30 @@ export async function sendRefundApprovedToSalesman({ salesmanId, orderNumber }) 
   }
 }
 
+export async function sendReceiptDecisionToUser({ userId, status, amount, rejectionReason }) {
+  if (!userId) return { success: false, reason: 'no_user_id' };
+
+  const approved = status === 'APPROVED';
+  const title = approved ? '✅ Receipt Approved' : '⚠️ Receipt Rejected';
+  const amountText = `Rs. ${Number(amount || 0).toLocaleString()}`;
+  const message = approved
+    ? `Your repayment receipt for ${amountText} was accepted. The payment has been credited and your wallet has been updated.`
+    : `Your repayment receipt for ${amountText} was rejected${rejectionReason ? `: ${rejectionReason}` : '. Please upload a valid receipt and try again.'}`;
+
+  return sendPush({
+    externalIds: userId,
+    heading: title,
+    message,
+    data: {
+      type: 'receipt_review',
+      status,
+      amount: Number(amount || 0),
+      rejectionReason: rejectionReason || null,
+    },
+    url: `${process.env.WEB_URL || 'http://localhost:3001'}/dashboard/salesman/receipts`,
+  });
+}
+
 // ===========================================================================
 // RIDER / DELIVERY PUSH NOTIFICATIONS
 // ---------------------------------------------------------------------------

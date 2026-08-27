@@ -1,6 +1,5 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import type { Delivery } from '../types/delivery';
 import { SurfaceCard } from './Common';
 import { colors, radii, spacing, typography } from '../styles/theme';
@@ -44,6 +43,11 @@ const TIMELINE_STEPS: readonly {
         hint: 'Heading to the customer',
     },
     {
+        status: DeliveryWorkflowStatus.ARRIVED_DROPOFF,
+        label: 'At Customer',
+        hint: 'Ready for the verified handoff',
+    },
+    {
         status: DeliveryWorkflowStatus.DELIVERED,
         label: 'Delivered',
         hint: 'Final handoff completed',
@@ -65,15 +69,7 @@ export default function DeliveryStatusTimeline({
 
     return (
         <SurfaceCard style={styles.card}>
-            <View style={styles.header}>
-                <View style={styles.headerIcon}>
-                    <Ionicons name="git-branch-outline" size={19} color={colors.secondary} />
-                </View>
-                <View>
-                    <Text style={styles.title}>Delivery Progress</Text>
-                    <Text style={styles.subtitle}>Complete checkpoints in order.</Text>
-                </View>
-            </View>
+            <Text style={styles.title}>Status Timeline</Text>
             <View style={styles.timeline}>
                 {TIMELINE_STEPS.map((step, index) => {
                     const isCompleted = currentIndex >= index;
@@ -122,29 +118,10 @@ export default function DeliveryStatusTimeline({
 const styles = StyleSheet.create({
     card: {
         marginBottom: spacing.md,
-        padding: spacing.lg,
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        marginBottom: spacing.lg,
-    },
-    headerIcon: {
-        width: 40,
-        height: 40,
-        borderRadius: 13,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.secondarySoft,
     },
     title: {
         ...typography.h3,
-    },
-    subtitle: {
-        ...typography.caption,
-        color: colors.textSecondary,
-        marginTop: 2,
+        marginBottom: spacing.md,
     },
     timeline: {
         gap: spacing.xs,

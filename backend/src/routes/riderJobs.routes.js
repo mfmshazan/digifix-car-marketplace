@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticateRider } from '../middleware/riderAuth.middleware.js';
 import upload from '../middleware/upload.middleware.js';
 import {
+  acceptRiderJob,
   acceptRiderRequestOffer,
   addRiderJobLocation,
   declineRiderRequestOffer,
@@ -26,6 +27,7 @@ router.get('/history', getRiderJobHistory);
 router.post('/request-offers/:offerId/accept', acceptRiderRequestOffer);
 router.post('/request-offers/:offerId/decline', declineRiderRequestOffer);
 router.post('/request-offers/:offerId/expire', expireRiderRequestOffer);
+router.post('/:id/accept', acceptRiderJob);
 router.post('/:id/reject', rejectRiderAssignedJob);
 router.put('/:id/status', updateRiderJobStatus);
 router.post('/:id/location', addRiderJobLocation);

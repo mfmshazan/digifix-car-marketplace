@@ -15,11 +15,10 @@ const router = Router();
 router.get('/', getProducts);
 router.get('/:id', getProductById);
 
-// Catalog writes — MANAGER owns the catalog and is the only role that can add/edit products
-router.post('/', authenticate, authorize('SHOP_MANAGER'), createProduct);
-router.put('/:id', authenticate, authorize('SHOP_MANAGER'), updateProduct);
-router.delete('/:id', authenticate, authorize('SHOP_MANAGER'), deleteProduct);
-// Catalog reads — manager (owner) and salesman (operates under the manager) can both view
-router.get('/salesman/my-products', authenticate, authorize('SHOP_MANAGER', 'SALESMAN'), getSalesmanProducts);
+// Salesman only routes
+router.post('/', authenticate, authorize('SALESMAN'), createProduct);
+router.put('/:id', authenticate, authorize('SALESMAN'), updateProduct);
+router.delete('/:id', authenticate, authorize('SALESMAN'), deleteProduct);
+router.get('/salesman/my-products', authenticate, authorize('SALESMAN'), getSalesmanProducts);
 
 export default router;

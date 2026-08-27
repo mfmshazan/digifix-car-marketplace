@@ -38,26 +38,24 @@ router.get('/:id', getCarPartById);
 // SALESMAN/SHOP OWNER ROUTES (Authenticated + SALESMAN role)
 // ================================
 
-// Get my car parts — manager (owner) and salesman (operates under manager) can both view
+// Get my car parts (salesman's own listings)
 // GET /api/car-parts/salesman/my-parts
-router.get('/salesman/my-parts', authenticate, authorize('SHOP_MANAGER', 'SALESMAN'), getMyCarParts);
-
-// Catalog writes below — MANAGER owns the catalog and is the only role that can add/edit parts
+router.get('/salesman/my-parts', authenticate, authorize('SALESMAN'), getMyCarParts);
 
 // Create a new car
 // POST /api/car-parts/cars
-router.post('/cars', authenticate, authorize('SHOP_MANAGER'), createCar);
+router.post('/cars', authenticate, authorize('SALESMAN'), createCar);
 
 // Create a new car part
 // POST /api/car-parts
-router.post('/', authenticate, authorize('SHOP_MANAGER'), createCarPart);
+router.post('/', authenticate, authorize('SALESMAN'), createCarPart);
 
 // Update a car part
 // PUT /api/car-parts/:id
-router.put('/:id', authenticate, authorize('SHOP_MANAGER'), updateCarPart);
+router.put('/:id', authenticate, authorize('SALESMAN'), updateCarPart);
 
 // Delete a car part
 // DELETE /api/car-parts/:id
-router.delete('/:id', authenticate, authorize('SHOP_MANAGER'), deleteCarPart);
+router.delete('/:id', authenticate, authorize('SALESMAN'), deleteCarPart);
 
 export default router;

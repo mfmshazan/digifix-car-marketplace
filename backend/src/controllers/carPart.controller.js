@@ -1,5 +1,4 @@
 import prisma from '../lib/prisma.js';
-import { resolveShopOwnerId } from '../lib/shopAccess.js';
 
 // ================================
 // PUBLIC ROUTES (Customer)
@@ -370,9 +369,7 @@ const createCar = async (req, res) => {
 // Create a car part (Salesman only)
 const createCarPart = async (req, res) => {
   try {
-    // Scope to the shop owner (manager) so a salesman's car parts belong to the shop,
-    // matching how orders are recorded & how dashboards query. See resolveShopOwnerId.
-    const userId = await resolveShopOwnerId(req.user);
+    const userId = req.user.userId;
     const {
       name,
       description,
@@ -474,9 +471,7 @@ const createCarPart = async (req, res) => {
 // Update a car part (Salesman only - own parts)
 const updateCarPart = async (req, res) => {
   try {
-    // Scope to the shop owner (manager) so a salesman's car parts belong to the shop,
-    // matching how orders are recorded & how dashboards query. See resolveShopOwnerId.
-    const userId = await resolveShopOwnerId(req.user);
+    const userId = req.user.userId;
     const { id } = req.params;
     const {
       name,
@@ -556,9 +551,7 @@ const updateCarPart = async (req, res) => {
 // Delete a car part (Salesman only - own parts)
 const deleteCarPart = async (req, res) => {
   try {
-    // Scope to the shop owner (manager) so a salesman's car parts belong to the shop,
-    // matching how orders are recorded & how dashboards query. See resolveShopOwnerId.
-    const userId = await resolveShopOwnerId(req.user);
+    const userId = req.user.userId;
     const { id } = req.params;
 
     // Find existing part
@@ -601,9 +594,7 @@ const deleteCarPart = async (req, res) => {
 // Get salesman's own car parts
 const getMyCarParts = async (req, res) => {
   try {
-    // Scope to the shop owner (manager) so a salesman's car parts belong to the shop,
-    // matching how orders are recorded & how dashboards query. See resolveShopOwnerId.
-    const userId = await resolveShopOwnerId(req.user);
+    const userId = req.user.userId;
     const { page = '1', limit = '20' } = req.query;
 
     const pageNum = parseInt(page);

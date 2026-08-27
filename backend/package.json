@@ -2,10 +2,10 @@
   "name": "backend",
   "version": "1.0.0",
   "type": "module",
-  "main": "src/index.js",
+  "main": "src/server.js",
   "scripts": {
-    "dev": "prisma generate && nodemon src/index.js",
-    "start": "node src/index.js",
+    "dev": "prisma generate && nodemon src/server.js",
+    "start": "node src/server.js",
     "seed": "node src/seed.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -20,6 +20,8 @@
   "license": "ISC",
   "description": "DigiFix Car Marketplace Backend API",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1110.0",
+    "@aws-sdk/s3-request-presigner": "^3.1110.0",
     "@clerk/backend": "^1.34.0",
     "@prisma/client": "^6.19.2",
     "@sendgrid/mail": "^8.1.6",

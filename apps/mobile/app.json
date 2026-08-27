@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Digifix",
+    "name": "mobile",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -43,48 +43,12 @@
         }
       ],
       "@clerk/expo",
-      "expo-web-browser",
-      [
-        "onesignal-expo-plugin",
-        {
-          "mode": "production"
-        }
-      ],
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "usesCleartextTraffic": true
-          }
-        }
-      ]
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": false
     },
-    "extra": {
-      "router": {},
-      "eas": {
-        "build": {
-          "experimental": {
-            "ios": {
-              "appExtensions": [
-                {
-                  "targetName": "OneSignalNotificationServiceExtension",
-                  "bundleIdentifier": "com.digifix.autoparts.OneSignalNotificationServiceExtension",
-                  "entitlements": {
-                    "com.apple.security.application-groups": [
-                      "group.com.digifix.autoparts.onesignal"
-                    ]
-                  }
-                }
-              ]
-            }
-          }
-        },
-        "projectId": "cf86712e-10d1-4099-bb61-da110367a400"
-      }
-    }
+    "extra": {}
   }
 }

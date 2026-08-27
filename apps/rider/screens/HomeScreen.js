@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import {
     View,
     Text,
@@ -7,14 +7,15 @@ import {
     RefreshControl,
     ActivityIndicator,
     TouchableOpacity,
+    Image,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
     Button,
     SurfaceCard,
     StatusBadge,
+    EmptyState,
 } from '../components/Common';
 import AvailabilityToggle from '../components/AvailabilityToggle';
 import {
@@ -26,15 +27,13 @@ import {
     selectHomeRefreshing,
     selectHomeError,
 } from '../store/slices/homeSlice';
+import { resolveMediaUrl } from '../utils/media';
 import { colors, spacing, typography, shadows, radii } from '../styles/theme';
 
 const formatStatus = (value) =>
     value ? value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : '';
 
-const formatCurrency = (value) => `Rs. ${Number(value || 0).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-})}`;
+const formatCurrency = (value) => `$${Number(value || 0).toFixed(2)}`;
 const formatRating = (value) => {
     const rating = Number(value);
     return Number.isFinite(rating) ? rating.toFixed(1) : '0.0';
@@ -171,12 +170,6 @@ export default function HomeScreen({ navigation }) {
         dispatch(fetchDriverHome());
     }, [dispatch]);
 
-    useFocusEffect(
-        useCallback(() => {
-            dispatch(fetchDriverHome());
-        }, [dispatch])
-    );
-
     const handleRefresh = () => {
         dispatch(fetchDriverHome());
     };
@@ -230,24 +223,20 @@ export default function HomeScreen({ navigation }) {
                         onPress={() => navigation.navigate('Profile')}
                         activeOpacity={0.85}
                     >
-                        <Ionicons name="person-outline" size={20} color={colors.surface} />
+                        {resolveMediaUrl(profile?.profile_photo_url) ? (
+                            <Image
+                                source={{ uri: resolveMediaUrl(profile.profile_photo_url) }}
+                                style={styles.profileShortcutAvatar}
+                            />
+                        ) : (
+                            <Ionicons name="person-outline" size={20} color={colors.surface} />
+                        )}
                     </TouchableOpacity>
+
                 </View>
-                <Text style={styles.greeting}>{greeting}</Text>
-                <Text style={styles.driverName}>{profile?.full_name || 'Delivery Partner'}</Text>
-                <Text style={styles.heroSubtitle}>
-                    Stay ready, respond quickly, and keep every delivery moving.
-                </Text>
             </View>
 
-            <View style={styles.availabilityPanel}>
-                <View style={styles.availabilityCopy}>
-                    <Text style={styles.availabilityEyebrow}>AVAILABILITY</Text>
-                    <Text style={styles.availabilityTitle}>Receive new requests</Text>
-                </View>
-                <AvailabilityToggle />
-            </View>
-
+            {/* -- STATS -------------------------------- */}
             <View style={styles.statsRow}>
                 <StatCard
                     icon="checkmark-circle-outline"
@@ -267,6 +256,7 @@ export default function HomeScreen({ navigation }) {
                 />
             </View>
 
+            {/* -- ERROR BANNER ------------------------- */}
             {error ? (
                 <View style={styles.errorBanner}>
                     <Ionicons name="warning-outline" size={16} color={colors.danger} />
@@ -274,6 +264,7 @@ export default function HomeScreen({ navigation }) {
                 </View>
             ) : null}
 
+            {/* -- ACTIVE DELIVERY ---------------------- */}
             <View style={styles.section}>
                 <View style={styles.sectionHeaderRow}>
                     <View style={styles.sectionPill}>
@@ -292,13 +283,20 @@ export default function HomeScreen({ navigation }) {
                     <SurfaceCard style={styles.idleCard}>
                         <Ionicons name="car-outline" size={36} color={colors.textMuted} style={{ marginBottom: spacing.sm }} />
                         <Text style={styles.idleTitle}>No active delivery</Text>
-                        <Text style={styles.idleBody}>
-                            Stay online. When a nearby delivery request arrives, you can accept or decline it from the request popup.
-                        </Text>
+                        <Text style={styles.idleBody}>When you accept a delivery, the live route will appear here.</Text>
+                        <TouchableOpacity
+                            style={styles.browseBtn}
+                            onPress={() => navigation.navigate('AvailableJobs')}
+                            activeOpacity={0.85}
+                        >
+                            <Ionicons name="search-outline" size={16} color={colors.surface} />
+                            <Text style={styles.browseBtnText}>Browse Available Jobs</Text>
+                        </TouchableOpacity>
                     </SurfaceCard>
                 )}
             </View>
 
+            {/* -- ASSIGNED QUEUE ----------------------- */}
             {assignedList.length > 0 ? (
                 <View style={styles.section}>
                     <View style={styles.sectionHeaderRow}>
@@ -318,6 +316,17 @@ export default function HomeScreen({ navigation }) {
                 </View>
             ) : null}
 
+            {/* -- QUICK ACTIONS ------------------------ */}
+            <View style={styles.quickActions}>
+                <TouchableOpacity
+                    style={styles.quickBtn}
+                    onPress={() => navigation.navigate('AvailableJobs')}
+                    activeOpacity={0.85}
+                >
+                    <Ionicons name="briefcase-outline" size={20} color={colors.secondary} />
+                    <Text style={styles.quickBtnText}>Available Jobs</Text>
+                </TouchableOpacity>
+            </View>
         </ScrollView>
     );
 }
@@ -328,27 +337,20 @@ const styles = StyleSheet.create({
         backgroundColor: colors.background,
     },
     content: {
-        paddingBottom: 120,
+        paddingBottom: 32,
     },
 
-    hero: {
-        position: 'relative',
-        overflow: 'hidden',
-        backgroundColor: colors.primary,
+    // -- Header ------------------------------------------
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
         paddingHorizontal: spacing.lg,
         paddingTop: spacing.lg,
-        paddingBottom: 54,
-        borderBottomLeftRadius: 30,
-        borderBottomRightRadius: 30,
-    },
-    heroGlowLarge: {
-        position: 'absolute',
-        width: 220,
-        height: 220,
-        borderRadius: 110,
-        backgroundColor: 'rgba(59,130,246,0.18)',
-        right: -85,
-        top: -120,
+        paddingBottom: spacing.md,
+        backgroundColor: colors.surface,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
     },
     heroGlowSmall: {
         position: 'absolute',
@@ -390,71 +392,48 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.1)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.14)',
+        overflow: 'hidden',
+    },
+    profileShortcutAvatar: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 14,
+
     },
     greeting: {
-        ...typography.bodySmall,
-        color: '#93C5FD',
-        fontWeight: '700',
-        marginBottom: 2,
+        ...typography.caption,
+        color: colors.textMuted,
+        textTransform: 'uppercase',
+        letterSpacing: 0.8,
     },
     driverName: {
-        ...typography.h1,
-        color: colors.textOnDark,
-    },
-    heroSubtitle: {
-        ...typography.bodySmall,
-        color: colors.textOnDarkMuted,
-        marginTop: spacing.sm,
-        maxWidth: 310,
-    },
-    availabilityPanel: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        justifyContent: 'space-between',
-        gap: spacing.md,
-        marginHorizontal: spacing.lg,
-        marginTop: -30,
-        padding: spacing.md,
-        borderRadius: radii.md,
-        backgroundColor: colors.surface,
-        borderWidth: 1,
-        borderColor: colors.borderSubtle,
-        ...shadows.medium,
-    },
-    availabilityCopy: {
-        flex: 1,
-        paddingTop: 2,
-    },
-    availabilityEyebrow: {
-        ...typography.overline,
-        color: colors.secondary,
-        marginBottom: 5,
-    },
-    availabilityTitle: {
-        ...typography.body,
+        ...typography.h2,
         color: colors.text,
-        fontWeight: '800',
+        marginTop: 2,
     },
 
+    // -- Stats --------------------------------------------
     statsRow: {
         flexDirection: 'row',
         gap: spacing.sm,
         paddingHorizontal: spacing.lg,
-        paddingTop: spacing.lg,
+        paddingVertical: spacing.md,
+        backgroundColor: colors.surface,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
     },
     statCard: {
         flex: 1,
         alignItems: 'center',
-        backgroundColor: colors.surface,
+        backgroundColor: colors.background,
         borderRadius: radii.md,
         paddingVertical: spacing.md,
         paddingHorizontal: spacing.sm,
         borderWidth: 1,
-        borderColor: colors.borderSubtle,
-        ...shadows.small,
+        borderColor: colors.border,
     },
     statCardAccent: {
-        backgroundColor: '#EFF6FF',
+        backgroundColor: colors.secondarySoft,
         borderColor: '#BFDBFE',
     },
     statIconWrap: {
@@ -484,6 +463,7 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
 
+    // -- Error Banner -------------------------------------
     errorBanner: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -502,6 +482,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
 
+    // -- Section ------------------------------------------
     section: {
         paddingHorizontal: spacing.lg,
         marginTop: spacing.lg,
@@ -547,6 +528,7 @@ const styles = StyleSheet.create({
         color: colors.text,
     },
 
+    // -- Active Delivery Card ------------------------------
     activeCard: {
         backgroundColor: colors.surface,
         borderRadius: radii.lg,
@@ -678,6 +660,7 @@ const styles = StyleSheet.create({
         fontSize: 13,
     },
 
+    // -- Idle / Empty State --------------------------------
     idleCard: {
         alignItems: 'center',
         paddingVertical: spacing.xl,
@@ -715,6 +698,7 @@ const styles = StyleSheet.create({
         fontWeight: '700',
     },
 
+    // -- Assigned Mini Card --------------------------------
     miniCard: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -759,6 +743,7 @@ const styles = StyleSheet.create({
         color: colors.secondary,
     },
 
+    // -- Quick Actions -------------------------------------
     quickActions: {
         paddingHorizontal: spacing.lg,
         marginTop: spacing.lg,
@@ -781,6 +766,7 @@ const styles = StyleSheet.create({
         color: colors.secondary,
     },
 
+    // -- Center State --------------------------------------
     centerState: {
         flex: 1,
         justifyContent: 'center',

@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import Stripe from 'stripe';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
+import { resolveShopOwnerId } from '../lib/shopAccess.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -8,11 +9,14 @@ class WalletController {
 
     /**
      * GET /wallet/my
-     * Returns the authenticated user's wallet + last 30 transactions.
+     * Returns the wallet + last 30 transactions for the authenticated user's shop.
+     * Salesmen share their manager's wallet — order earnings are credited there
+     * (see resolveShopOwnerId), so a salesman's "my wallet" must resolve the same
+     * way or it always shows zero even after real sales.
      */
     getMyWallet = async (req, res) => {
         try {
-            const userId = req.user.id;
+            const userId = await resolveShopOwnerId(req.user);
             let wallet = await prisma.wallet.findUnique({
                 where: { userId },
                 include: {
@@ -134,43 +138,7 @@ class WalletController {
         }
     }
 
-    addDeliveryPersonEarnings = async (req, res) => {
-        try {
-            const { walletID, amount, orderId } = req.body;
-            const safeAmount = parseFloat(amount);
-            
-            if (isNaN(safeAmount) || safeAmount <= 0) {
-                return res.status(400).json({ msg: 'Invalid amount provided', error: true, status: 400 });
-            }
 
-            const order = await prisma.order.findUnique({ where: { id: orderId } });
-
-            if (!order || order.status !== 'DELIVERED') {
-                return res.status(400).json({ msg: 'Order is not delivered', error: true, status: 400 });
-            }
-
-            const adminWallet = await getAdminWallet();
-            await prisma.$transaction([
-                prisma.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: safeAmount } } }),
-                prisma.wallet.update({ where: { id: walletID }, data: { balance: { increment: safeAmount } } }),
-                prisma.walletTransaction.create({
-                    data: {
-                        amount: safeAmount,
-                        type: "EARNING",
-                        senderWalletId: adminWallet.id,
-                        receiverWalletId: walletID,
-                        orderId: orderId,
-                        description: "Delivery fee paid by admin to delivery person"
-                    }
-                })
-            ]);
-
-            return res.status(200).json({ msg: 'Earnings added successfully', error: false, status: 200 });
-        } catch (error) {
-            console.error("Earnings processing error:", error);
-            return res.status(500).json({ msg: 'walletController --> addDeliveryPersonEarnings: Failed to process earnings', error: true, status: 500 });
-        }
-    }
 
     substractCODPayment = async (req, res) => {
         try {
@@ -253,41 +221,7 @@ class WalletController {
         }
     }
 
-    substractDeliveryPersonDayPayment = async (req, res) => {
-        try {
-            const { deliveryPersonWalletID } = req.body;
-            const wallet = await prisma.wallet.findUnique({
-                where: { id: deliveryPersonWalletID }
-            });
-            
-            if (!wallet) return res.status(404).json({ msg: 'Delivery person wallet not found', error: true, status: 404 });
-            if (wallet.balance <= 0) return res.status(400).json({ msg: 'Insufficient balance', error: true, status: 400 });
-            
-            const payoutAmount = wallet.balance;
 
-            await prisma.$transaction([
-                prisma.wallet.update({
-                    where: { id: deliveryPersonWalletID },
-                    data: { balance: { decrement: payoutAmount } }
-                }),
-                prisma.walletTransaction.create({
-                    data: {
-                        amount: payoutAmount,
-                        type: "PAYOUT",
-                        senderWalletId: deliveryPersonWalletID,
-                        receiverWalletId: null,
-                        codSettlementStatus: "NOT_APPLICABLE",
-                        description: "Daily payout to delivery person"
-                    }
-                })
-            ]);
-            
-            return res.status(200).json({ msg: 'Daily payment subtracted successfully', error: false, status: 200 });
-        } catch (error) {
-            console.error("Subtracting daily payment error:", error);
-            return res.status(500).json({ msg: 'walletController --> substractDeliveryPersonDayPayment: Failed to subtract daily payment', error: true, status: 500 });
-        }
-    }
 
     addPurchaseAmountToSalesman = async (req, res) => {
         try {
@@ -335,7 +269,8 @@ class WalletController {
      */
     triggerPayout = async (req, res) => {
         try {
-            const userId = req.user?.id || req.body.userId;
+            // Salesmen share their manager's wallet — see getMyWallet for why.
+            const userId = req.user ? await resolveShopOwnerId(req.user) : req.body.userId;
 
             // Get wallet + stripeAccountId in one query
             const wallet = await prisma.wallet.findUnique({

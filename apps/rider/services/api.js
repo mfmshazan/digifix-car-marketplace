@@ -29,8 +29,16 @@ const isPublicAuthRequest = (request = {}) => {
     return PUBLIC_AUTH_ENDPOINTS.some((endpoint) => url.endsWith(endpoint));
 };
 
-const hasAuthorizationHeader = (request = {}) =>
-    Boolean(request.headers?.Authorization || request.headers?.authorization);
+let sessionExpiredHandler = null;
+
+export const setSessionExpiredHandler = (handler) => {
+    sessionExpiredHandler = typeof handler === 'function' ? handler : null;
+};
+
+const expireSession = async (error) => {
+    await clearTokens();
+    sessionExpiredHandler?.(error);
+};
 
 /**
  * Subscribe to token refresh
@@ -80,13 +88,13 @@ api.interceptors.response.use(
         const originalRequest = error.config;
 
         // Public login/register failures are credential errors, not expired sessions.
-        // Refresh only protected requests that were actually sent with an access token.
+        // A protected request without an Authorization header can still be
+        // recovered when SecureStore contains a valid refresh token.
         if (
             (error.response?.status === 401 || error.response?.status === 403) &&
             originalRequest &&
             !originalRequest._retry &&
-            !isPublicAuthRequest(originalRequest) &&
-            hasAuthorizationHeader(originalRequest)
+            !isPublicAuthRequest(originalRequest)
         ) {
             if (isRefreshing) {
                 // Wait for the ongoing refresh to complete
@@ -112,7 +120,7 @@ api.interceptors.response.use(
                     const sessionError = new Error('Your rider session has expired. Please sign in again.');
                     isRefreshing = false;
                     onRefreshFailed(sessionError);
-                    await clearTokens();
+                    await expireSession(sessionError);
                     return Promise.reject(sessionError);
                 }
 
@@ -140,7 +148,7 @@ api.interceptors.response.use(
             } catch (refreshError) {
                 isRefreshing = false;
                 onRefreshFailed(refreshError);
-                await clearTokens();
+                await expireSession(refreshError);
                 return Promise.reject(refreshError);
             }
         }
@@ -165,9 +173,45 @@ export const partnerAPI = {
     updateProfile: (data) => api.put('/partner/profile', data),
     deleteProfile: () => api.delete('/partner/profile'),
     updateStatus: (status) => api.put('/partner/status', { status }),
-
     updateLocation: (latitude, longitude) =>
         api.put('/partner/location', { latitude, longitude }),
+    uploadPhoto: async (photoUri) => {
+        const formData = new FormData();
+        const photoFile = {
+            uri: photoUri,
+            type: 'image/jpeg',
+            name: 'rider-profile-photo.jpg',
+        };
+        formData.append('photo', photoFile);
+
+        const token = await getAccessToken();
+        if (!token) {
+            throw new Error('Session expired. Please sign in again.');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/partner/profile/photo`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            body: formData,
+        });
+
+        const responseText = await response.text();
+        let result = {};
+        try {
+            result = responseText ? JSON.parse(responseText) : {};
+        } catch {
+            result = {};
+        }
+
+        if (!response.ok) {
+            throw new Error(result.message || 'Failed to upload photo');
+        }
+
+        return { data: result };
+    },
+    removePhoto: () => api.delete('/partner/profile/photo'),
 };
 
 export const performanceAPI = {
@@ -182,6 +226,8 @@ export const jobsAPI = {
     getAssigned: () => api.get('/jobs/assigned'),
     getHistory: (limit = 20, offset = 0) =>
         api.get(`/jobs/history?limit=${limit}&offset=${offset}`),
+    // Used by AvailableJobsScreen to claim an open job from the browse list.
+    acceptJob: (jobId) => api.post(`/jobs/${jobId}/accept`),
     acceptAssigned: (jobId) => api.put(`/jobs/${jobId}/status`, { status: 'accepted' }),
     acceptIncomingRequest: (offerId) =>
         api.post(`/jobs/request-offers/${offerId}/accept`),
@@ -217,6 +263,8 @@ export const jobsAPI = {
             formData.append('signature', proofData.signatureData);
         }
 
+        // Uses raw fetch (not the axios instance) — axios's FormData handling on
+        // RN silently drops the multipart boundary for large photo uploads.
         const token = await getAccessToken();
         if (!token) {
             throw new Error('Your rider session has expired. Please sign in again.');
@@ -270,3 +318,6 @@ export const reviewsAPI = {
 };
 
 export default api;
+
+
+

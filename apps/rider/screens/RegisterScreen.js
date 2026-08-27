@@ -30,7 +30,7 @@ const PASSWORD_REQUIREMENTS = [
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
 const isStrongPassword = (value) => passwordRegex.test(value);
 
-export default function RegisterScreen({ navigation }) {
+export default function RegisterScreen({ navigation, onAuthenticated }) {
     const [formData, setFormData] = useState({
         fullName: '',
         email: '',
@@ -90,6 +90,7 @@ export default function RegisterScreen({ navigation }) {
                 {
                     text: 'OK',
                     onPress: () => {
+                        onAuthenticated?.();
                         navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
                     }
                 }
@@ -131,7 +132,13 @@ export default function RegisterScreen({ navigation }) {
                 await saveTokens(token, '');
                 await saveUserData(user);
                 Alert.alert('Success', 'Account created successfully!', [
-                    { text: 'OK', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] }) }
+                    {
+                        text: 'OK',
+                        onPress: () => {
+                            onAuthenticated?.();
+                            navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+                        },
+                    }
                 ]);
             } else {
                 const msg = response.message || 'Could not complete registration. Please try again.';

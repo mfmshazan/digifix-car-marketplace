@@ -2,6 +2,7 @@
 import Stripe from 'stripe';
 import prisma from '../lib/prisma.js';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
+import { resolveShopOwnerId } from '../lib/shopAccess.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -80,7 +81,9 @@ class StripeController {
 
     getOnboardingLink = async (req, res) => {
         try {
-            const userId = req.user.id;
+            // Salesmen share their manager's wallet/Stripe account — see getMyWallet
+            // in wallet.controller.js for why. Onboarding must resolve the same way.
+            const userId = await resolveShopOwnerId(req.user);
             const user = await prisma.user.findUnique({ where: { id: userId } });
             
             if (!user) return res.status(404).json({ success: false, message: 'User not found' });
@@ -109,7 +112,7 @@ class StripeController {
 
     checkAccountStatus = async (req, res) => {
         try {
-            const userId = req.user.id;
+            const userId = await resolveShopOwnerId(req.user);
             const user = await prisma.user.findUnique({ where: { id: userId } });
             if (!user || !user.stripeAccountId) {
                  return res.status(200).json({ success: true, isReady: false });

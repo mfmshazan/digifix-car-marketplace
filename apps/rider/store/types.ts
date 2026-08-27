@@ -4,7 +4,7 @@ import type { Delivery } from '../types/delivery';
 
 export type RootState = {
     availability: {
-        status: 'online' | 'offline' | 'busy';
+        status: 'online' | 'offline';
         isSyncing: boolean;
         lastSyncError: string | null;
     };

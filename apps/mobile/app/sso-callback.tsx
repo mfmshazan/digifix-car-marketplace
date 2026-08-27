@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ export default function SSOCallbackScreen() {
   const clerk = useClerk();
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { session } = useSession();
+  const [syncError, setSyncError] = useState("");
+  const [retryAttempt, setRetryAttempt] = useState(0);
 
   // Guard prevents duplicate backend sync calls when deps fire multiple times
   const isProcessingRef = useRef(false);
@@ -63,6 +65,7 @@ export default function SSOCallbackScreen() {
     }
 
     isProcessingRef.current = true;
+    setSyncError("");
 
     const run = async () => {
       try {
@@ -119,32 +122,46 @@ export default function SSOCallbackScreen() {
           return;
         }
 
-        console.error("[SSOCallback] Backend sync failed:", response.message);
-        isProcessingRef.current = false;
-        router.replace("/(auth)/login");
-      } catch (err) {
+        const message = response.message || "Could not sync your account with the backend.";
+        console.error("[SSOCallback] Backend sync failed:", message);
+        setSyncError(message);
+      } catch (err: any) {
         console.error("[SSOCallback] Critical error during sync:", err);
-        isProcessingRef.current = false;
-        router.replace("/(auth)/login");
+        setSyncError(err?.message || "Could not sync your account with the backend.");
       }
     };
 
     run();
-  }, [isLoaded, isSignedIn, session, getToken]);
+  }, [isLoaded, isSignedIn, session, getToken, retryAttempt]);
 
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <ActivityIndicator size="large" color="#00002E" />
-        <Text style={styles.title}>Completing Sign-In</Text>
-        <Text style={styles.subtitle}>
-          Please wait while we sync your account...
+        {!syncError && <ActivityIndicator size="large" color="#00002E" />}
+        <Text style={styles.title}>
+          {syncError ? "Backend Unavailable" : "Completing Sign-In"}
         </Text>
+        <Text style={styles.subtitle}>
+          {syncError || "Please wait while we sync your account..."}
+        </Text>
+
+        {syncError && (
+          <Pressable
+            style={styles.retryButton}
+            onPress={() => {
+              isProcessingRef.current = false;
+              setRetryAttempt((attempt) => attempt + 1);
+            }}
+          >
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </Pressable>
+        )}
 
         <Pressable
           style={styles.backButton}
-          onPress={() => {
+          onPress={async () => {
             console.log("[SSOCallback] Manual back to login clicked");
+            await clerk.signOut();
             router.replace("/(auth)/login");
           }}
         >
@@ -192,6 +209,17 @@ const styles = StyleSheet.create({
   backButton: {
     marginTop: 16,
     padding: 12,
+  },
+  retryButton: {
+    backgroundColor: "#00002E",
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+  },
+  retryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
   },
   backButtonText: {
     color: "#00002E",

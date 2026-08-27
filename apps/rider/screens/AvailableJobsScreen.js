@@ -7,17 +7,17 @@ import {
     RefreshControl,
     Alert,
 } from 'react-native';
-import { SurfaceCard, EmptyState, StatusBadge, ScreenHero } from '../components/Common';
+import { useSelector } from 'react-redux';
+import { Button, SurfaceCard, EmptyState, StatusBadge, SectionHeader } from '../components/Common';
 import { jobsAPI } from '../services/api';
+import { selectIsOnline, selectIsSyncing } from '../store/slices/availabilitySlice';
 import { colors, spacing, typography } from '../styles/theme';
 
-const formatCurrency = (value) =>
-    `Rs. ${Number(value || 0).toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    })}`;
+const formatCurrency = (value) => `$${Number(value || 0).toFixed(2)}`;
 
-export default function AvailableJobsScreen() {
+export default function AvailableJobsScreen({ navigation }) {
+    const isOnline = useSelector(selectIsOnline);
+    const isSyncingAvailability = useSelector(selectIsSyncing);
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -35,6 +35,27 @@ export default function AvailableJobsScreen() {
         } finally {
             setLoading(false);
             setRefreshing(false);
+        }
+    };
+
+    const handleAcceptJob = async (jobId) => {
+        if (!isOnline || isSyncingAvailability) {
+            Alert.alert(
+                'Unavailable',
+                isSyncingAvailability
+                    ? 'Please wait for your availability status to finish syncing.'
+                    : 'Go online before accepting a job.'
+            );
+            return;
+        }
+
+        try {
+            await jobsAPI.acceptJob(jobId);
+            Alert.alert('Success', 'Job accepted. Your dashboard will update next.', [
+                { text: 'OK', onPress: () => navigation.navigate('Home') },
+            ]);
+        } catch (error) {
+            Alert.alert('Error', error.response?.data?.message || 'Failed to accept job');
         }
     };
 
@@ -64,22 +85,32 @@ export default function AvailableJobsScreen() {
                 <Text style={styles.items}>Items: {item.items_description}</Text>
             ) : null}
 
-            <Text style={styles.requestNotice}>
-                This job can only be accepted if it is sent to you as an incoming request.
-            </Text>
+            <Button
+                title="Accept Job"
+                onPress={() => handleAcceptJob(item.id)}
+                disabled={!isOnline || isSyncingAvailability}
+                style={styles.acceptButton}
+            />
         </SurfaceCard>
     );
 
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <ScreenHero
-                    eyebrow="Dispatch opportunities"
+                <SectionHeader
+                    eyebrow="Dispatch"
                     title="Available Jobs"
-                    subtitle="Nearby open work is listed for awareness. Acceptance still happens through a direct incoming offer."
-                    icon="radio-outline"
+                    subtitle="Fresh opportunities ready for acceptance."
                 />
             </View>
+
+            {!isOnline && (
+                <SurfaceCard style={styles.banner}>
+                    <Text style={styles.bannerText}>
+                        You are offline. Turn availability on to start accepting work.
+                    </Text>
+                </SurfaceCard>
+            )}
 
             <FlatList
                 data={jobs}
@@ -103,7 +134,6 @@ export default function AvailableJobsScreen() {
                                 ? 'We are checking the latest open jobs for your area.'
                                 : 'There are no open jobs at the moment. Pull to refresh and check again soon.'
                         }
-                        icon="radio-outline"
                     />
                 }
             />
@@ -130,14 +160,8 @@ const styles = StyleSheet.create({
         color: colors.warning,
         fontWeight: '700',
     },
-    requestNotice: {
-        ...typography.bodySmall,
-        color: colors.textSecondary,
-        marginTop: spacing.md,
-    },
     listContent: {
-        paddingHorizontal: spacing.lg,
-        paddingBottom: 120,
+        padding: spacing.lg,
         gap: spacing.md,
     },
     jobCard: {

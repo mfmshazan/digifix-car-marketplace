@@ -55,7 +55,7 @@ export default function SalesmanTabLayout() {
         const userId: string = decoded?.userId || decoded?.id || decoded?.sub;
         if (!userId || cancelled) return;
 
-        const socket = connectSocket(userId);
+        const socket = connectSocket(token);
 
         const handleNewOrder = (payload: { orderNumber: string; total?: number }) => {
           if (cancelled) return;
@@ -130,6 +130,27 @@ export default function SalesmanTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="add-car-part"
+        options={{
+          title: "Add Part",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="add-circle" size={size} color={color} />
+          ),
+          headerTitle: "Add Car Part",
+        }}
+      />
+      <Tabs.Screen
+        name="add-product"
+        options={{
+          title: "Add Product",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cube-outline" size={size} color={color} />
+          ),
+          headerTitle: "Add New Product",
+          href: null,
+        }}
+      />
+      <Tabs.Screen
         name="orders"
         options={{
           title: "Orders",
@@ -144,6 +165,16 @@ export default function SalesmanTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="wallet"
+        options={{
+          title: "Wallet",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="wallet" size={size} color={color} />
+          ),
+          headerTitle: "My Wallet",
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",
@@ -152,13 +183,6 @@ export default function SalesmanTabLayout() {
           ),
         }}
       />
-
-      {/* Hidden from the salesman tab bar — adding products/parts and the wallet
-          belong to the manager role. Kept registered (href: null) so the screens
-          stay in the codebase for potential reuse. */}
-      <Tabs.Screen name="add-car-part" options={{ href: null, headerTitle: "Add Car Part" }} />
-      <Tabs.Screen name="add-product" options={{ href: null, headerTitle: "Add New Product" }} />
-      <Tabs.Screen name="wallet" options={{ href: null, headerTitle: "My Wallet" }} />
     </Tabs>
   );
 }

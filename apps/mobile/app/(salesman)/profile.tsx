@@ -360,17 +360,8 @@ export default function SalesmanProfileScreen() {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>
-            {userData?.store?.rating != null
-              ? Number(userData.store.rating).toFixed(1)
-              : "—"}
-          </Text>
+          <Text style={styles.statValue}>4.8</Text>
           <Text style={styles.statLabel}>Rating</Text>
-          {userData?.store?.totalReviews != null && userData.store.totalReviews > 0 && (
-            <Text style={styles.statReviewCount}>
-              {userData.store.totalReviews} review{userData.store.totalReviews !== 1 ? "s" : ""}
-            </Text>
-          )}
         </View>
       </View>
 
@@ -402,7 +393,7 @@ export default function SalesmanProfileScreen() {
             key={item.id}
             style={styles.menuItem}
             onPress={() => {
-              if ("route" in item && item.route) router.push(item.route as any);
+              if ("route" in item && item.route) router.push(item.route);
             }}
           >
             <View
@@ -538,12 +529,6 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
     color: "#999",
-  },
-  statReviewCount: {
-    fontSize: 10,
-    color: "#FF6B35",
-    fontWeight: "500",
-    marginTop: 2,
   },
   statDivider: {
     width: 1,

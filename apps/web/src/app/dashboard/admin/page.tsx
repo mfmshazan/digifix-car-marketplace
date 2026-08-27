@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { adminApi } from '@/lib/api';
+import AdminReceiptsPage from './receipts/page';
 import {
     Bell,
     MessageSquare,
@@ -34,7 +35,7 @@ import { connectSocket, disconnectSocket } from '@/lib/socket';
 
 
 
-type AdminTab = 'overview' | 'users' | 'finances' | 'catalog' | 'reviews';
+type AdminTab = 'overview' | 'users' | 'finances' | 'catalog' | 'reviews' | 'receipts';
 
 interface AdminCancellationNotification {
     id: string;
@@ -167,6 +168,7 @@ export default function AdminDashboard() {
         { id: 'finances', label: 'System Finances', icon: DollarSign },
         { id: 'catalog', label: 'Global Catalog', icon: ShoppingBag },
         { id: 'reviews', label: 'Reviews Moderation', icon: ShieldAlert },
+        { id: 'receipts', label: 'Receipt Reviews', icon: Receipt },
     ];
 
     const unreadCancelCount = cancelNotifs.filter((n) => !n.read).length;
@@ -338,6 +340,7 @@ export default function AdminDashboard() {
                         {activeTab === 'finances' && 'Platform Finances'}
                         {activeTab === 'catalog' && 'Global Catalog'}
                         {activeTab === 'reviews' && 'Reviews Moderation'}
+                        {activeTab === 'receipts' && 'Receipt Review Queue'}
                     </h1>
                     <p className="text-gray-500 text-sm mt-0.5">
                         {activeTab === 'overview' && 'Monitor key platform metrics and recent activities.'}
@@ -345,6 +348,7 @@ export default function AdminDashboard() {
                         {activeTab === 'finances' && 'Track platform fees, total revenue, and system wallets.'}
                         {activeTab === 'catalog' && 'View all products, categories, and active car parts.'}
                         {activeTab === 'reviews' && 'Moderate flagged and pending reviews.'}
+                        {activeTab === 'receipts' && 'Review pending repayment receipts, approve valid payments, and reject invalid ones.'}
                     </p>
                 </div>
 
@@ -354,12 +358,17 @@ export default function AdminDashboard() {
                 {activeTab === 'finances' && <FinancesTab />}
                 {activeTab === 'catalog' && <CatalogTab />}
                 {activeTab === 'reviews' && <ReviewsModerationTab />}
+                {activeTab === 'receipts' && <AdminReceiptQueueView />}
             </main>
         </div>
     );
 }
 
 // ─── Sub-Components ──────────
+
+function AdminReceiptQueueView() {
+    return <AdminReceiptsPage />;
+}
 
 function OverviewTab() {
     // Cached via React Query so switching admin tabs and back is instant.
@@ -941,7 +950,7 @@ function CatalogTab() {
 function ReviewsModerationTab() {
     const queryClient = useQueryClient();
     const [filters, setFilters] = useState({
-        status: 'PENDING',
+        status: 'FLAGGED',
         targetType: '',
         page: 1,
     });
@@ -980,7 +989,7 @@ function ReviewsModerationTab() {
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
                 <h2 className="text-lg font-bold text-gray-900">Review Queue</h2>
                 <div className="flex gap-2 bg-gray-50 p-1 rounded-xl border border-gray-200">
-                    {['PENDING', 'FLAGGED', 'PUBLISHED', 'HIDDEN', ''].map((status) => (
+                    {['FLAGGED', 'PUBLISHED', 'HIDDEN', ''].map((status) => (
                         <button
                             key={status}
                             onClick={() => setFilters(f => ({ ...f, status, page: 1 }))}

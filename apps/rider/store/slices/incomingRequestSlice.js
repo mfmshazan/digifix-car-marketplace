@@ -9,12 +9,17 @@ export const acceptIncomingRequest = createAsyncThunk(
     async (requestId, { dispatch, rejectWithValue }) => {
         try {
             const response = await jobsAPI.acceptIncomingRequest(requestId);
-            await Promise.all([
-                dispatch(fetchDriverHome()),
-                dispatch(fetchAssignedDeliveries()),
-            ]);
+            const acceptedDelivery = normalizeDelivery(response?.data?.data ?? {});
 
-            return normalizeDelivery(response?.data?.data ?? {});
+            // Navigate as soon as the server confirms acceptance. These list
+            // refreshes keep Redux in sync but are not required to render the
+            // Active Delivery screen because it receives this delivery directly.
+            setTimeout(() => {
+                void dispatch(fetchDriverHome());
+                void dispatch(fetchAssignedDeliveries());
+            }, 300);
+
+            return acceptedDelivery;
         } catch (error) {
             return rejectWithValue(
                 error?.response?.data?.message ||

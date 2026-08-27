@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router'; 
 import { Ionicons } from "@expo/vector-icons";
@@ -12,20 +12,13 @@ interface VerifyResponse {
 }
 
 export default function SuccessScreen() {
-  const { session_id } = useLocalSearchParams<{ session_id: string }>();
+  const params = useLocalSearchParams<{ session_id?: string; sessionId?: string }>();
   const { clearCart } = useCart();
+  const sessionId = typeof params.session_id === 'string' ? params.session_id : typeof params.sessionId === 'string' ? params.sessionId : null;
   
   const [status, setStatus] = useState<'verifying' | 'success' | 'failed'>('verifying'); 
 
-  useEffect(() => {
-    if (session_id) {
-      verifyPayment(session_id);
-    } else {
-      setStatus('failed');
-    }
-  }, [session_id]);
-
-  const verifyPayment = async (id: string) => {
+  const verifyPayment = useCallback(async (id: string) => {
     try {
       const token = await getToken();
       const response = await fetch(`${getApiUrl()}/stripe/verify-session/${id}`, {
@@ -43,7 +36,15 @@ export default function SuccessScreen() {
       console.error("Verification Error:", error);
       setStatus('failed');
     }
-  };
+  }, [clearCart]);
+
+  useEffect(() => {
+    if (sessionId) {
+      verifyPayment(sessionId);
+    } else {
+      setStatus('failed');
+    }
+  }, [sessionId, verifyPayment]);
 
   return (
     <View style={styles.container}>

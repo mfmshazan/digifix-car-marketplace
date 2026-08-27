@@ -41,6 +41,11 @@ const prisma = {
     findUnique: vi.fn(),
     update: vi.fn(),
   },
+  review: {
+    create: vi.fn(),
+    findUnique: vi.fn(),
+    aggregate: vi.fn(),
+  },
   wallet: {
     findUnique: vi.fn(),
     update: vi.fn(),

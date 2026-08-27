@@ -58,8 +58,6 @@ export default function LoginPage() {
         // Redirect based on user role
         if (user.role === 'ADMIN') {
           window.location.href = '/dashboard/admin';
-        } else if (user.role === 'SHOP_MANAGER') {
-          window.location.href = '/dashboard/manager';
         } else if (user.role === 'SALESMAN') {
           window.location.href = '/dashboard/salesman';
         } else {
@@ -187,7 +185,7 @@ export default function LoginPage() {
 
           <div className="mt-8 text-center">
             <p className="text-gray-600">
-              Don't have an account?{' '}
+              Don’t have an account?{' '}
               <Link href="/register" className="text-[#00002E] hover:underline font-semibold">
                 Sign up
               </Link>
@@ -204,7 +202,7 @@ export default function LoginPage() {
               Find the Perfect Parts for Your Car
             </h2>
             <p className="text-gray-300 text-lg">
-              Access thousands of quality car parts from verified sellers. Search by your car's number plate to find compatible parts instantly.
+              Access thousands of quality car parts from verified sellers. Search by your car’s number plate to find compatible parts instantly.
             </p>
           </div>
           <div className="grid grid-cols-3 gap-6 text-white">

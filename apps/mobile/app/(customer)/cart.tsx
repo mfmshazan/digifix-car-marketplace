@@ -14,9 +14,10 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useCart, CartItem } from "../../src/store/cartStore";
 import { useFocusEffect, useRouter } from "expo-router";
+import * as ExpoLinking from "expo-linking";
 import { createOrder } from "../../src/api/orders";
 import CustomModal from "@/src/components/modal";
-import { getApiUrl, getExpoDeepLinkBase } from "../../src/config/api.config";
+import { getApiUrl } from "../../src/config/api.config";
 import { getToken } from "../../src/api/storage";
 import { getMyWallet } from "../../src/api/wallet";
 import { CustomerAddress, getAddresses } from "../../src/api/addresses";
@@ -239,8 +240,9 @@ export default function CartScreen() {
 
     setIsCheckingOut(true);
     try {
-      const deepLinkBase = getExpoDeepLinkBase();
       const token = await getToken();
+      const successUrl = `${ExpoLinking.createURL('/(customer)/checkout-success')}?session_id={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = ExpoLinking.createURL('/(customer)/cart');
       const response = await fetch(`${getApiUrl()}/stripe/create-checkout-session`, {
         method: 'POST',
         headers: {
@@ -250,8 +252,8 @@ export default function CartScreen() {
         body: JSON.stringify({
           items: items,
           addressId: selectedAddress.id,
-          successUrl: `${deepLinkBase}/--/(customer)/checkout-success?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${deepLinkBase}/--/(customer)/cart`,
+          successUrl,
+          cancelUrl,
         }),
       });
       

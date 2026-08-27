@@ -261,6 +261,8 @@ describe('createOrder', () => {
           walletTransaction: { create: vi.fn() },
           order: { create: vi.fn().mockResolvedValue(mockCreatedOrder) },
           orderTracking: { create: vi.fn() },
+          product: { update: vi.fn() },
+          carPart: { update: vi.fn() },
         };
         return fn(mockTx);
       });

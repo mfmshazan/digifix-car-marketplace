@@ -2,15 +2,9 @@ import { io, Socket } from 'socket.io-client';
 import { getApiUrl } from '../config/api.config';
 
 let socket: Socket | null = null;
-let joinedUserId: string | null = null;
 let listenersAttached = false;
 
 const getBackendUrl = (): string => getApiUrl().replace(/\/api\/?$/, '');
-
-const joinUserRoom = (userId?: string | null): void => {
-  if (!userId || !socket?.connected) return;
-  socket.emit('join', userId);
-};
 
 const attachSocketListeners = (): void => {
   if (!socket || listenersAttached) return;
@@ -18,8 +12,7 @@ const attachSocketListeners = (): void => {
 
   // 'connect' fires on every successful connection AND every reconnection in socket.io-client v4
   socket.on('connect', () => {
-    // Re-join user room after every connect/reconnect
-    joinUserRoom(joinedUserId);
+    // The backend derives and rejoins this user's room from the verified JWT.
   });
 
   socket.on('connect_error', (err) => {
@@ -43,13 +36,11 @@ export function getSocket(): Socket {
   return socket;
 }
 
-export function connectSocket(userId: string): Socket {
+export function connectSocket(accessToken: string): Socket {
   const s = getSocket();
-  joinedUserId = userId;
+  s.auth = { token: accessToken };
   if (!s.connected) {
     s.connect();
-  } else {
-    joinUserRoom(userId);
   }
   return s;
 }
@@ -61,5 +52,4 @@ export function disconnectSocket(): void {
     socket = null;
     listenersAttached = false;
   }
-  joinedUserId = null;
 }

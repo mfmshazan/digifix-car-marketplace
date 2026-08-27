@@ -42,6 +42,7 @@ const ACTION_ORDER: readonly DeliveryWorkflowAction[] = [
     DeliveryWorkflowAction.ARRIVE_PICKUP,
     DeliveryWorkflowAction.PICK_UP,
     DeliveryWorkflowAction.START_TRANSIT,
+    DeliveryWorkflowAction.ARRIVE_DROPOFF,
     DeliveryWorkflowAction.COMPLETE_DELIVERY,
 ];
 
@@ -54,12 +55,30 @@ const ACTION_VARIANTS: Record<
     [DeliveryWorkflowAction.ARRIVE_PICKUP]: 'primary',
     [DeliveryWorkflowAction.PICK_UP]: 'primary',
     [DeliveryWorkflowAction.START_TRANSIT]: 'primary',
+    [DeliveryWorkflowAction.ARRIVE_DROPOFF]: 'primary',
     [DeliveryWorkflowAction.COMPLETE_DELIVERY]: 'danger',
     [DeliveryWorkflowAction.CANCEL]: 'danger',
 };
 
 const getActionTitle = (action: DeliveryWorkflowAction) =>
     DELIVERY_ACTION_LABELS[action] ?? 'Continue';
+
+const findDeliveryInHomePayload = (
+    payload: {
+        activeDelivery?: Delivery | null;
+        assignedDeliveries?: Delivery[];
+    } | undefined,
+    deliveryId: Delivery['id']
+) => {
+    const matchesId = (candidate?: Delivery | null) =>
+        candidate && String(candidate.id) === String(deliveryId);
+
+    if (matchesId(payload?.activeDelivery)) {
+        return payload?.activeDelivery ?? null;
+    }
+
+    return payload?.assignedDeliveries?.find(matchesId) ?? null;
+};
 
 const getApiErrorMessage = (error: unknown) => {
     if (
@@ -188,28 +207,32 @@ export default function DeliveryActionControls({
                     });
                 } catch (error) {
                     const apiMessage = getApiErrorMessage(error);
-                    const canRepairStaleAcceptedState =
-                        action === DeliveryWorkflowAction.ARRIVE_PICKUP &&
-                        nextStatus === 'arrived_at_pickup' &&
-                        apiMessage.includes(
-                            'Invalid transition from assigned to arrived_at_pickup'
-                        );
+                    if (apiMessage.includes('Invalid transition from')) {
+                        const refreshResult = await dispatch(fetchDriverHome());
+                        if (fetchDriverHome.fulfilled.match(refreshResult)) {
+                            const serverDelivery = findDeliveryInHomePayload(
+                                refreshResult.payload,
+                                delivery.id
+                            );
 
-                    if (!canRepairStaleAcceptedState) {
-                        throw error;
+                            if (serverDelivery) {
+                                onDeliveryChange?.(serverDelivery);
+                                setLastFailedRequest(null);
+                                didSucceed = true;
+                                return;
+                            }
+                        }
                     }
 
-                    await jobsAPI.updateStatus(delivery.id, 'accepted', {
-                        ...locationPayload,
-                    });
-                    await jobsAPI.updateStatus(delivery.id, nextStatus, {
-                        ...locationPayload,
-                    });
+                    throw error;
                 }
 
-                await dispatch(fetchDriverHome());
+                const refreshResult = await dispatch(fetchDriverHome());
+                const refreshedDelivery = fetchDriverHome.fulfilled.match(refreshResult)
+                    ? findDeliveryInHomePayload(refreshResult.payload, delivery.id)
+                    : null;
 
-                nextDelivery = {
+                nextDelivery = refreshedDelivery ?? {
                     ...delivery,
                     status: nextStatus,
                 };

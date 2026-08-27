@@ -29,4 +29,12 @@ export type Delivery = {
     acceptedAt: string | null;
     createdAt: string | null;
     etaMinutes: number | null;
+    riderLocation?: {
+        latitude: number | null;
+        longitude: number | null;
+        accuracy: number | null;
+        speed: number | null;
+        heading: number | null;
+        recordedAt: string | null;
+    } | null;
 };

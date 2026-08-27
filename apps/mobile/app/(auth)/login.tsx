@@ -18,8 +18,8 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { loginUser } from "../../src/api/auth";
 import { saveToken, saveUser, getUserPrefs, saveUserPrefs, mergeServerUserAndPrefs } from "../../src/api/storage";
-import { useAuth, useSession } from "@clerk/expo";
-import { useGoogleSignIn, syncClerkWithBackend } from "../../src/api/google-signin";
+import { useAuth } from "@clerk/expo";
+import { useGoogleSignIn } from "../../src/api/google-signin";
 
 
 /** RN-web has no native driver — avoids console noise on web. */
@@ -32,8 +32,7 @@ export default function LoginScreen() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const { isLoaded, isSignedIn, getToken } = useAuth();
-  const { session } = useSession();
+  const { isLoaded, isSignedIn } = useAuth();
   const { signInWithGoogle } = useGoogleSignIn();
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -42,35 +41,13 @@ export default function LoginScreen() {
   const buttonScale = useRef(new Animated.Value(1)).current;
   const googleButtonScale = useRef(new Animated.Value(1)).current;
 
-  // Ref to prevent infinite sync loops
-  const hasAttemptedSyncRef = useRef(false);
-
-  //Auto backend sync
+  // Keep Clerk-to-backend synchronization in the callback screen so Google
+  // sign-in cannot start concurrent backend requests from two screens.
   useEffect(() => {
-    const checkExistingSession = async () => {
-      // Only proceed if Clerk is loaded, a session exists, and we haven't tried syncing yet
-      if (!isLoaded || !isSignedIn || !session || hasAttemptedSyncRef.current) return;
-
-      // Avoid auto-sync on web login screen during OAuth redirect flow.
-      if (Platform.OS === "web") return;
-
-      try {
-        const clerkToken = await getToken();
-        if (clerkToken) {
-          hasAttemptedSyncRef.current = true;
-          setIsLoading(true);
-          await handleBackendSync(clerkToken, session?.id);
-        }
-      } catch (err) {
-        console.error("Auto-sync error:", err);
-        hasAttemptedSyncRef.current = false; // Allow retry on error if needed
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkExistingSession();
-  }, [isLoaded, isSignedIn, session, getToken]);
+    if (isLoaded && isSignedIn && Platform.OS !== "web") {
+      router.replace("/sso-callback");
+    }
+  }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
     Animated.parallel([
@@ -195,59 +172,6 @@ export default function LoginScreen() {
       setIsLoading(false);
     }
   };
-
-  //backend sync for google users
-  const handleBackendSync = async (clerkToken: string, sessionId?: string) => {
-    try {
-      console.log("Finalizing backend sync with sessionId:", sessionId);
-
-      const response = await syncClerkWithBackend(
-        clerkToken,
-        "CUSTOMER",
-        sessionId
-      );
-
-      console.log("Backend sync response:", response);
-
-      if (response.success && response.data) {
-        await saveToken(response.data.token);
-        // Merge any locally saved profile prefs (name/phone/avatar_local)
-        // that survived logout back into the fresh backend user data.
-        const prefs = await getUserPrefs(response.data.user.email || "");
-        const merged: any = mergeServerUserAndPrefs(response.data.user, prefs);
-
-        // If the backend has a confirmed uploaded avatar, the local fallback
-        // URI is obsolete — clear it so the backend URL is displayed.
-        if (response.data.user.avatar && merged.avatar_local) {
-          merged.avatar_local = null;
-          const em = response.data.user.email || "";
-          if (em) await saveUserPrefs(em, { avatar_local: null });
-        }
-
-        await saveUser(merged);
-
-        setError("");
-
-        const dashboardRoute =
-          response.data.user.role === "SALESMAN"
-            ? "/(salesman)"
-            : "/(customer)";
-
-        console.log("Sync successful, redirecting to:", dashboardRoute);
-
-        router.replace(dashboardRoute as any);
-        return;
-      }
-
-      const errorMsg = response.message || "Backend sync failed";
-      console.error("Backend sync failed:", errorMsg);
-      setError(errorMsg);
-    } catch (syncErr: any) {
-      console.error("Backend sync error:", syncErr);
-      setError(`Auth Error: ${syncErr.message || "Unknown error"}`);
-    }
-  };
-
 
   const handleForgotPassword = () => {
     router.push('/(auth)/forgot-password');

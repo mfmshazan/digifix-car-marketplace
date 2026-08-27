@@ -16,6 +16,7 @@ import { router } from "expo-router";
 import { clearAuthData } from "../../src/api/storage";
 import { getSalesmanSalesSummary, SalesmanSalesSummary } from "../../src/api/orders";
 import { useAuth } from "@clerk/expo";
+import { formatCurrency } from "../../src/lib/currency";
 
 export default function SalesmanDashboard() {
   const { signOut } = useAuth();
@@ -78,10 +79,6 @@ export default function SalesmanDashboard() {
         },
       ]
     );
-  };
-
-  const formatCurrency = (amount: number) => {
-    return `Rs. ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const getStatusColor = (status: string) => {

@@ -1,6 +1,9 @@
 import { createClerkClient, verifyToken } from '@clerk/backend';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
+import { riderQuery } from '../lib/riderDb.js';
+import { createRiderTokens } from './riderAuth.controller.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -155,6 +158,44 @@ const googleSignIn = async (req, res) => {
                     include: { store: true },
                 });
             }
+        }
+
+        if (['DELIVERY_PARTNER', 'DELIVERY_PERSON', 'RIDER'].includes(role)) {
+            let riderResult = await riderQuery(
+                `SELECT id, email, full_name, phone, vehicle_type, vehicle_number,
+                        status, rating, total_deliveries, created_at
+                   FROM "Rider"
+                  WHERE email = $1`,
+                [email.toLowerCase()]
+            );
+
+            if (riderResult.rows.length === 0) {
+                // Google-only riders still need a Rider record because delivery
+                // jobs reference its integer id. The random password hash cannot
+                // be used for email/password login.
+                const passwordHash = await bcrypt.hash(
+                    `${clerkUserId}:${Date.now()}:${Math.random()}`,
+                    10
+                );
+                const phone = clerkUser.phoneNumbers?.[0]?.phoneNumber || user.phone || '';
+
+                riderResult = await riderQuery(
+                    `INSERT INTO "Rider" (email, password_hash, full_name, phone)
+                     VALUES ($1, $2, $3, $4)
+                     RETURNING id, email, full_name, phone, vehicle_type, vehicle_number,
+                               status, rating, total_deliveries, created_at`,
+                    [email.toLowerCase(), passwordHash, name || email.split('@')[0], phone]
+                );
+            }
+
+            const partner = riderResult.rows[0];
+            const { accessToken, refreshToken } = await createRiderTokens(partner);
+
+            return res.json({
+                success: true,
+                message: 'Google sign-in successful',
+                data: { partner, accessToken, refreshToken },
+            });
         }
 
         const token = generateToken(user.id, user.role);

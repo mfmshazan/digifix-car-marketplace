@@ -61,7 +61,7 @@ const getProducts = async (req, res) => {
             select: { id: true, name: true },
           },
           store: {
-            select: { id: true, name: true, rating: true },
+            select: { id: true, name: true, rating: true, phone: true },
           },
           vehicleModel: {
             select: {
@@ -110,7 +110,7 @@ const getProductById = async (req, res) => {
           select: { id: true, name: true, avatar: true },
         },
         store: {
-          select: { id: true, name: true, rating: true, logo: true },
+          select: { id: true, name: true, rating: true, logo: true, phone: true },
         },
         vehicleModel: {
           include: {
@@ -214,7 +214,7 @@ const createProduct = async (req, res) => {
         images: images || [],
         categoryId: categoryId || null,
         vehicleModelId: modelIds[0],
-        deliveryVehicle,
+        deliveryVehicleType: deliveryVehicle,
         salesmanId: userId,
         storeId: store?.id,
         approvalStatus: 'APPROVED',
@@ -321,7 +321,7 @@ const updateProduct = async (req, res) => {
         images: updateData.images,
         categoryId: updateData.categoryId || null,
         vehicleModelId: modelIds[0] || undefined,
-        deliveryVehicle: updateData.deliveryVehicle ?? undefined,
+        deliveryVehicleType: updateData.deliveryVehicle ?? undefined,
         isActive: updateData.isActive,
         compatibleModels: modelIds.length > 0
           ? { set: modelIds.map((id) => ({ id })) }

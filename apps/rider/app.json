@@ -1,9 +1,85 @@
 {
-    "expo":  {
-                 "name":  "delivery-partner-mobile",
-                 "slug":  "delivery-partner-mobile",
-                 "android":  {
-                                 "usesCleartextTraffic":  true
-                             }
-             }
+  "expo": {
+    "name": "Digifix Rider",
+    "slug": "delivery-partner-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "digifix-rider",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a7a4a"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.digifix.rider",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a7a4a"
+      },
+      "package": "com.digifix.rider",
+      "usesCleartextTraffic": true
+    },
+    "plugins": [
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Digifix Rider to use your location while completing deliveries.",
+          "locationAlwaysAndWhenInUsePermission": "Allow Digifix Rider to share your live location during an active delivery, including while navigation is open.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "production"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "packagingOptions": {
+              "exclude": [
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+              ]
+            }
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "OneSignalNotificationServiceExtension",
+                  "bundleIdentifier": "com.digifix.rider.OneSignalNotificationServiceExtension",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.digifix.rider.onesignal"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "0e6dae83-e914-42b2-8a71-2b51c81e4536"
+      }
+    }
+  }
 }

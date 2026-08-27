@@ -117,6 +117,8 @@ describe('shop order ownership compatibility', () => {
         }),
       },
       orderTracking: { create: vi.fn() },
+      product: { update: vi.fn() },
+      carPart: { update: vi.fn() },
     }));
     prisma.user.findUnique.mockResolvedValueOnce({ role: 'SHOP_MANAGER', managerId: null });
     prisma.user.findMany.mockResolvedValueOnce([{ id: 'salesman-1' }]);

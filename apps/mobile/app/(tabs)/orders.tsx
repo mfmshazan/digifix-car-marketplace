@@ -13,6 +13,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { getCustomerOrders, Order } from "../../src/api/orders";
 import { connectSocket } from "../../src/lib/socket";
 import { getToken } from "../../src/api/storage";
+import { formatCurrency } from "../../src/lib/currency";
 
 // Status color mapping
 const getStatusColor = (status: string) => {
@@ -104,7 +105,7 @@ export default function OrdersScreen() {
         const userId: string = decoded?.userId || decoded?.id || decoded?.sub;
         if (!userId) return;
 
-        const socket = connectSocket(userId);
+        const socket = connectSocket(token);
 
         const handleStatusUpdate = (payload: {
           orderId: string;
@@ -186,7 +187,7 @@ export default function OrdersScreen() {
         <View style={styles.orderDivider} />
         <View style={styles.orderFooter}>
           <Text style={styles.orderItems}>{itemCount} item(s)</Text>
-          <Text style={styles.orderTotal}>Rs. {item.total.toFixed(2)}</Text>
+          <Text style={styles.orderTotal}>{formatCurrency(item.total)}</Text>
         </View>
         <TouchableOpacity style={styles.trackButton}>
           <Ionicons name="location" size={16} color="#00002E" />

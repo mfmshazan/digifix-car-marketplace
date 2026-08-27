@@ -260,6 +260,10 @@ model Order {
   deliveryLongitude  Float?
   cancellationReason String?
   serviceCharge      Float               @default(0)
+  // Portion of `total` funded from the customer's own wallet at checkout.
+  // 0 = no wallet used; equal to `total` = fully wallet-paid; between = split
+  // payment where `paymentMethod` covers the remainder (Stripe / COD).
+  walletAmount       Float               @default(0)
   riderDeliveryJobs  DeliveryJob[]
   address            Address?            @relation(fields: [addressId], references: [id])
   customer           User                @relation("CustomerOrders", fields: [customerId], references: [id])

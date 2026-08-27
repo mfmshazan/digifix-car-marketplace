@@ -59,9 +59,11 @@ export default function CartScreen() {
     };
     estimate();
   }, [selectedAddressId, items]);
-  // The 10% service charge is the platform's commission taken from the manager, not the
-  // customer. The customer pays product subtotal + delivery.
-  const total = subtotal + deliveryFee;
+  // Order total the backend actually charges: product subtotal + 10% service
+  // charge + distance delivery fee. Keep this in sync with buildOrderPlan()
+  // on the server so the wallet-split maths lines up.
+  const serviceCharge = Math.round(subtotal * 0.1 * 100) / 100;
+  const total = subtotal + serviceCharge + deliveryFee;
   const selectedAddress =
     addresses.find((address) => address.id === selectedAddressId) ||
     addresses.find((address) => address.isDefault) ||
@@ -182,8 +184,8 @@ export default function CartScreen() {
     );
   };
 
-  // --- 1. LOCAL CHECKOUT (Wallet & COD) ---
-  const handleLocalCheckout = async (method: string) => {
+  // --- 1. LOCAL CHECKOUT (Wallet & COD, optionally with a partial wallet payment) ---
+  const handleLocalCheckout = async (method: "WALLET" | "COD", walletAmount = 0) => {
     if (!selectedAddress) {
       await requireDeliveryAddress();
       return;
@@ -200,21 +202,29 @@ export default function CartScreen() {
         orderItems,
         method,
         selectedAddress.id,
+        undefined,
+        walletAmount,
       );
 
       if (orderResponse.success) {
         // Clear local cart after successful order
         await clearCart();
-        
+
         const orderNum = Array.isArray(orderResponse.data)
           ? orderResponse.data[0]?.orderNumber
           : orderResponse.data?.orderNumber || orderResponse.data?.orders?.[0]?.orderNumber;
         const orderTotal = Array.isArray(orderResponse.data)
           ? orderResponse.data[0]?.total
           : orderResponse.data?.total || orderResponse.data?.orders?.[0]?.total;
+        const splitLine =
+          method === "COD" && walletAmount > 0
+            ? `\n\n${formatCurrency(walletAmount)} paid from wallet, ${formatCurrency(
+                Math.max(0, (orderTotal ?? total) - walletAmount),
+              )} due on delivery.`
+            : "";
         Alert.alert(
           "Order Placed! 🎉",
-          `Your order ${orderNum} has been placed successfully!\n\nTotal: ${formatCurrency(orderTotal)}\n\nThe seller has been notified.`,
+          `Your order ${orderNum} has been placed successfully!\n\nTotal: ${formatCurrency(orderTotal)}${splitLine}\n\nThe seller has been notified.`,
           [
             { text: "View Orders", onPress: () => router.push("/(customer)/orders") },
             { text: "Continue Shopping", onPress: () => router.push("/(customer)") }
@@ -231,8 +241,8 @@ export default function CartScreen() {
     }
   };
 
-  // --- 2. STRIPE CHECKOUT ---
-  const handleStripeCheckout = async () => {
+  // --- 2. STRIPE CHECKOUT (optionally with a partial wallet payment) ---
+  const handleStripeCheckout = async (walletAmount = 0) => {
     if (!selectedAddress) {
       await requireDeliveryAddress();
       return;
@@ -252,6 +262,7 @@ export default function CartScreen() {
         body: JSON.stringify({
           items: items,
           addressId: selectedAddress.id,
+          walletAmount,
           successUrl,
           cancelUrl,
         }),
@@ -285,13 +296,19 @@ export default function CartScreen() {
   };
 
   // --- 3. UNIFIED PAYMENT HANDLER ---
-  const handlePaymentSelection = (method: "stripe" | "wallet" | "cod") => {
+  // walletAmount = how much to draw from the wallet (0 = none, full total = wallet-only).
+  const handlePaymentSelection = (
+    method: "stripe" | "wallet" | "cod",
+    walletAmount: number,
+  ) => {
     setModalVisible(false); // Close the modal
 
     if (method === "stripe") {
-      handleStripeCheckout();
+      handleStripeCheckout(walletAmount);
+    } else if (method === "wallet") {
+      handleLocalCheckout("WALLET", walletAmount);
     } else {
-      handleLocalCheckout(method);
+      handleLocalCheckout("COD", walletAmount);
     }
   };
 
@@ -455,6 +472,10 @@ export default function CartScreen() {
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal</Text>
               <Text style={styles.summaryValue}>{formatCurrency(subtotal)}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Service charge (10%)</Text>
+              <Text style={styles.summaryValue}>{formatCurrency(serviceCharge)}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Delivery</Text>

@@ -1,73 +1,147 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, StyleSheet, Text, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatCurrency } from '../lib/currency';
 
+type PaymentMethod = 'stripe' | 'wallet' | 'cod';
+
 interface ModalProps {
   setModalVisible: (visible: boolean) => void;
   modalVisible: boolean;
-  onSelectMethod: (method: "stripe" | "wallet" | "cod") => void;
+  /**
+   * @param method   'wallet' = whole total from wallet; 'stripe'/'cod' = that method
+   *                 covers the remainder (`orderTotal - walletAmount`).
+   * @param walletAmount  amount to draw from the wallet (0 when not used).
+   */
+  onSelectMethod: (method: PaymentMethod, walletAmount: number) => void;
   walletBalance?: number | null;
   orderTotal?: number;
 }
 
 const CustomModal = ({ modalVisible, setModalVisible, onSelectMethod, walletBalance, orderTotal }: ModalProps) => {
-  const hasSufficientBalance = walletBalance != null && walletBalance > 0 && (orderTotal == null || walletBalance >= orderTotal);
+  const total = orderTotal ?? 0;
+  const balance = walletBalance ?? 0;
+  const walletCoversAll = balance > 0 && total > 0 && balance >= total;
+  const walletCoversSome = balance > 0 && total > 0 && balance < total;
+
+  // Two-step flow: pick a method, then (for a partial wallet) pick how to pay the rest.
+  const [step, setStep] = useState<'method' | 'remainder'>('method');
+  useEffect(() => {
+    if (!modalVisible) setStep('method');
+  }, [modalVisible]);
+
+  const partialWallet = Math.min(balance, total);
+  const remaining = Math.max(0, total - partialWallet);
+
   return (
     <Modal
       animationType="fade"
       transparent={true}
       visible={modalVisible}
-      onRequestClose={() => {
-        setModalVisible(false);
-      }}
+      onRequestClose={() => setModalVisible(false)}
     >
       <View style={styles.overlay}>
         <View style={styles.modalView}>
-          <Text style={styles.modalTitle}>Select Payment Method</Text>
+          {step === 'method' ? (
+            <>
+              <Text style={styles.modalTitle}>Select Payment Method</Text>
 
-          {/* Pay with Stripe */}
-          <Pressable
-            style={[styles.button, styles.stripeButton]}
-            onPress={() => onSelectMethod('stripe')}
-          >
-            <Ionicons name="card-outline" size={20} color="#0f172a" />
-            <Text style={styles.stripeText}>Pay with Card (Stripe)</Text>
-          </Pressable>
+              {/* Pay with Card (full amount) */}
+              <Pressable
+                style={[styles.button, styles.stripeButton]}
+                onPress={() => onSelectMethod('stripe', 0)}
+              >
+                <Ionicons name="card-outline" size={20} color="#0f172a" />
+                <Text style={styles.stripeText}>Pay with Card (Stripe)</Text>
+              </Pressable>
 
-          {/* Pay with Wallet */}
-          <Pressable
-            style={[styles.button, styles.walletButton, !hasSufficientBalance && styles.buttonDisabled]}
-            onPress={() => hasSufficientBalance && onSelectMethod('wallet')}
-          >
-            <Ionicons name="wallet-outline" size={20} color={hasSufficientBalance ? '#f8fafc' : '#64748b'} />
-            <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={[styles.textStyle, !hasSufficientBalance && styles.textDisabled]}>Pay with Wallet</Text>
-              {walletBalance != null && (
-                <Text style={styles.walletBalanceText}>
-                  Balance: {formatCurrency(walletBalance)}
-                  {!hasSufficientBalance ? ' (insufficient)' : ''}
-                </Text>
+              {/* Wallet — full or partial */}
+              {walletCoversAll && (
+                <Pressable
+                  style={[styles.button, styles.walletButton]}
+                  onPress={() => onSelectMethod('wallet', total)}
+                >
+                  <Ionicons name="wallet-outline" size={20} color="#f8fafc" />
+                  <View style={styles.buttonBody}>
+                    <Text style={styles.textStyle}>Pay with Wallet</Text>
+                    <Text style={styles.walletBalanceText}>Balance: {formatCurrency(balance)}</Text>
+                  </View>
+                </Pressable>
               )}
-            </View>
-          </Pressable>
 
-          {/* Cash on Delivery */}
-          <Pressable
-            style={[styles.button, styles.codButton]}
-            onPress={() => onSelectMethod('cod')}
-          >
-            <Ionicons name="cash-outline" size={20} color="#f8fafc" />
-            <Text style={styles.textStyle}>Cash on Delivery</Text>
-          </Pressable>
+              {walletCoversSome && (
+                <Pressable
+                  style={[styles.button, styles.walletButton]}
+                  onPress={() => setStep('remainder')}
+                >
+                  <Ionicons name="wallet-outline" size={20} color="#f8fafc" />
+                  <View style={styles.buttonBody}>
+                    <Text style={styles.textStyle}>
+                      Use wallet ({formatCurrency(partialWallet)}) + pay the rest
+                    </Text>
+                    <Text style={styles.walletBalanceText}>
+                      Balance: {formatCurrency(balance)} · {formatCurrency(remaining)} remaining
+                    </Text>
+                  </View>
+                </Pressable>
+              )}
 
-          {/* Cancel Button */}
-          <Pressable
-            style={styles.cancelButton}
-            onPress={() => setModalVisible(false)}
-          >
-            <Text style={styles.cancelText}>Cancel</Text>
-          </Pressable>
+              {balance <= 0 && (
+                <View style={[styles.button, styles.walletButton, styles.buttonDisabled]}>
+                  <Ionicons name="wallet-outline" size={20} color="#64748b" />
+                  <View style={styles.buttonBody}>
+                    <Text style={[styles.textStyle, styles.textDisabled]}>Pay with Wallet</Text>
+                    <Text style={styles.walletBalanceText}>Balance: {formatCurrency(balance)}</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Cash on Delivery (full amount) */}
+              <Pressable
+                style={[styles.button, styles.codButton]}
+                onPress={() => onSelectMethod('cod', 0)}
+              >
+                <Ionicons name="cash-outline" size={20} color="#f8fafc" />
+                <Text style={styles.textStyle}>Cash on Delivery</Text>
+              </Pressable>
+
+              <Pressable style={styles.cancelButton} onPress={() => setModalVisible(false)}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.modalTitle}>Pay the remaining balance</Text>
+              <Text style={styles.splitSummary}>
+                {formatCurrency(partialWallet)} from wallet
+              </Text>
+              <Text style={styles.splitRemaining}>
+                {formatCurrency(remaining)} still to pay
+              </Text>
+
+              <Pressable
+                style={[styles.button, styles.stripeButton]}
+                onPress={() => onSelectMethod('stripe', partialWallet)}
+              >
+                <Ionicons name="card-outline" size={20} color="#0f172a" />
+                <Text style={styles.stripeText}>Pay {formatCurrency(remaining)} by Card</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.button, styles.codButton]}
+                onPress={() => onSelectMethod('cod', partialWallet)}
+              >
+                <Ionicons name="cash-outline" size={20} color="#f8fafc" />
+                <Text style={styles.textStyle}>
+                  {formatCurrency(remaining)} Cash on Delivery
+                </Text>
+              </Pressable>
+
+              <Pressable style={styles.cancelButton} onPress={() => setStep('method')}>
+                <Text style={styles.cancelText}>Back</Text>
+              </Pressable>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -79,11 +153,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)', // Dark semi-transparent background
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   modalView: {
     width: '85%',
-    backgroundColor: '#1e293b', // Slate background
+    backgroundColor: '#1e293b',
     borderRadius: 20,
     padding: 25,
     alignItems: 'center',
@@ -100,6 +174,17 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
+  splitSummary: {
+    color: '#4ade80',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  splitRemaining: {
+    color: '#94a3b8',
+    fontSize: 13,
+    marginBottom: 18,
+  },
   button: {
     width: '100%',
     flexDirection: 'row',
@@ -111,8 +196,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  buttonBody: {
+    flex: 1,
+    alignItems: 'center',
+  },
   stripeButton: {
-    backgroundColor: '#22d3ee', // Cyan accent
+    backgroundColor: '#22d3ee',
   },
   stripeText: {
     color: '#0f172a',
@@ -134,6 +223,7 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 12,
     marginTop: 2,
+    textAlign: 'center',
   },
   codButton: {
     backgroundColor: '#334155',
@@ -144,6 +234,7 @@ const styles = StyleSheet.create({
     color: '#f8fafc',
     fontWeight: 'bold',
     fontSize: 16,
+    textAlign: 'center',
   },
   cancelButton: {
     marginTop: 10,

@@ -23,7 +23,26 @@ vi.mock('../lib/adminWallet.js', () => ({
 }));
 
 import prisma from '../lib/prisma.js';
+import { getAdminWallet } from '../lib/adminWallet.js';
 import { createOrder, getSalesmanOrders } from '../controllers/order.controller.js';
+
+/** A prisma-tx double that records wallet.update calls, for split-payment assertions. */
+const makeTxSpy = () => {
+  const walletUpdate = vi.fn();
+  const walletTxnCreate = vi.fn();
+  const tx = {
+    wallet: {
+      findUnique: vi.fn().mockResolvedValue({ id: 'cust-wallet', balance: 999999 }),
+      update: walletUpdate,
+    },
+    walletTransaction: { create: walletTxnCreate },
+    order: { create: vi.fn().mockResolvedValue({ ...mockCreatedOrder }) },
+    orderTracking: { create: vi.fn() },
+    product: { update: vi.fn() },
+    carPart: { update: vi.fn() },
+  };
+  return { tx, walletUpdate, walletTxnCreate };
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const makeRes = () => {
@@ -245,6 +264,72 @@ describe('createOrder', () => {
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(res._status).toBe(201);
+    });
+  });
+
+  // ── 3b. Split payment (partial wallet + COD) ──────────────────────────────
+  describe('split payment — partial wallet + COD', () => {
+    const splitReq = (walletAmount) => makeReq({
+      body: { items: [{ productId: 'p-1', quantity: 1 }], paymentMethod: 'COD', walletAmount },
+    });
+
+    it('debits the wallet by only the chosen walletAmount, not the grand total', async () => {
+      prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
+      prisma.carPart.findMany.mockResolvedValueOnce([]);
+      prisma.address.findFirst.mockResolvedValueOnce(mockAddress);
+      prisma.wallet.findUnique.mockResolvedValueOnce({ id: 'cust-wallet', balance: 500 });
+      getAdminWallet.mockResolvedValue({ id: 'admin-wallet' });
+
+      const { tx, walletUpdate, walletTxnCreate } = makeTxSpy();
+      prisma.$transaction.mockImplementationOnce(async (fn) => fn(tx));
+
+      const res = makeRes();
+      await createOrder(splitReq(20), res);
+
+      expect(res._status).toBe(201);
+      // grand total is 1100 but only 20 leaves the customer wallet
+      expect(walletUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'cust-wallet' },
+        data: { balance: { decrement: 20 } },
+      }));
+      expect(walletTxnCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ amount: 20, type: 'PURCHASE', receiverWalletId: 'admin-wallet' }),
+      }));
+      // remainder still owed as cash on delivery
+      expect(res._body.data.paymentStatus).toBe('PENDING');
+      expect(res._body.data.walletAmount).toBe(20);
+    });
+
+    it('rejects when the wallet cannot cover the chosen walletAmount', async () => {
+      prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
+      prisma.carPart.findMany.mockResolvedValueOnce([]);
+      prisma.address.findFirst.mockResolvedValueOnce(mockAddress);
+      prisma.wallet.findUnique.mockResolvedValueOnce({ id: 'cust-wallet', balance: 10 });
+
+      const res = makeRes();
+      await createOrder(splitReq(20), res);
+
+      expect(res._status).toBe(400);
+      expect(res._body.message).toMatch(/insufficient wallet balance/i);
+    });
+
+    it('clamps a walletAmount larger than the grand total', async () => {
+      prisma.product.findMany.mockResolvedValueOnce([mockProduct]);
+      prisma.carPart.findMany.mockResolvedValueOnce([]);
+      prisma.address.findFirst.mockResolvedValueOnce(mockAddress);
+      prisma.wallet.findUnique.mockResolvedValueOnce({ id: 'cust-wallet', balance: 99999 });
+      getAdminWallet.mockResolvedValue({ id: 'admin-wallet' });
+
+      const { tx } = makeTxSpy();
+      prisma.$transaction.mockImplementationOnce(async (fn) => fn(tx));
+
+      const res = makeRes();
+      await createOrder(splitReq(5000), res);
+
+      expect(res._status).toBe(201);
+      // clamped to the 1100 grand total -> fully wallet paid
+      expect(res._body.data.walletAmount).toBe(1100);
+      expect(res._body.data.paymentStatus).toBe('PAID');
     });
   });
 

@@ -4,6 +4,7 @@ import { createRiderJobsForMarketplaceOrders } from '../services/riderDeliveryJo
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
 import { resolveShopOwnerId, getShopMemberIds } from '../lib/shopAccess.js';
 import { riderQuery } from '../lib/riderDb.js';
+import { buildOrderPlan, splitWalletAmount } from '../lib/orderPricing.js';
 
 const hasValidCoordinates = (latitude, longitude) => {
   if (latitude === null || latitude === undefined || String(latitude).trim() === '' ||
@@ -607,16 +608,22 @@ export const updateOrderStatus = async (req, res) => {
       // Admin → Customer: admin refunds from held pool
       // ==========================================
       if (status === 'REFUNDED' && order.status !== 'REFUNDED') {
-        if (order.paymentMethod === 'Stripe' || order.paymentMethod === 'WALLET') {
+        // Refund what the customer prepaid: full total for a fully-paid order,
+        // or just the wallet slice for a wallet+COD split.
+        const refundAmount = order.paymentStatus === 'PAID'
+          ? order.total
+          : (order.walletAmount || 0);
+
+        if (refundAmount > 0) {
           const adminWallet = await getAdminWallet(tx);
           const customerWallet = await ensureWallet(order.customerId, tx);
 
-          await tx.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: order.total } } });
-          await tx.wallet.update({ where: { id: customerWallet.id }, data: { balance: { increment: order.total } } });
+          await tx.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: refundAmount } } });
+          await tx.wallet.update({ where: { id: customerWallet.id }, data: { balance: { increment: refundAmount } } });
 
           await tx.walletTransaction.create({
             data: {
-              amount: order.total,
+              amount: refundAmount,
               type: 'REFUND',
               senderWalletId: adminWallet.id,
               receiverWalletId: customerWallet.id,
@@ -909,214 +916,38 @@ export const createOrder = async (req, res) => {
     const deliveryLatitudeSnapshot = Number(address.latitude);
     const deliveryLongitudeSnapshot = Number(address.longitude);
 
-    // Get item IDs
-    const itemIds = items.map(item => item.productId);
-    
-    // First, try to find items as Products
-    const [products, carParts] = await Promise.all([
-      prisma.product.findMany({
-        where: {
-          id: { in: itemIds }
-        },
-        include: {
-        salesman: {
-          select: {
-            id: true,
-            name: true,
-            role: true,
-            managerId: true,
-            store: {
-              select: {
-                name: true,
-                pickupLatitude: true,
-                pickupLongitude: true
-              }
-            }
-          }
-        }
-        }
-      }),
-
-      // Product and car-part lookups are independent, so do not pay for two
-      // sequential database round trips when placing an order.
-      prisma.carPart.findMany({
-        where: {
-          id: { in: itemIds }
-        },
-        include: {
-        seller: {
-          select: {
-            id: true,
-            name: true,
-            role: true,
-            managerId: true,
-            store: {
-              select: {
-                name: true,
-                pickupLatitude: true,
-                pickupLongitude: true
-              }
-            }
-          }
-        }
-        }
-      }),
-    ]);
-
-    // Combine both types into a unified format
-    const allItems = [];
-    
-    products.forEach(product => {
-      allItems.push({
-        id: product.id,
-        type: 'PRODUCT',
-        name: product.name,
-        price: product.price,
-        discountPrice: product.discountPrice,
-        images: product.images,
-        sellerId: product.salesman?.managerId || product.salesmanId,
-        sellerName: product.salesman?.name || 'Unknown Seller',
-        storeName: product.salesman?.store?.name,
-        deliveryVehicleType: product.deliveryVehicleType || null,
-        pickupLat: product.salesman?.store?.pickupLatitude ?? null,
-        pickupLng: product.salesman?.store?.pickupLongitude ?? null
-      });
-    });
-
-    carParts.forEach(part => {
-      allItems.push({
-        id: part.id,
-        type: 'CAR_PART',
-        name: part.name,
-        price: part.price,
-        discountPrice: part.discountPrice,
-        images: part.images,
-        sellerId: part.seller?.managerId || part.sellerId,
-        sellerName: part.seller?.name || 'Unknown Seller',
-        storeName: part.seller?.store?.name,
-        deliveryVehicleType: part.deliveryVehicleType || null,
-        pickupLat: part.seller?.store?.pickupLatitude ?? null,
-        pickupLng: part.seller?.store?.pickupLongitude ?? null
-      });
-    });
-
-    // Check if all items were found
-    if (allItems.length !== items.length) {
-      const foundIds = allItems.map(i => i.id);
-      const missingIds = itemIds.filter(id => !foundIds.includes(id));
-      return res.status(400).json({
-        success: false,
-        message: `One or more items not found: ${missingIds.join(', ')}`
-      });
-    }
-
-    // Reject the order up front if any item doesn't have enough stock.
-    for (const orderItem of items) {
-      const prod = products.find(p => p.id === orderItem.productId);
-      const cp = carParts.find(c => c.id === orderItem.productId);
-      const available = prod ? prod.stock : (cp ? cp.stock : 0);
-      const itemName = prod?.name || cp?.name || orderItem.productId;
-      if (available < orderItem.quantity) {
-        return res.status(400).json({
-          success: false,
-          message: `Not enough stock for ${itemName}. Only ${available} left.`,
-        });
+    // Resolve items, group by seller, and price the order (subtotal + 10% service
+    // charge + per-shop distance delivery fee) via the shared planner so the COD
+    // and Stripe paths always agree on the totals.
+    let plan;
+    try {
+      plan = await buildOrderPlan({ prisma, items, address });
+    } catch (planError) {
+      if (planError?.status) {
+        return res.status(planError.status).json({ success: false, message: planError.message });
       }
+      throw planError;
     }
-
-    // Group items by seller
-    const groupedBySeller = {};
-    items.forEach(orderItem => {
-      const item = allItems.find(i => i.id === orderItem.productId);
-      const sellerId = item.sellerId;
-      
-      if (!groupedBySeller[sellerId]) {
-        groupedBySeller[sellerId] = {
-          sellerId,
-          sellerName: item.sellerName,
-          storeName: item.storeName,
-          items: []
-        };
-      }
-      
-      const price = item.discountPrice || item.price;
-      groupedBySeller[sellerId].items.push({
-        productId: orderItem.productId,
-        itemType: item.type,
-        name: item.name,
-        quantity: orderItem.quantity,
-        price,
-        total: price * orderItem.quantity
-      });
-    });
-
-    // Service charge is the platform's revenue — calculated server-side to prevent tampering
-    const SERVICE_CHARGE_RATE = 0.10;
-
-    // Distance-based delivery fee. The per-km rate depends on the vehicle the order needs;
-    // an order uses the largest vehicle any of its items requires (LORRY > CAR > MOTORBIKE).
-    //   MOTORBIKE Rs.50/km, CAR Rs.70/km, LORRY Rs.30/km.
-    const VEHICLE_RATE_PER_KM = { MOTORBIKE: 50, CAR: 70, LORRY: 30 };
-    const VEHICLE_RANK = { MOTORBIKE: 1, CAR: 2, LORRY: 3 };
-
-    const haversineKm = (lat1, lon1, lat2, lon2) => {
-      const toRad = (v) => (Number(v) * Math.PI) / 180;
-      const R = 6371; // km
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    };
-
-    // Group ordered items by their shop pickup point. Each shop's delivery leg is
-    // charged separately (distance x the largest vehicle in that shop's items) and
-    // summed, so an order spanning multiple shops pays a fee for each shop.
-    const orderedItems = items
-      .map((oi) => allItems.find((i) => i.id === oi.productId))
-      .filter(Boolean);
-    const pickupShops = new Map(); // sellerId (shop) -> { lat, lng, vehicle }
-    for (const it of orderedItems) {
-      if (it.sellerId == null || it.pickupLat == null || it.pickupLng == null) continue;
-      const group = pickupShops.get(it.sellerId) || { lat: Number(it.pickupLat), lng: Number(it.pickupLng), vehicle: 'MOTORBIKE' };
-      if (it.deliveryVehicleType && VEHICLE_RANK[it.deliveryVehicleType] > VEHICLE_RANK[group.vehicle]) {
-        group.vehicle = it.deliveryVehicleType;
-      }
-      pickupShops.set(it.sellerId, group);
-    }
-
-    // Per-shop fee so each seller's order carries only its own delivery leg.
-    const feeByShop = new Map(); // sellerId -> fee
-    let deliveryFee = 0; // total across shops (for the customer's grand total)
-    for (const [sellerId, shop] of pickupShops) {
-      if (!hasValidCoordinates(shop.lat, shop.lng)) continue;
-      const distanceKm = haversineKm(
-        shop.lat, shop.lng, deliveryLatitudeSnapshot, deliveryLongitudeSnapshot
-      );
-      const fee = Math.round(distanceKm * VEHICLE_RATE_PER_KM[shop.vehicle]);
-      feeByShop.set(sellerId, fee);
-      deliveryFee += fee;
-    }
-
-    let grandTotal = 0;
-    
-    Object.values(groupedBySeller).forEach(sellerGroup => {
-      sellerGroup.subtotal = sellerGroup.items.reduce((sum, item) => sum + item.total, 0);
-      sellerGroup.serviceCharge = parseFloat((sellerGroup.subtotal * SERVICE_CHARGE_RATE).toFixed(2));
-      grandTotal += sellerGroup.subtotal + sellerGroup.serviceCharge;
-    });
-    // Delivery fee is added once to the overall order total, not per-seller
-    grandTotal += deliveryFee;
+    const { products, carParts, groupedBySeller, feeByShop, deliveryFee, grandTotal } = plan;
 
     // ==========================================
-    // WALLET INTEGRATION: UPFRONT DEDUCTION
+    // WALLET INTEGRATION: how much of this order is funded from the customer's wallet.
+    //   WALLET method  -> the whole grand total (fully wallet-paid)
+    //   split payment  -> req.body.walletAmount, the rest covered by COD (here) or Stripe
+    // The wallet is only ever debited by `walletAmount`, never more.
     // ==========================================
+    let walletAmount = Math.max(0, Number(req.body.walletAmount) || 0);
     if (normalizedPaymentMethod === 'WALLET') {
-        const customerWallet = await prisma.wallet.findUnique({ where: { userId: customerId } });
-        
-        if (!customerWallet || customerWallet.balance < grandTotal) {
-            return res.status(400).json({ success: false, message: 'Insufficient wallet balance to place this order.' });
-        }
+      walletAmount = grandTotal;
+    }
+    walletAmount = Math.min(walletAmount, grandTotal);
+    const fullyWalletPaid = walletAmount >= grandTotal;
+
+    if (walletAmount > 0) {
+      const customerWallet = await prisma.wallet.findUnique({ where: { userId: customerId } });
+      if (!customerWallet || customerWallet.balance < walletAmount) {
+        return res.status(400).json({ success: false, message: 'Insufficient wallet balance to place this order.' });
+      }
     }
 
     // Generate order number prefix
@@ -1124,37 +955,25 @@ export const createOrder = async (req, res) => {
     const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
     const orderPrefix = `ORD-${timestamp}-${randomPart}`;
 
-    // Create orders for each seller in a transaction 
-    const createdOrders = await prisma.$transaction(async (tx) => {
-      
-      // If WALLET, deduct balance now
-      if (normalizedPaymentMethod === 'WALLET') {
-          const customerWallet = await tx.wallet.findUnique({ where: { userId: customerId } });
-          
-          await tx.wallet.update({
-              where: { id: customerWallet.id },
-              data: { balance: { decrement: grandTotal } }
-          });
+    // Per-seller order totals, and the wallet-funded slice of each (proportional
+    // to the order total so the slices sum back to `walletAmount` exactly).
+    const sellerEntries = Object.entries(groupedBySeller);
+    const orderTotals = sellerEntries.map(
+      ([sellerId, g]) => g.subtotal + g.serviceCharge + (feeByShop.get(sellerId) || 0)
+    );
+    const walletSlices = splitWalletAmount(walletAmount, orderTotals);
 
-          // Log the WalletTransaction
-          await tx.walletTransaction.create({
-              data: {
-                  amount: grandTotal,
-                  type: 'PURCHASE',
-                  senderWalletId: customerWallet.id,
-                  description: 'Paid upfront using Wallet Balance'
-              }
-          });
-      }
+    // Create orders for each seller in a transaction
+    const createdOrders = await prisma.$transaction(async (tx) => {
 
       const orders = [];
       let orderIndex = 1;
-      
-      for (const [sellerId, sellerGroup] of Object.entries(groupedBySeller)) {
-        const orderNumber = Object.keys(groupedBySeller).length > 1 
-          ? `${orderPrefix}-${orderIndex}` 
+
+      for (const [sellerId, sellerGroup] of sellerEntries) {
+        const orderNumber = sellerEntries.length > 1
+          ? `${orderPrefix}-${orderIndex}`
           : orderPrefix;
-        
+
         const orderData = {
           orderNumber,
           customerId,
@@ -1162,15 +981,18 @@ export const createOrder = async (req, res) => {
           subtotal: sellerGroup.subtotal,
           serviceCharge: sellerGroup.serviceCharge,
           // Each seller's order carries its own shop's delivery leg.
-          total: sellerGroup.subtotal + sellerGroup.serviceCharge + (feeByShop.get(sellerId) || 0),
+          total: orderTotals[orderIndex - 1],
           deliveryFee: feeByShop.get(sellerId) || 0,
+          walletAmount: walletSlices[orderIndex - 1] || 0,
           paymentMethod: normalizedPaymentMethod,
           notes,
           deliveryAddress: deliveryAddressSnapshot,
           deliveryLatitude: deliveryLatitudeSnapshot,
           deliveryLongitude: deliveryLongitudeSnapshot,
           status: 'PENDING',
-          paymentStatus: normalizedPaymentMethod === 'WALLET' ? 'PAID' : 'PENDING', // Mark paid automatically if Wallet
+          // PAID only when the wallet covers the whole total. A wallet+COD split
+          // still owes cash on delivery, so it stays PENDING.
+          paymentStatus: fullyWalletPaid ? 'PAID' : 'PENDING',
           items: {
             create: sellerGroup.items.map(item => ({
               productId: item.itemType === 'PRODUCT' ? item.productId : null,
@@ -1183,9 +1005,9 @@ export const createOrder = async (req, res) => {
             }))
           }
         };
-        
+
         orderData.addressId = validAddressId;
-        
+
         const order = await tx.order.create({
           data: orderData,
           include: {
@@ -1222,6 +1044,35 @@ export const createOrder = async (req, res) => {
         orderIndex++;
       }
 
+      // Move the wallet-funded portion from the customer to the admin holding
+      // wallet now (customer -> admin PURCHASE). Only `walletAmount` leaves the
+      // wallet — the rest is paid by COD/Stripe.
+      if (walletAmount > 0) {
+        const customerWallet = await tx.wallet.findUnique({ where: { userId: customerId } });
+        const adminWallet = await getAdminWallet(tx);
+
+        await tx.wallet.update({
+          where: { id: customerWallet.id },
+          data: { balance: { decrement: walletAmount } },
+        });
+        await tx.wallet.update({
+          where: { id: adminWallet.id },
+          data: { balance: { increment: walletAmount } },
+        });
+        await tx.walletTransaction.create({
+          data: {
+            amount: walletAmount,
+            type: 'PURCHASE',
+            senderWalletId: customerWallet.id,
+            receiverWalletId: adminWallet.id,
+            orderId: orders[0]?.id,
+            description: fullyWalletPaid
+              ? `Wallet payment for order ${orderPrefix}`
+              : `Partial wallet payment for order ${orderPrefix}`,
+          },
+        });
+      }
+
       // Decrement stock for every ordered item now that the orders are created.
       for (const orderItem of items) {
         if (products.find(p => p.id === orderItem.productId)) {
@@ -1248,8 +1099,9 @@ export const createOrder = async (req, res) => {
       orderNumber: orderPrefix,
       total: grandTotal,
       deliveryFee,
+      walletAmount,
       status: 'PENDING',
-      paymentStatus: normalizedPaymentMethod === 'WALLET' ? 'PAID' : 'PENDING',
+      paymentStatus: fullyWalletPaid ? 'PAID' : 'PENDING',
       createdAt: createdOrders[0]?.createdAt,
       orders: createdOrders.map(order => ({
         id: order.id,
@@ -1440,9 +1292,10 @@ export const getCustomerOrdersSimple = async (req, res) => {
  *  - If the salesman was already credited (SALE_EARNING exists for this
  *    order — earnings release early, at PROCESSING, for every payment
  *    method), claw that back: Salesman → Admin (REFUND_SETTLEMENT).
- *  - If the customer actually paid upfront (paymentStatus === 'PAID',
- *    i.e. Stripe/Wallet), refund them: Admin → Customer (REFUND). COD
- *    orders never collect payment upfront, so there's nothing to return.
+ *  - Refund whatever the customer actually prepaid: the full `total` for a
+ *    fully-paid order (Stripe / wallet / wallet+Stripe), or just `walletAmount`
+ *    for a wallet+COD split (COD cash was never collected). Pure COD refunds
+ *    nothing. Admin → Customer (REFUND).
  * Safe to call even if neither condition applies — it's just a no-op then.
  */
 const reverseOrderMoneyMovement = async (tx, order) => {
@@ -1472,14 +1325,18 @@ const reverseOrderMoneyMovement = async (tx, order) => {
     });
   }
 
-  if (order.paymentStatus === 'PAID') {
+  const refundAmount = order.paymentStatus === 'PAID'
+    ? order.total
+    : (order.walletAmount || 0);
+
+  if (refundAmount > 0) {
     const adminWallet = await getAdminWallet(tx);
     const customerWallet = await ensureWallet(order.customerId, tx);
-    await tx.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: order.total } } });
-    await tx.wallet.update({ where: { id: customerWallet.id }, data: { balance: { increment: order.total } } });
+    await tx.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: refundAmount } } });
+    await tx.wallet.update({ where: { id: customerWallet.id }, data: { balance: { increment: refundAmount } } });
     await tx.walletTransaction.create({
       data: {
-        amount: order.total,
+        amount: refundAmount,
         type: 'REFUND',
         senderWalletId: adminWallet.id,
         receiverWalletId: customerWallet.id,

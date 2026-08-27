@@ -589,12 +589,6 @@ function AdminWalletTab() {
                 </div>
             )}
 
-            <p className="text-xs text-gray-400">
-                The ledger balance is this app&apos;s internal running total of every deposit, payout, and refund.
-                The Stripe balance is what Stripe actually holds — it differs because Stripe deducts processing
-                fees and holds new charges as &quot;pending&quot; for a few days before they become available.
-            </p>
-
             {/* ── Recent Transactions ── */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                 <div className="mb-4 flex items-center justify-between">

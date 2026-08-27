@@ -1,5 +1,31 @@
 import { getApiUrl } from '../config/api.config';
 
+/**
+ * fetch() with a hard timeout. React Native's fetch never times out on an
+ * unreachable host, which otherwise leaves login/register spinners hanging
+ * forever with no error. Aborts after `ms` and surfaces a clear message.
+ */
+const fetchWithTimeout = async (
+  url: string,
+  options: RequestInit = {},
+  ms = 15000
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error(
+        `Could not reach the server at ${getApiUrl()}. Check that the backend is running and that your device is on the same network.`
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 export interface RegisterData {
   email: string;
   password: string;
@@ -38,7 +64,7 @@ export interface AuthResponse {
 // Register new user
 export const registerUser = async (data: RegisterData): Promise<AuthResponse> => {
   try {
-    const response = await fetch(`${getApiUrl()}/auth/register`, {
+    const response = await fetchWithTimeout(`${getApiUrl()}/auth/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -62,7 +88,7 @@ export const registerUser = async (data: RegisterData): Promise<AuthResponse> =>
 // Login user
 export const loginUser = async (data: LoginData): Promise<AuthResponse> => {
   try {
-    const response = await fetch(`${getApiUrl()}/auth/login`, {
+    const response = await fetchWithTimeout(`${getApiUrl()}/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -86,7 +112,7 @@ export const loginUser = async (data: LoginData): Promise<AuthResponse> => {
 // Get user profile (requires token)
 export const getUserProfile = async (token: string) => {
   try {
-    const response = await fetch(`${getApiUrl()}/auth/profile`, {
+    const response = await fetchWithTimeout(`${getApiUrl()}/auth/profile`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -113,7 +139,7 @@ export const updateUserProfile = async (
   data: { name?: string; phone?: string }
 ) => {
   try {
-    const response = await fetch(`${getApiUrl()}/auth/profile`, {
+    const response = await fetchWithTimeout(`${getApiUrl()}/auth/profile`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -138,7 +164,7 @@ export const updateUserProfile = async (
 // Forgot Password Flow
 export const requestOtp = async (email: string) => {
   try {
-    const response = await fetch(`${getApiUrl()}/auth/forgot-password`, {
+    const response = await fetchWithTimeout(`${getApiUrl()}/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
@@ -154,7 +180,7 @@ export const requestOtp = async (email: string) => {
 
 export const verifyOtp = async (email: string, otp: string) => {
   try {
-    const response = await fetch(`${getApiUrl()}/auth/verify-otp`, {
+    const response = await fetchWithTimeout(`${getApiUrl()}/auth/verify-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, otp }),
@@ -170,7 +196,7 @@ export const verifyOtp = async (email: string, otp: string) => {
 
 export const resetPassword = async (resetToken: string, newPassword: string) => {
   try {
-    const response = await fetch(`${getApiUrl()}/auth/reset-password`, {
+    const response = await fetchWithTimeout(`${getApiUrl()}/auth/reset-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ resetToken, newPassword }),

@@ -280,7 +280,8 @@ export const createOrder = async (
   items: { productId: string; quantity: number }[],
   paymentMethod: string,
   addressId: string,
-  notes?: string
+  notes?: string,
+  walletAmount: number = 0
 ) => {
   try {
     const token = await getToken();
@@ -294,6 +295,7 @@ export const createOrder = async (
       paymentMethod: string;
       addressId: string;
       notes?: string;
+      walletAmount?: number;
     } = {
       items,
       paymentMethod,
@@ -302,6 +304,10 @@ export const createOrder = async (
 
     if (notes) {
       orderData.notes = notes;
+    }
+
+    if (walletAmount > 0) {
+      orderData.walletAmount = walletAmount;
     }
 
     const response = await fetch(`${getApiUrl()}/orders`, {

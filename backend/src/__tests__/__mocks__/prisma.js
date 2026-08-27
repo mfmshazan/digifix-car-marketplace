@@ -48,11 +48,14 @@ const prisma = {
   },
   wallet: {
     findUnique: vi.fn(),
+    findFirst: vi.fn(),
     update: vi.fn(),
     create: vi.fn(),
   },
   walletTransaction: {
     create: vi.fn(),
+    findFirst: vi.fn(),
+    findUnique: vi.fn(),
   },
   $transaction: vi.fn(),
 };

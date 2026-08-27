@@ -2,6 +2,7 @@
 import Stripe from 'stripe';
 import prisma from '../lib/prisma.js';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
+import { buildOrderPlan, splitWalletAmount } from '../lib/orderPricing.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -134,6 +135,7 @@ class StripeController {
             const { items, addressId, successUrl, cancelUrl } = req.body;
             const userID = req.user.id;
             const userRole = String(req.user.role || 'customer').toLowerCase();
+            const requestedWalletAmount = Math.max(0, Number(req.body.walletAmount) || 0);
 
             if (!Array.isArray(items) || items.length === 0) {
                 return res.status(400).json({
@@ -180,20 +182,55 @@ class StripeController {
                 });
             }
 
-            const line_items = items.map((item) => {
-                return {
-                    price_data: {
-                        currency: 'lkr',
-                        product_data: {
-                            // Enforcing official template naming
-                            name: `Digifix - ${item.name}`,
-                        },
-                        // Math.round is required to prevent decimal errors if prices have floating points
-                        unit_amount: Math.round((item.discountPrice ? item.discountPrice : item.price) * 100),
+            // Price the cart through the shared planner so the amount Stripe
+            // charges (subtotal + 10% service charge + delivery fee, minus the
+            // wallet-funded slice) matches exactly what the COD path would total.
+            let plan;
+            try {
+                plan = await buildOrderPlan({
+                    prisma,
+                    items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+                    address,
+                });
+            } catch (planErr) {
+                if (planErr?.status) {
+                    return res.status(planErr.status).json({ success: false, message: planErr.message });
+                }
+                throw planErr;
+            }
+            const grandTotal = plan.grandTotal;
+
+            // Wallet-funded slice — clamped to the order total and to the
+            // customer's current balance. The remainder is what Stripe bills.
+            let walletAmount = Math.min(requestedWalletAmount, grandTotal);
+            if (walletAmount > 0) {
+                const customerWallet = await prisma.wallet.findUnique({ where: { userId: userID } });
+                if (!customerWallet || customerWallet.balance < walletAmount) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Insufficient wallet balance for the amount you chose to pay from your wallet.',
+                    });
+                }
+            }
+
+            const remainder = Math.round((grandTotal - walletAmount) * 100) / 100;
+            if (remainder <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Your wallet covers the full total — use the wallet payment option instead.',
+                });
+            }
+
+            const line_items = [{
+                price_data: {
+                    currency: 'lkr',
+                    product_data: {
+                        name: walletAmount > 0 ? 'Digifix Order (remaining balance)' : 'Digifix Order',
                     },
-                    quantity: item.quantity,
-                };
-            });
+                    unit_amount: Math.round(remainder * 100),
+                },
+                quantity: 1,
+            }];
 
             // Use URLs passed from the mobile app (dynamically resolved) or fall back to env var
             const EXPO_HOST = process.env.EXPO_HOST || '192.168.43.171';
@@ -209,6 +246,7 @@ class StripeController {
                     userID: userID,
                     userRole: userRole,
                     addressId: address.id,
+                    walletAmount: String(walletAmount),
                     cartSummary: JSON.stringify(items.map(i => ({ productId: i.productId, itemType: i.itemType || 'PRODUCT', quantity: i.quantity })))
                 },
 
@@ -241,6 +279,7 @@ class StripeController {
             }
 
             const { cartSummary, addressId, userID } = session.metadata || {};
+            const metadataWalletAmount = Math.max(0, Number(session.metadata?.walletAmount) || 0);
             if (userID !== customerId) {
                 return res.status(403).json({
                     success: false,
@@ -253,6 +292,17 @@ class StripeController {
                     success: false,
                     message: 'Payment session is missing delivery information.',
                 });
+            }
+
+            // Idempotency: the success screen can re-mount and call this twice.
+            // Every completed session leaves a DEPOSIT txn tagged with the
+            // session id — if it exists, just return the order we already made.
+            const alreadyProcessed = await prisma.walletTransaction.findFirst({
+                where: { sourceRef: sessionId },
+                select: { orderId: true },
+            });
+            if (alreadyProcessed) {
+                return res.json({ success: true, status: 'paid', orderId: alreadyProcessed.orderId });
             }
 
             const address = await prisma.address.findFirst({
@@ -287,141 +337,177 @@ class StripeController {
 
             const parsedItems = JSON.parse(cartSummary);
 
-            // Separate product IDs and car part IDs
-            const productIds = parsedItems.filter(i => i.itemType !== 'CAR_PART').map(i => i.productId);
-            const carPartIds = parsedItems.filter(i => i.itemType === 'CAR_PART').map(i => i.productId);
-
-            const [products, carParts] = await Promise.all([
-                productIds.length > 0
-                    ? prisma.product.findMany({
-                        where: { id: { in: productIds } },
-                        include: { salesman: { select: { managerId: true } } },
-                    })
-                    : Promise.resolve([]),
-                carPartIds.length > 0
-                    ? prisma.carPart.findMany({
-                        where: { id: { in: carPartIds } },
-                        include: { seller: { select: { managerId: true } } },
-                    })
-                    : Promise.resolve([]),
-            ]);
-
-            // Build unified item lookup: productId -> item info with sellerId
-            const itemMap = {};
-            products.forEach(p => {
-                itemMap[p.id] = {
-                    ...p,
-                    sellerId: p.salesman?.managerId || p.salesmanId,
-                    type: 'PRODUCT',
-                };
-            });
-            carParts.forEach(cp => {
-                itemMap[cp.id] = {
-                    ...cp,
-                    sellerId: cp.seller?.managerId || cp.sellerId,
-                    type: 'CAR_PART',
-                };
-            });
-
-            // Group cart items by seller
-            const groupedBySeller = {};
-            for (const item of parsedItems) {
-                const found = itemMap[item.productId];
-                if (!found) continue;
-                if (!groupedBySeller[found.sellerId]) {
-                    groupedBySeller[found.sellerId] = { sellerId: found.sellerId, items: [] };
-                }
-                const price = found.discountPrice || found.price;
-                groupedBySeller[found.sellerId].items.push({
-                    productId: item.productId,
-                    itemType: item.itemType || 'PRODUCT',
-                    name: found.name,
-                    quantity: item.quantity,
-                    price,
-                    total: price * item.quantity,
+            // Price the order through the shared planner so totals (subtotal +
+            // 10% service charge + per-shop delivery fee) match the COD path.
+            let plan;
+            try {
+                plan = await buildOrderPlan({
+                    prisma,
+                    items: parsedItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+                    address,
                 });
+            } catch (planErr) {
+                if (planErr?.status) {
+                    return res.status(planErr.status).json({ success: false, message: planErr.message });
+                }
+                throw planErr;
             }
+            const { products, carParts, groupedBySeller, feeByShop, deliveryFee, grandTotal } = plan;
 
-            // Generate order number prefix
+            // Wallet slice actually available now (Option A — the wallet is only
+            // debited here, after the card payment has succeeded). If the balance
+            // dropped since checkout started, clamp and warn.
+            let walletAmount = Math.min(metadataWalletAmount, grandTotal);
+            if (walletAmount > 0) {
+                const customerWallet = await prisma.wallet.findUnique({ where: { userId: customerId } });
+                const available = customerWallet?.balance ?? 0;
+                if (available < walletAmount) {
+                    console.warn(
+                        `[stripe verify] wallet slice clamped for customer ${customerId}: ` +
+                        `wanted ${walletAmount}, only ${available} available (session ${sessionId})`
+                    );
+                    walletAmount = Math.max(0, available);
+                }
+            }
+            const stripePaid = Math.round((grandTotal - walletAmount) * 100) / 100;
+
             const timestamp = Date.now().toString(36).toUpperCase();
             const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
             const orderPrefix = `ORD-${timestamp}-${randomPart}`;
 
-            // Create one order per seller
-            const createdOrders = [];
-            let orderIndex = 1;
-            const sellerGroups = Object.values(groupedBySeller);
-            
-            for (const sellerGroup of sellerGroups) {
-                const subtotal = sellerGroup.items.reduce((sum, i) => sum + i.total, 0);
-                const orderNumber = sellerGroups.length > 1 
-                    ? `${orderPrefix}-${orderIndex}` 
-                    : orderPrefix;
+            const deliveryAddressSnapshot = formatDeliveryAddress(address);
+            const deliveryLat = Number(address.latitude);
+            const deliveryLng = Number(address.longitude);
 
-                const order = await prisma.order.create({
-                    data: {
-                        orderNumber,
-                        customerId,
-                        salesmanId: sellerGroup.sellerId,
-                        addressId: address.id,
-                        deliveryAddress: formatDeliveryAddress(address),
-                        deliveryLatitude: Number(address.latitude),
-                        deliveryLongitude: Number(address.longitude),
-                        subtotal,
-                        total: subtotal,
-                        status: 'PENDING',
-                        paymentStatus: 'PAID',
-                        paymentMethod: 'Stripe',
-                        items: {
-                            create: sellerGroup.items.map(i => ({
-                                quantity: i.quantity,
-                                price: i.price,
-                                total: i.total,
-                                itemName: i.name,
-                                itemType: i.itemType,
-                                ...(i.itemType === 'CAR_PART'
-                                    ? { carPartId: i.productId }
-                                    : { productId: i.productId }),
-                            })),
+            const sellerEntries = Object.entries(groupedBySeller);
+            const orderTotals = sellerEntries.map(
+                ([sellerId, g]) => g.subtotal + g.serviceCharge + (feeByShop.get(sellerId) || 0)
+            );
+            const walletSlices = splitWalletAmount(walletAmount, orderTotals);
+
+            const createdOrders = await prisma.$transaction(async (tx) => {
+                const orders = [];
+                let orderIndex = 1;
+
+                for (const [sellerId, sellerGroup] of sellerEntries) {
+                    const orderNumber = sellerEntries.length > 1
+                        ? `${orderPrefix}-${orderIndex}`
+                        : orderPrefix;
+
+                    const order = await tx.order.create({
+                        data: {
+                            orderNumber,
+                            customerId,
+                            salesmanId: sellerId,
+                            addressId: address.id,
+                            deliveryAddress: deliveryAddressSnapshot,
+                            deliveryLatitude: deliveryLat,
+                            deliveryLongitude: deliveryLng,
+                            subtotal: sellerGroup.subtotal,
+                            serviceCharge: sellerGroup.serviceCharge,
+                            deliveryFee: feeByShop.get(sellerId) || 0,
+                            total: orderTotals[orderIndex - 1],
+                            walletAmount: walletSlices[orderIndex - 1] || 0,
+                            status: 'PENDING',
+                            paymentStatus: 'PAID',
+                            paymentMethod: 'Stripe',
+                            items: {
+                                create: sellerGroup.items.map(i => ({
+                                    quantity: i.quantity,
+                                    price: i.price,
+                                    total: i.total,
+                                    itemName: i.name,
+                                    itemType: i.itemType,
+                                    ...(i.itemType === 'CAR_PART'
+                                        ? { carPartId: i.productId }
+                                        : { productId: i.productId }),
+                                })),
+                            },
                         },
+                    });
+
+                    await tx.orderTracking.create({
+                        data: { orderId: order.id, status: 'PENDING', description: 'Order placed' },
+                    });
+
+                    orders.push(order);
+                    orderIndex++;
+                }
+
+                // Decrement stock now that the orders exist.
+                for (const it of parsedItems) {
+                    if (products.find(p => p.id === it.productId)) {
+                        await tx.product.update({
+                            where: { id: it.productId },
+                            data: { stock: { decrement: it.quantity } },
+                        });
+                    } else if (carParts.find(c => c.id === it.productId)) {
+                        await tx.carPart.update({
+                            where: { id: it.productId },
+                            data: { stock: { decrement: it.quantity } },
+                        });
+                    }
+                }
+
+                const adminWallet = await getAdminWallet(tx);
+
+                // Wallet-funded slice: customer -> admin (PURCHASE).
+                if (walletAmount > 0) {
+                    const customerWallet = await ensureWallet(customerId, tx);
+                    await tx.wallet.update({
+                        where: { id: customerWallet.id },
+                        data: { balance: { decrement: walletAmount } },
+                    });
+                    await tx.wallet.update({
+                        where: { id: adminWallet.id },
+                        data: { balance: { increment: walletAmount } },
+                    });
+                    await tx.walletTransaction.create({
+                        data: {
+                            amount: walletAmount,
+                            type: 'PURCHASE',
+                            senderWalletId: customerWallet.id,
+                            receiverWalletId: adminWallet.id,
+                            orderId: orders[0]?.id,
+                            description: `Partial wallet payment for order ${orderPrefix}`,
+                        },
+                    });
+                }
+
+                // Card-funded slice: Stripe (external) -> admin (DEPOSIT).
+                // `sourceRef = sessionId` makes this the idempotency marker.
+                await tx.wallet.update({
+                    where: { id: adminWallet.id },
+                    data: { balance: { increment: stripePaid } },
+                });
+                await tx.walletTransaction.create({
+                    data: {
+                        amount: stripePaid,
+                        type: 'DEPOSIT',
+                        senderWalletId: null,
+                        receiverWalletId: adminWallet.id,
+                        orderId: orders[0]?.id,
+                        sourceRef: sessionId,
+                        description: `Stripe payment received for ${orders.length} order(s)`,
                     },
                 });
-                createdOrders.push({ order, subtotal });
-                orderIndex++;
-            }
 
-            // ============================================================
-            // WALLET BRIDGE: Record Stripe payment as DEPOSIT to admin wallet
-            // Money flow: Stripe (external) → Admin wallet (held until delivery)
-            // ============================================================
-            try {
-                const adminWallet = await getAdminWallet();
-                const totalPaid = createdOrders.reduce((s, o) => s + o.subtotal, 0);
+                return orders;
+            }, { maxWait: 10000, timeout: 30000 });
 
-                await prisma.$transaction([
-                    prisma.wallet.update({
-                        where: { id: adminWallet.id },
-                        data: { balance: { increment: totalPaid } }
-                    }),
-                    prisma.walletTransaction.create({
-                        data: {
-                            amount: totalPaid,
-                            type: 'DEPOSIT',
-                            senderWalletId: null,
-                            receiverWalletId: adminWallet.id,
-                            orderId: createdOrders[0]?.order.id,
-                            description: `Stripe payment received for ${createdOrders.length} order(s)`,
-                        }
-                    })
-                ]);
-            } catch (walletErr) {
-                // Non-fatal: orders are created, wallet is best-effort
-                console.error('Wallet DEPOSIT record failed (orders still created):', walletErr.message);
-            }
-
-            res.json({ success: true, status: 'paid', orderId: createdOrders[0]?.order.id });
+            res.json({ success: true, status: 'paid', orderId: createdOrders[0]?.id });
 
         } catch (error) {
+            // A racing second call loses the unique `sourceRef` — treat as success.
+            if (error?.code === 'P2002') {
+                const existing = await prisma.walletTransaction.findFirst({
+                    where: { sourceRef: req.params.sessionId },
+                    select: { orderId: true },
+                });
+                if (existing) {
+                    return res.json({ success: true, status: 'paid', orderId: existing.orderId });
+                }
+            }
             console.error("Verification & DB Save Error:", error);
             res.status(500).json({ error: error.message });
         }

@@ -7,7 +7,7 @@ import { sendReceiptDecisionToUser } from '../lib/onesignal.js';
 // Roles that can carry a negative (owed) wallet balance, grouped so the admin UI
 // can flag each debtor as a salesperson or a delivery person.
 const DELIVERY_ROLES = ['RIDER', 'DELIVERY_PARTNER', 'DELIVERY_PERSON'];
-const SALES_ROLES = ['SALESMAN'];
+const SALES_ROLES = ['SALESMAN', 'SHOP_MANAGER'];
 const DEBT_ROLES = [...SALES_ROLES, ...DELIVERY_ROLES];
 
 const userTypeFor = (role) => {

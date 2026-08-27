@@ -33,10 +33,10 @@ router.post('/:id/approve-cancel', authorize('ADMIN'), approveCancellation);
 router.post('/:id/reject-cancel', authorize('ADMIN'), rejectCancellation);
 
 // Salesman routes — scoped to their own orders only
-router.get('/salesman/summary', authorize('SALESMAN'), getSalesmanSalesSummary);
-router.get('/salesman/pending-count', authorize('SALESMAN'), getSalesmanPendingCount);
-router.get('/salesman/orders', authorize('SALESMAN'), getSalesmanOrders);
-router.put('/:id/status', authorize('SALESMAN'), updateOrderStatus);
+router.get('/salesman/summary', authorize('SALESMAN', 'SHOP_MANAGER'), getSalesmanSalesSummary);
+router.get('/salesman/pending-count', authorize('SALESMAN', 'SHOP_MANAGER'), getSalesmanPendingCount);
+router.get('/salesman/orders', authorize('SALESMAN', 'SHOP_MANAGER'), getSalesmanOrders);
+router.put('/:id/status', authorize('SALESMAN', 'SHOP_MANAGER'), updateOrderStatus);
 
 // Shop routes — manager or salesman review a post-delivery complaint (scoped
 // to their own shop's orders inside the controller via resolveShopOwnerId).

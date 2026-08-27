@@ -113,7 +113,7 @@ export default function SSOCallbackScreen() {
           }
 
           const dashboardRoute =
-            response.data.user.role === "SALESMAN"
+            response.data.user.role === "SALESMAN" || response.data.user.role === "SHOP_MANAGER"
               ? "/(salesman)"
               : "/(customer)";
 

@@ -121,7 +121,7 @@ export default function LoginScreen() {
 
         Alert.alert("Success", "Login successful!");
 
-        if (response.data.user.role === "SALESMAN") {
+        if (response.data.user.role === "SALESMAN" || response.data.user.role === "SHOP_MANAGER") {
           router.replace("/(salesman)");
         } else {
           router.replace("/(customer)");

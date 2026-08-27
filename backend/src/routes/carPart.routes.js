@@ -35,27 +35,27 @@ router.get('/cars', getAllCars);
 router.get('/:id', getCarPartById);
 
 // ================================
-// SALESMAN/SHOP OWNER ROUTES (Authenticated + SALESMAN role)
+// SALESMAN/SHOP OWNER ROUTES (Authenticated + SALESMAN or SHOP_MANAGER role)
 // ================================
 
 // Get my car parts (salesman's own listings)
 // GET /api/car-parts/salesman/my-parts
-router.get('/salesman/my-parts', authenticate, authorize('SALESMAN'), getMyCarParts);
+router.get('/salesman/my-parts', authenticate, authorize('SALESMAN', 'SHOP_MANAGER'), getMyCarParts);
 
 // Create a new car
 // POST /api/car-parts/cars
-router.post('/cars', authenticate, authorize('SALESMAN'), createCar);
+router.post('/cars', authenticate, authorize('SALESMAN', 'SHOP_MANAGER'), createCar);
 
 // Create a new car part
 // POST /api/car-parts
-router.post('/', authenticate, authorize('SALESMAN'), createCarPart);
+router.post('/', authenticate, authorize('SALESMAN', 'SHOP_MANAGER'), createCarPart);
 
 // Update a car part
 // PUT /api/car-parts/:id
-router.put('/:id', authenticate, authorize('SALESMAN'), updateCarPart);
+router.put('/:id', authenticate, authorize('SALESMAN', 'SHOP_MANAGER'), updateCarPart);
 
 // Delete a car part
 // DELETE /api/car-parts/:id
-router.delete('/:id', authenticate, authorize('SALESMAN'), deleteCarPart);
+router.delete('/:id', authenticate, authorize('SALESMAN', 'SHOP_MANAGER'), deleteCarPart);
 
 export default router;

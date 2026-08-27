@@ -75,7 +75,7 @@ export default function RegisterScreen() {
         setError("");
 
         const dashboardRoute =
-          response.data.user.role === "SALESMAN"
+          response.data.user.role === "SALESMAN" || response.data.user.role === "SHOP_MANAGER"
             ? "/(salesman)"
             : "/(customer)";
 
@@ -238,7 +238,7 @@ export default function RegisterScreen() {
 
         const userRole = response.data.user.role;
         const dashboardRoute =
-          userRole === "SALESMAN" ? "/(salesman)" : "/(customer)";
+          userRole === "SALESMAN" || userRole === "SHOP_MANAGER" ? "/(salesman)" : "/(customer)";
 
 
         Alert.alert("Success", "Registration successful! Welcome to DIGIFIX!");

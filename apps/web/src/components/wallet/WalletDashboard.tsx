@@ -122,15 +122,18 @@ export default function WalletDashboard({
   };
 
   const totals = useMemo(() => {
-    const incoming = (wallet?.transactions ?? []).reduce((sum, tx) => {
-      if (tx.direction === 'IN' || tx.amount >= 0) return sum + Math.abs(tx.amount || 0);
-      return sum;
-    }, 0);
+    // The API tags each transaction with `direction` relative to THIS wallet
+    // (IN = received, OUT = sent). Amounts are always stored positive, so the
+    // sign/side must come from `direction` alone — never from the amount.
+    const incoming = (wallet?.transactions ?? []).reduce(
+      (sum, tx) => (tx.direction === 'IN' ? sum + Math.abs(tx.amount || 0) : sum),
+      0,
+    );
 
-    const outgoing = (wallet?.transactions ?? []).reduce((sum, tx) => {
-      if (tx.direction === 'OUT' || tx.amount < 0) return sum + Math.abs(tx.amount || 0);
-      return sum;
-    }, 0);
+    const outgoing = (wallet?.transactions ?? []).reduce(
+      (sum, tx) => (tx.direction === 'OUT' ? sum + Math.abs(tx.amount || 0) : sum),
+      0,
+    );
 
     const pendingReceipts = receipts.filter((r) => r.status === 'PENDING').length;
 
@@ -240,7 +243,7 @@ export default function WalletDashboard({
               ) : (
                 <div className="space-y-3">
                   {(wallet?.transactions ?? []).map((tx) => {
-                    const isIncoming = tx.direction === 'IN' || tx.amount >= 0;
+                    const isIncoming = tx.direction === 'IN';
                     const label = tx.description || tx.type || 'Wallet activity';
                     const counterparty = isIncoming
                       ? tx.senderWallet?.user?.name || 'System'

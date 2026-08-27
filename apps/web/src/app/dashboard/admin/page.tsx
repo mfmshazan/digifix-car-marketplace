@@ -607,7 +607,9 @@ function AdminWalletTab() {
                 ) : (
                     <div className="space-y-3">
                         {transactions.map((tx: any) => {
-                            const isIncoming = tx.direction === 'IN' || tx.amount >= 0;
+                            // Amounts are stored positive; the side comes from `direction`
+                            // (IN = received by this wallet, OUT = sent) — not the amount sign.
+                            const isIncoming = tx.direction === 'IN';
                             const label = tx.description || tx.type || 'Wallet activity';
                             const counterparty = isIncoming
                                 ? tx.senderWallet?.user?.name || 'System'

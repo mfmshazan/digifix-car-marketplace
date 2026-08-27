@@ -5,17 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { requestOtp, verifyOtp, resetPassword } from '../../src/api/auth';
 
 const { width } = Dimensions.get('window');
-const PASSWORD_REQUIREMENTS_ERROR = 'Password does not meet the minimum requirements.';
-const PASSWORD_REQUIREMENTS = [
-  { label: 'At least 8 characters', test: (value: string) => value.length >= 8 },
-  { label: 'One number', test: (value: string) => /\d/.test(value) },
-  { label: 'One uppercase letter', test: (value: string) => /[A-Z]/.test(value) },
-  { label: 'One lowercase letter', test: (value: string) => /[a-z]/.test(value) },
-  { label: 'One symbol', test: (value: string) => /[\W_]/.test(value) },
-];
-const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-
-const isStrongPassword = (value: string) => passwordRegex.test(value);
 
 export default function ForgotPassword() {
   const router = useRouter();
@@ -29,18 +18,12 @@ export default function ForgotPassword() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [hasTouchedPassword, setHasTouchedPassword] = useState(false);
-  const [hasTouchedConfirmPassword, setHasTouchedConfirmPassword] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const otpInputRefs = useRef<(TextInput | null)[]>([]);
-  const isConfirmPasswordEntered = confirmPassword.length > 0;
-  const isConfirmPasswordValid = isConfirmPasswordEntered && confirmPassword === password;
-  const shouldShowConfirmPasswordMismatch =
-    hasTouchedConfirmPassword && isConfirmPasswordEntered && !isConfirmPasswordValid;
+  const otpInputRefs = useRef<Array<TextInput | null>>([]);
 
   //Request OTP
 
@@ -89,14 +72,13 @@ export default function ForgotPassword() {
   //reset password
   const handleResetPassword = async () => {
     if (password !== confirmPassword) {
-      setHasTouchedConfirmPassword(true);
       setError('Passwords do not match');
       return;
     }
 
-    if (!isStrongPassword(password)) {
-      setHasTouchedPassword(true);
-      setError(PASSWORD_REQUIREMENTS_ERROR);
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+    if (!passwordRegex.test(password)) {
+      setError('Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.');
       return;
     }
 
@@ -182,7 +164,7 @@ export default function ForgotPassword() {
             </Text>
           </View>
 
-          {error && error !== PASSWORD_REQUIREMENTS_ERROR && (
+          {error && (
             <View style={styles.errorArea}>
               <Ionicons name="alert-circle" size={18} color="#EF4444" style={styles.errorIcon} />
               <Text style={styles.errorText}>{error}</Text>
@@ -232,78 +214,33 @@ export default function ForgotPassword() {
                   <View style={styles.inputWrapper}>
                     <TextInput
                       style={styles.input}
-                      placeholder="Enter your password"
+                      placeholder="Min 6 characters"
                       placeholderTextColor="#9CA3AF"
                       value={password}
                       onChangeText={(text) => { setPassword(text); setError(null); }}
-                      onFocus={() => setHasTouchedPassword(true)}
                       secureTextEntry={!showPassword}
                     />
                     <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                       <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#9CA3AF" />
                     </TouchableOpacity>
                   </View>
-                  {hasTouchedPassword ? (
-                    <View style={styles.passwordRequirementsList}>
-                      {PASSWORD_REQUIREMENTS.map((requirement) => (
-                        <View key={requirement.label} style={styles.passwordRequirementRow}>
-                          <Ionicons
-                            name={requirement.test(password) ? "checkmark-circle-outline" : "close-circle-outline"}
-                            size={18}
-                            color={requirement.test(password) ? "#10B981" : "#EF4444"}
-                          />
-                          <Text
-                            style={[
-                              styles.passwordRequirementText,
-                              requirement.test(password) ? styles.passwordRequirementValid : styles.passwordRequirementInvalid,
-                            ]}
-                          >
-                            {requirement.label}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
                 </View>
 
                 <View>
                   <Text style={styles.inputLabel}>Confirm Password</Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      shouldShowConfirmPasswordMismatch && styles.inputInvalid,
-                    ]}
-                  >
+                  <View style={styles.inputWrapper}>
                     <TextInput
                       style={styles.input}
                       placeholder="Repeat your password"
                       placeholderTextColor="#9CA3AF"
                       value={confirmPassword}
                       onChangeText={(text) => { setConfirmPassword(text); setError(null); }}
-                      onFocus={() => setHasTouchedConfirmPassword(true)}
                       secureTextEntry={!showConfirmPassword}
                     />
                     <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
                       <Ionicons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#9CA3AF" />
                     </TouchableOpacity>
                   </View>
-                  {hasTouchedConfirmPassword && isConfirmPasswordEntered ? (
-                    <View style={styles.confirmFeedbackRow}>
-                      <Ionicons
-                        name={isConfirmPasswordValid ? "checkmark-circle-outline" : "close-circle-outline"}
-                        size={17}
-                        color={isConfirmPasswordValid ? "#10B981" : "#EF4444"}
-                      />
-                      <Text
-                        style={[
-                          styles.confirmFeedbackText,
-                          isConfirmPasswordValid ? styles.confirmFeedbackValid : styles.confirmFeedbackInvalid,
-                        ]}
-                      >
-                        {isConfirmPasswordValid ? "Passwords match" : "Passwords do not match"}
-                      </Text>
-                    </View>
-                  ) : null}
                 </View>
               </View>
             )}
@@ -440,25 +377,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
-  passwordRequirementsList: {
-    gap: 8,
-    marginTop: 10,
-  },
-  passwordRequirementRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  passwordRequirementText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  passwordRequirementValid: {
-    color: '#10B981',
-  },
-  passwordRequirementInvalid: {
-    color: '#EF4444',
-  },
   inputArea: {
     width: '100%',
   },
@@ -477,25 +395,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  inputInvalid: {
-    borderColor: '#EF4444',
-  },
-  confirmFeedbackRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-  },
-  confirmFeedbackText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  confirmFeedbackValid: {
-    color: '#10B981',
-  },
-  confirmFeedbackInvalid: {
-    color: '#EF4444',
   },
   input: {
     flex: 1,

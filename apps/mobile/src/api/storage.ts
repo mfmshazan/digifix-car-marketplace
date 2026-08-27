@@ -52,12 +52,6 @@ export const stripEphemeralAvatarFromUser = (user: Record<string, any> | null): 
 export const saveToken = async (token: string): Promise<void> => {
   try {
     await AsyncStorage.setItem(TOKEN_KEY, token);
-    // Register this device with OneSignal the moment the user signs in / signs up,
-    // so push notifications arrive without them ever opening the Orders screen.
-    // Dynamically imported + fire-and-forget so it never blocks or breaks auth.
-    import('../lib/onesignal')
-      .then((m) => m.registerPushForToken(token))
-      .catch(() => {});
   } catch (error) {
     console.error('Error saving token:', error);
     throw error;
@@ -94,6 +88,7 @@ export const removeToken = async (): Promise<void> => {
     // Detach this device so the signed-out user stops receiving push.
     import('../lib/onesignal').then((m) => m.logoutOneSignal()).catch(() => {});
   } catch (error) {
+
     console.error('Error removing token:', error);
     throw error;
   }
@@ -149,6 +144,7 @@ export const clearAuthData = async (): Promise<void> => {
     // doesn't inherit the previous user's push notifications.
     import('../lib/onesignal').then((m) => m.logoutOneSignal()).catch(() => {});
   } catch (error) {
+
     console.error('Error clearing auth data:', error);
     throw error;
   }

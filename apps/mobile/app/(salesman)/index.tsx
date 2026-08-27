@@ -205,6 +205,15 @@ export default function SalesmanDashboard() {
         <View style={styles.quickActionsGrid}>
           <TouchableOpacity
             style={styles.quickAction}
+            onPress={() => router.push('/(salesman)/add-car-part')}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#E8F5E9' }]}>
+              <Ionicons name="add-circle" size={28} color="#4CAF50" />
+            </View>
+            <Text style={styles.quickActionText}>Add Part</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickAction}
             onPress={() => router.push('/(salesman)/orders')}
           >
             <View style={[styles.quickActionIcon, { backgroundColor: '#E3F2FD' }]}>

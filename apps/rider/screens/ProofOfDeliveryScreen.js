@@ -7,11 +7,10 @@ import {
     ScrollView,
     Image,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import SignatureCanvas from 'react-native-signature-canvas';
 import { useDispatch } from 'react-redux';
-import { Button, Input, ScreenHero, SurfaceCard, StatusBadge } from '../components/Common';
+import { Button, Input, SurfaceCard, SectionHeader, StatusBadge } from '../components/Common';
 import { jobsAPI } from '../services/api';
 import { getCurrentLocation } from '../services/location';
 import { fetchAssignedDeliveries } from '../store/slices/assignedDeliveriesSlice';
@@ -37,7 +36,7 @@ export default function ProofOfDeliveryScreen({ route, navigation }) {
 
         const result = await ImagePicker.launchCameraAsync({
             allowsEditing: true,
-            quality: 0.5,
+            quality: 0.7,
         });
 
         if (!result.canceled) {
@@ -104,15 +103,7 @@ export default function ProofOfDeliveryScreen({ route, navigation }) {
     if (showSignaturePad) {
         return (
             <View style={styles.signatureContainer}>
-                <View style={styles.signatureHeader}>
-                    <View style={styles.signatureHeaderIcon}>
-                        <Ionicons name="create-outline" size={22} color={colors.secondary} />
-                    </View>
-                    <View>
-                        <Text style={styles.signatureTitle}>Customer Signature</Text>
-                        <Text style={styles.signatureSubtitle}>Ask the recipient to sign inside the box.</Text>
-                    </View>
-                </View>
+                <Text style={styles.signatureTitle}>Customer Signature</Text>
                 <SignatureCanvas
                     onOK={handleSignature}
                     onEmpty={() => Alert.alert('Error', 'Please provide a signature')}
@@ -121,86 +112,45 @@ export default function ProofOfDeliveryScreen({ route, navigation }) {
                     confirmText="Save"
                     webStyle={`.m-signature-pad {box-shadow: none; border: 1px solid #d7dfec;}`}
                 />
-                <Button title="Cancel" icon="close-outline" onPress={() => setShowSignaturePad(false)} variant="outline" style={styles.signatureCancel} />
+                <Button title="Cancel" onPress={() => setShowSignaturePad(false)} variant="outline" style={styles.signatureCancel} />
             </View>
         );
     }
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            <ScreenHero
-                eyebrow="Delivery closeout"
+            <SectionHeader
+                eyebrow="Closeout"
                 title="Proof of Delivery"
-                subtitle="Capture verifiable handoff evidence before marking this delivery complete."
-                icon="shield-checkmark-outline"
+                subtitle="Archive the final handoff so the order can move from active delivery to history."
                 right={<StatusBadge label={`Job #${jobId}`} tone="info" />}
-            >
-                <View style={styles.heroHint}>
-                    <Ionicons name="information-circle-outline" size={17} color="#BFDBFE" />
-                    <Text style={styles.heroHintText}>A photo or customer signature is required.</Text>
-                </View>
-            </ScreenHero>
+            />
 
             <SurfaceCard style={styles.sectionCard}>
-                <View style={styles.cardHeader}>
-                    <View style={styles.cardIcon}>
-                        <Ionicons name="camera-outline" size={21} color={colors.secondary} />
-                    </View>
-                    <View style={styles.cardHeaderCopy}>
-                        <Text style={styles.cardTitle}>Delivery Photo</Text>
-                        <Text style={styles.cardSubtitle}>Capture the package at the handoff location.</Text>
-                    </View>
-                    {photoUri ? (
-                        <View style={styles.completeBadge}>
-                            <Ionicons name="checkmark" size={14} color={colors.successDark} />
-                        </View>
-                    ) : null}
-                </View>
+                <Text style={styles.cardTitle}>Delivery Photo</Text>
                 {photoUri ? (
                     <>
                         <Image source={{ uri: photoUri }} style={styles.photo} />
-                        <Button title="Retake Photo" icon="refresh-outline" onPress={handleTakePhoto} variant="outline" />
+                        <Button title="Retake Photo" onPress={handleTakePhoto} variant="outline" />
                     </>
                 ) : (
-                    <Button title="Open Camera" icon="camera-outline" onPress={handleTakePhoto} />
+                    <Button title="Take Photo" onPress={handleTakePhoto} />
                 )}
             </SurfaceCard>
 
             <SurfaceCard style={styles.sectionCard}>
-                <View style={styles.cardHeader}>
-                    <View style={[styles.cardIcon, styles.signatureCardIcon]}>
-                        <Ionicons name="create-outline" size={21} color={colors.accent} />
-                    </View>
-                    <View style={styles.cardHeaderCopy}>
-                        <Text style={styles.cardTitle}>Customer Signature</Text>
-                        <Text style={styles.cardSubtitle}>Collect a signature directly from the recipient.</Text>
-                    </View>
-                    {signature ? (
-                        <View style={styles.completeBadge}>
-                            <Ionicons name="checkmark" size={14} color={colors.successDark} />
-                        </View>
-                    ) : null}
-                </View>
+                <Text style={styles.cardTitle}>Customer Signature</Text>
                 {signature ? (
                     <>
                         <Image source={{ uri: signature }} style={styles.signaturePreview} resizeMode="contain" />
-                        <Button title="Retake Signature" icon="refresh-outline" onPress={() => setShowSignaturePad(true)} variant="outline" />
+                        <Button title="Retake Signature" onPress={() => setShowSignaturePad(true)} variant="outline" />
                     </>
                 ) : (
-                    <Button title="Capture Signature" icon="create-outline" onPress={() => setShowSignaturePad(true)} />
+                    <Button title="Capture Signature" onPress={() => setShowSignaturePad(true)} />
                 )}
             </SurfaceCard>
 
             <SurfaceCard style={styles.sectionCard}>
-                <View style={styles.cardHeader}>
-                    <View style={[styles.cardIcon, styles.recipientCardIcon]}>
-                        <Ionicons name="person-outline" size={21} color={colors.successDark} />
-                    </View>
-                    <View style={styles.cardHeaderCopy}>
-                        <Text style={styles.cardTitle}>Recipient Details</Text>
-                        <Text style={styles.cardSubtitle}>Record who accepted the package and any notes.</Text>
-                    </View>
-                </View>
                 <Input
                     label="Recipient Name"
                     placeholder="Who received the delivery?"
@@ -218,12 +168,7 @@ export default function ProofOfDeliveryScreen({ route, navigation }) {
                 />
             </SurfaceCard>
 
-            <Button
-                title="Complete & Archive Delivery"
-                icon="checkmark-done-outline"
-                onPress={handleSubmit}
-                loading={loading}
-            />
+            <Button title="Complete Delivery" onPress={handleSubmit} loading={loading} />
         </ScrollView>
     );
 }
@@ -235,50 +180,14 @@ const styles = StyleSheet.create({
     },
     content: {
         padding: spacing.lg,
-        paddingBottom: spacing.xxl,
+        paddingBottom: spacing.xl,
     },
     sectionCard: {
         marginBottom: spacing.md,
-        padding: spacing.lg,
-    },
-    cardHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        marginBottom: spacing.md,
-    },
-    cardHeaderCopy: {
-        flex: 1,
-    },
-    cardIcon: {
-        width: 42,
-        height: 42,
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.secondarySoft,
-    },
-    signatureCardIcon: {
-        backgroundColor: colors.accentSoft,
-    },
-    recipientCardIcon: {
-        backgroundColor: colors.successSoft,
     },
     cardTitle: {
         ...typography.h3,
-    },
-    cardSubtitle: {
-        ...typography.caption,
-        color: colors.textSecondary,
-        marginTop: 2,
-    },
-    completeBadge: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.successSoft,
+        marginBottom: spacing.md,
     },
     photo: {
         width: '100%',
@@ -303,43 +212,11 @@ const styles = StyleSheet.create({
         backgroundColor: colors.background,
         padding: spacing.lg,
     },
-    signatureHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        marginBottom: spacing.md,
-    },
-    signatureHeaderIcon: {
-        width: 44,
-        height: 44,
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.secondarySoft,
-    },
     signatureTitle: {
         ...typography.h2,
-    },
-    signatureSubtitle: {
-        ...typography.bodySmall,
-        color: colors.textSecondary,
-        marginTop: 2,
+        marginBottom: spacing.md,
     },
     signatureCancel: {
         marginTop: spacing.lg,
-    },
-    heroHint: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        marginTop: spacing.lg,
-        paddingTop: spacing.md,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.12)',
-    },
-    heroHintText: {
-        ...typography.bodySmall,
-        color: colors.textOnDarkMuted,
-        fontWeight: '700',
     },
 });

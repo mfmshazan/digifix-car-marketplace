@@ -21,8 +21,6 @@ export const Button = ({
     loading = false,
     style,
     textStyle,
-    icon,
-    iconPosition = 'left',
 }) => {
     const buttonStyles = [
         styles.button,
@@ -55,35 +53,7 @@ export const Button = ({
             disabled={disabled || loading}
             activeOpacity={0.86}
         >
-            {loading ? (
-                <ActivityIndicator color={spinnerColor} />
-            ) : (
-                <View style={styles.buttonContent}>
-                    {icon && iconPosition === 'left' ? (
-                        <Ionicons
-                            name={icon}
-                            size={19}
-                            color={
-                                variant === 'outline' || variant === 'ghost'
-                                    ? colors.secondary
-                                    : colors.surface
-                            }
-                        />
-                    ) : null}
-                    <Text style={labelStyles}>{title}</Text>
-                    {icon && iconPosition === 'right' ? (
-                        <Ionicons
-                            name={icon}
-                            size={19}
-                            color={
-                                variant === 'outline' || variant === 'ghost'
-                                    ? colors.secondary
-                                    : colors.surface
-                            }
-                        />
-                    ) : null}
-                </View>
-            )}
+            {loading ? <ActivityIndicator color={spinnerColor} /> : <Text style={labelStyles}>{title}</Text>}
         </TouchableOpacity>
     );
 };
@@ -95,7 +65,6 @@ export const Input = ({
     onChangeText,
     secureTextEntry,
     style,
-    inputStyle,
     error,
     multiline = false,
     numberOfLines,
@@ -111,7 +80,6 @@ export const Input = ({
                         styles.input,
                         multiline && styles.inputMultiline,
                         error && styles.inputError,
-                        inputStyle,
                         rightAccessory && { paddingRight: 48 }
                     ]}
                 placeholder={placeholder}
@@ -274,34 +242,6 @@ export const SurfaceCard = ({ children, style }) => (
     <View style={[styles.card, style]}>{children}</View>
 );
 
-export const ScreenHero = ({
-    eyebrow,
-    title,
-    subtitle,
-    icon = 'bicycle-outline',
-    right,
-    children,
-    style,
-}) => (
-    <View style={[styles.screenHero, style]}>
-        <View style={styles.heroAccentOne} />
-        <View style={styles.heroAccentTwo} />
-        <View style={styles.screenHeroTop}>
-            <View style={styles.screenHeroCopy}>
-                {eyebrow ? <Text style={styles.screenHeroEyebrow}>{eyebrow}</Text> : null}
-                <Text style={styles.screenHeroTitle}>{title}</Text>
-                {subtitle ? <Text style={styles.screenHeroSubtitle}>{subtitle}</Text> : null}
-            </View>
-            {right || (
-                <View style={styles.screenHeroIcon}>
-                    <Ionicons name={icon} size={24} color={colors.surface} />
-                </View>
-            )}
-        </View>
-        {children}
-    </View>
-);
-
 export const SectionHeader = ({ eyebrow, title, subtitle, right }) => (
     <View style={styles.sectionHeader}>
         <View style={styles.sectionHeaderCopy}>
@@ -313,7 +253,7 @@ export const SectionHeader = ({ eyebrow, title, subtitle, right }) => (
     </View>
 );
 
-export const StatusBadge = ({ label, tone = 'info', style, showDot = true }) => (
+export const StatusBadge = ({ label, tone = 'info', style }) => (
     <View
         style={[
             styles.badge,
@@ -324,17 +264,6 @@ export const StatusBadge = ({ label, tone = 'info', style, showDot = true }) => 
             style,
         ]}
     >
-        {showDot ? (
-            <View
-                style={[
-                    styles.badgeDot,
-                    tone === 'success' && styles.badgeDotSuccess,
-                    tone === 'warning' && styles.badgeDotWarning,
-                    tone === 'danger' && styles.badgeDotDanger,
-                    tone === 'info' && styles.badgeDotInfo,
-                ]}
-            />
-        ) : null}
         <Text
             style={[
                 styles.badgeText,
@@ -349,16 +278,8 @@ export const StatusBadge = ({ label, tone = 'info', style, showDot = true }) => 
     </View>
 );
 
-export const EmptyState = ({
-    title,
-    body,
-    action,
-    icon = 'file-tray-outline',
-}) => (
+export const EmptyState = ({ title, body, action }) => (
     <SurfaceCard style={styles.emptyState}>
-        <View style={styles.emptyStateIcon}>
-            <Ionicons name={icon} size={28} color={colors.secondary} />
-        </View>
         <Text style={styles.emptyStateTitle}>{title}</Text>
         {body ? <Text style={styles.emptyStateBody}>{body}</Text> : null}
         {action || null}
@@ -367,19 +288,19 @@ export const EmptyState = ({
 
 const styles = StyleSheet.create({
     button: {
-        minHeight: 52,
-        paddingVertical: 14,
+        minHeight: 54,
+        paddingVertical: spacing.md,
         paddingHorizontal: spacing.lg,
-        borderRadius: radii.sm,
+        borderRadius: radii.md,
         alignItems: 'center',
         justifyContent: 'center',
         ...shadows.small,
     },
     buttonPrimary: {
-        backgroundColor: colors.secondary,
+        backgroundColor: colors.primary,
     },
     buttonSecondary: {
-        backgroundColor: colors.primary,
+        backgroundColor: colors.secondary,
     },
     buttonOutline: {
         backgroundColor: colors.surface,
@@ -402,13 +323,6 @@ const styles = StyleSheet.create({
     buttonText: {
         ...typography.body,
         fontWeight: '700',
-        letterSpacing: 0.1,
-    },
-    buttonContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacing.sm,
     },
     buttonTextPrimary: {
         color: colors.surface,
@@ -423,16 +337,18 @@ const styles = StyleSheet.create({
         marginBottom: spacing.md,
     },
     inputLabel: {
-        ...typography.overline,
+        ...typography.caption,
         color: colors.textSecondary,
-        marginBottom: spacing.sm,
+        marginBottom: spacing.xs,
+        textTransform: 'uppercase',
+        fontWeight: '700',
     },
     input: {
-        minHeight: 52,
+        minHeight: 54,
         borderWidth: 1,
         borderColor: colors.border,
-        borderRadius: radii.sm,
-        paddingVertical: 14,
+        borderRadius: radii.md,
+        paddingVertical: spacing.md,
         paddingHorizontal: spacing.md,
         ...typography.body,
         backgroundColor: colors.surface,
@@ -464,72 +380,9 @@ const styles = StyleSheet.create({
     },
     card: {
         backgroundColor: colors.surface,
-        borderRadius: radii.md,
-        padding: spacing.md,
-        borderWidth: 1,
-        borderColor: colors.borderSubtle,
-        ...shadows.small,
-    },
-    screenHero: {
-        position: 'relative',
-        overflow: 'hidden',
-        backgroundColor: colors.primary,
         borderRadius: radii.lg,
-        padding: spacing.lg,
-        marginBottom: spacing.lg,
-        ...shadows.large,
-    },
-    heroAccentOne: {
-        position: 'absolute',
-        width: 170,
-        height: 170,
-        borderRadius: 85,
-        backgroundColor: 'rgba(59,130,246,0.18)',
-        right: -70,
-        top: -92,
-    },
-    heroAccentTwo: {
-        position: 'absolute',
-        width: 110,
-        height: 110,
-        borderRadius: 55,
-        backgroundColor: 'rgba(139,92,246,0.14)',
-        right: 52,
-        bottom: -72,
-    },
-    screenHeroTop: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        justifyContent: 'space-between',
-        gap: spacing.md,
-    },
-    screenHeroCopy: {
-        flex: 1,
-    },
-    screenHeroEyebrow: {
-        ...typography.overline,
-        color: '#93C5FD',
-        marginBottom: spacing.sm,
-    },
-    screenHeroTitle: {
-        ...typography.h1,
-        color: colors.textOnDark,
-    },
-    screenHeroSubtitle: {
-        ...typography.bodySmall,
-        color: colors.textOnDarkMuted,
-        marginTop: spacing.sm,
-        maxWidth: 320,
-    },
-    screenHeroIcon: {
-        width: 48,
-        height: 48,
-        borderRadius: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.14)',
+        padding: spacing.md,
+        ...shadows.medium,
     },
     sectionHeader: {
         flexDirection: 'row',
@@ -542,9 +395,11 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     sectionEyebrow: {
-        ...typography.overline,
-        color: colors.secondary,
-        marginBottom: 6,
+        ...typography.caption,
+        color: colors.textMuted,
+        textTransform: 'uppercase',
+        fontWeight: '700',
+        marginBottom: spacing.xs,
     },
     sectionTitle: {
         ...typography.h2,
@@ -556,47 +411,21 @@ const styles = StyleSheet.create({
     },
     badge: {
         alignSelf: 'flex-start',
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
         paddingHorizontal: spacing.sm,
         paddingVertical: 6,
         borderRadius: radii.pill,
-        borderWidth: 1,
-        borderColor: 'transparent',
     },
     badgeInfo: {
         backgroundColor: colors.infoSoft,
-        borderColor: '#BAE6FD',
     },
     badgeSuccess: {
         backgroundColor: colors.successSoft || '#D1FAE5',
-        borderColor: '#A7F3D0',
     },
     badgeWarning: {
         backgroundColor: colors.warningSoft,
-        borderColor: '#FDE68A',
     },
     badgeDanger: {
         backgroundColor: colors.dangerSoft,
-        borderColor: '#FECACA',
-    },
-    badgeDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-    },
-    badgeDotInfo: {
-        backgroundColor: colors.info,
-    },
-    badgeDotSuccess: {
-        backgroundColor: colors.success,
-    },
-    badgeDotWarning: {
-        backgroundColor: colors.warning,
-    },
-    badgeDotDanger: {
-        backgroundColor: colors.danger,
     },
     badgeText: {
         ...typography.caption,
@@ -615,33 +444,15 @@ const styles = StyleSheet.create({
         color: colors.danger,
     },
     emptyState: {
-        alignItems: 'center',
-        paddingVertical: spacing.xl,
-        paddingHorizontal: spacing.lg,
-        borderStyle: 'dashed',
-        borderColor: colors.borderStrong,
-        shadowOpacity: 0,
-        elevation: 0,
-    },
-    emptyStateIcon: {
-        width: 58,
-        height: 58,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.secondarySoft,
-        marginBottom: spacing.md,
+        alignItems: 'flex-start',
     },
     emptyStateTitle: {
         ...typography.h3,
         marginBottom: spacing.xs,
-        textAlign: 'center',
     },
     emptyStateBody: {
         ...typography.bodySmall,
         color: colors.textSecondary,
-        textAlign: 'center',
-        maxWidth: 290,
     },
     dropdownTrigger: {
         flexDirection: 'row',

@@ -7,8 +7,7 @@ import {
   flagReview,
   changeReviewStatus,
   getDriverSummary,
-  getTargetReviews,
-  getAdminReviews
+  getTargetReviews
 } from '../controllers/review.controller.js';
 
 const router = Router();
@@ -24,14 +23,13 @@ router.post('/', createReviews);
 router.put('/:id', editReview);
 
 // Seller/Customer flagging endpoints
-router.post('/:id/reply', authorize('SALESMAN', 'SHOP_MANAGER'), replyToReview);
+router.post('/:id/reply', authorize('SALESMAN'), replyToReview);
 router.post('/:id/flag', flagReview);
 
 // Driver endpoints
 router.get('/driver/summary', authorize('DELIVERY_PARTNER', 'DELIVERY_PERSON', 'RIDER'), getDriverSummary);
 
 // Admin endpoints
-router.get('/admin/all', authorize('ADMIN'), getAdminReviews);
 router.patch('/admin/:id/status', authorize('ADMIN'), changeReviewStatus);
 
 export default router;

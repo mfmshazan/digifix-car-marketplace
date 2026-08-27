@@ -242,6 +242,10 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
             return deliveryRoute.coordinates;
         }
 
+        if (driverCoordinate && nextStopCoordinate) {
+            return [driverCoordinate, nextStopCoordinate];
+        }
+
         return [];
     }, [deliveryRoute?.coordinates, driverCoordinate, nextStopCoordinate]);
     const fallbackRouteCoordinates = useMemo(() => {
@@ -343,8 +347,9 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                 {routeCoordinates.length >= 2 ? (
                     <Polyline
                         coordinates={routeCoordinates}
-                        strokeColor={colors.secondary}
-                        strokeWidth={6}
+                        strokeColor={colors.primary}
+                        strokeWidth={5}
+                        geodesic
                     />
                 ) : fallbackRouteCoordinates.length >= 2 ? (
                     <Polyline
@@ -425,11 +430,9 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                     />
                 </SurfaceCard>
 
+
                 <View style={styles.metricGrid}>
                     <SurfaceCard style={styles.metricCard}>
-                        <View style={styles.metricIcon}>
-                            <Ionicons name="time-outline" size={18} color={colors.secondary} />
-                        </View>
                         <Text style={styles.metricLabel}>ETA</Text>
                         <Text style={styles.metricValue}>
                             {etaMinutes ? `${etaMinutes} min` : isLoadingRoute ? 'Loading' : 'Calculating'}
@@ -437,9 +440,6 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                     </SurfaceCard>
 
                     <SurfaceCard style={styles.metricCard}>
-                        <View style={[styles.metricIcon, styles.distanceMetricIcon]}>
-                            <Ionicons name="navigate-outline" size={18} color={colors.accent} />
-                        </View>
                         <Text style={styles.metricLabel}>Distance Left</Text>
                         <Text style={styles.metricValue}>
                             {formatDistance(distanceRemainingKm)}
@@ -460,6 +460,7 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                                 </Text>
                             </View>
                         </View>
+
                     </SurfaceCard>
                 </View>
 
@@ -515,8 +516,7 @@ export default function ActiveDeliveryScreen({ route: navigationRoute, navigatio
                             style={styles.callButton}
                             onPress={() => Linking.openURL(`tel:${job.customerPhone ?? job.customer_phone}`)}
                         >
-                            <Ionicons name="call-outline" size={18} color="#FFFFFF" />
-                            <Text style={styles.callButtonText}>Call Customer</Text>
+                            <Text style={styles.callButtonText}>📞  Call Customer</Text>
                         </TouchableOpacity>
                     ) : null}
                 </SurfaceCard>
@@ -571,6 +571,7 @@ const styles = StyleSheet.create({
     map: {
         flex: 1,
     },
+
     mapMarkerWrap: {
         alignItems: 'center',
     },
@@ -670,6 +671,7 @@ const styles = StyleSheet.create({
         borderRadius: 3,
         backgroundColor: colors.borderStrong,
     },
+
     metricGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -692,34 +694,9 @@ const styles = StyleSheet.create({
         flexGrow: 1,
         flexBasis: '47%',
         minWidth: 140,
-        padding: spacing.md,
     },
     metricCardWide: {
         width: '100%',
-    },
-    metricIcon: {
-        width: 36,
-        height: 36,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.secondarySoft,
-        marginBottom: spacing.sm,
-    },
-    distanceMetricIcon: {
-        backgroundColor: colors.accentSoft,
-    },
-    locationMetricRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    locationMetricIcon: {
-        backgroundColor: colors.successSoft,
-        marginBottom: 0,
-        marginRight: spacing.sm,
-    },
-    locationMetricCopy: {
-        flex: 1,
     },
     metricLabel: {
         ...typography.caption,
@@ -744,7 +721,6 @@ const styles = StyleSheet.create({
     },
     detailCard: {
         marginBottom: spacing.md,
-        padding: spacing.lg,
     },
     cardTitle: {
         ...typography.h3,
@@ -767,13 +743,10 @@ const styles = StyleSheet.create({
     },
     callButton: {
         marginTop: spacing.sm,
-        backgroundColor: colors.secondary,
-        borderRadius: radii.sm,
-        paddingVertical: 12,
+        backgroundColor: colors.primary,
+        borderRadius: 10,
+        paddingVertical: spacing.sm,
         alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'row',
-        gap: spacing.sm,
     },
     callButtonText: {
         ...typography.body,

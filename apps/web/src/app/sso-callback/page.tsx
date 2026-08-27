@@ -62,8 +62,6 @@ function SSOCallbackContent() {
                     // Redirect based on user role
                     if (data.data.user.role === 'ADMIN') {
                         router.push('/dashboard/admin');
-                    } else if (data.data.user.role === 'SHOP_MANAGER') {
-                        router.push('/dashboard/manager');
                     } else if (data.data.user.role === 'SALESMAN') {
                         router.push('/dashboard/salesman');
                     } else {

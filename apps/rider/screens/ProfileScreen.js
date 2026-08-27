@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Input, Dropdown, SurfaceCard, SectionHeader } from '../components/Common';
 import { partnerAPI, authAPI, reviewsAPI } from '../services/api';
+
 import { clearTokens, getRefreshToken } from '../services/storage';
 import { colors, spacing, shadows } from '../styles/theme';
 
@@ -32,7 +33,6 @@ export default function ProfileScreen({ navigation }) {
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [formData, setFormData] = useState(createProfileForm());
-    const [feedbackSummary, setFeedbackSummary] = useState(null);
 
     useEffect(() => {
         loadProfile();
@@ -40,8 +40,8 @@ export default function ProfileScreen({ navigation }) {
 
     const loadProfile = async () => {
         try {
-            const profileRes = await partnerAPI.getProfile();
-            const profile = profileRes.data.data;
+            const response = await partnerAPI.getProfile();
+            const profile = response.data.data;
             setPartner(profile);
             setFormData(createProfileForm(profile));
         } catch (error) {
@@ -54,6 +54,7 @@ export default function ProfileScreen({ navigation }) {
         } catch (_) {
             // Silently ignore optional feedback
         }
+
     };
 
     const handleChange = (key, value) => {
@@ -188,6 +189,7 @@ export default function ProfileScreen({ navigation }) {
                     </View>
                 </View>
 
+
                 <Input
                     label="Full Name"
                     placeholder="Enter your full name"
@@ -224,8 +226,8 @@ export default function ProfileScreen({ navigation }) {
                             handleChange('phone', actualNumber);
                         }
                     }}
+
                     editable={editing}
-                    keyboardType="phone-pad"
                 />
 
                 <Input
@@ -370,13 +372,13 @@ export default function ProfileScreen({ navigation }) {
                     <Button
                         title="Save Changes"
                         icon="checkmark-circle-outline"
+
                         onPress={handleSave}
                         loading={saving}
                         style={styles.actionButton}
                     />
                     <Button
                         title="Cancel"
-                        icon="close-outline"
                         onPress={() => {
                             setEditing(false);
                             setFormData(createProfileForm(partner));
@@ -388,7 +390,6 @@ export default function ProfileScreen({ navigation }) {
                 <View style={styles.actions}>
                     <Button
                         title="Edit Profile"
-                        icon="create-outline"
                         onPress={() => setEditing(true)}
                         style={styles.actionButton}
                     />
@@ -401,6 +402,7 @@ export default function ProfileScreen({ navigation }) {
                     <Button
                         title="Delete Partner Account"
                         icon="trash-outline"
+
                         onPress={handleDeleteProfile}
                         variant="danger"
                         loading={deleting}
@@ -434,15 +436,7 @@ const styles = StyleSheet.create({
         borderColor: colors.borderSubtle,
         backgroundColor: colors.surface,
         ...shadows.small,
-    },
-    formSectionTitle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.md,
-        paddingBottom: spacing.md,
-        marginBottom: spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.borderSubtle,
+
     },
     formSectionIcon: {
         width: 40,
@@ -453,7 +447,9 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0, 0, 46, 0.06)',
     },
     formSectionCopy: {
+
         flex: 1,
+        alignItems: 'center',
     },
     formSectionHeading: {
         fontSize: 14,
@@ -464,6 +460,7 @@ const styles = StyleSheet.create({
         fontSize: 11,
         color: colors.textSecondary,
         marginTop: 2,
+
     },
     actions: {
         gap: spacing.sm,
@@ -527,4 +524,8 @@ const styles = StyleSheet.create({
         color: colors.textSecondary,
         marginTop: 2,
     },
+=======
+>>>>>>> origin/muzny
 });
+
+

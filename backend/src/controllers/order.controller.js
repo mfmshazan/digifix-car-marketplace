@@ -31,13 +31,11 @@ export const getSalesmanSalesSummary = async (req, res) => {
     const shopOwnerId = await resolveShopOwnerId(req.user);
     const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
     const { date } = req.query;
-    
-    // Default to today if no date provided
     const targetDate = date ? new Date(date) : new Date();
     const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
     const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
 
-    // Get today's orders for this salesman
+    // Get today's orders for this shop
     const todayOrders = await prisma.order.findMany({
       where: {
         salesmanId: { in: shopOrderOwnerIds },
@@ -438,7 +436,9 @@ export const getSalesmanOrders = async (req, res) => {
 
 /**
  * Update order status
- * Integrates Wallet Logic for DELIVERED and REFUNDED
+ * Integrates Wallet Logic: prepaid (Stripe/Wallet) orders release funds to the
+ * seller on CONFIRMED → PROCESSING; REFUNDED reverses funds to the customer.
+ * COD earnings are released separately — see riderJobs.controller.js.
  */
 export const updateOrderStatus = async (req, res) => {
   try {
@@ -577,10 +577,12 @@ export const updateOrderStatus = async (req, res) => {
 
       // ==========================================
       // WALLET INTEGRATION: RELEASE FUNDS TO SELLER
-      // Admin → Salesman: release held Stripe funds on delivery
+      // Admin → Salesman: released as soon as the seller starts processing the
+      // order, for every payment method (incl. COD) — simplified for demo
+      // purposes rather than waiting for actual delivery/cash collection.
       // ==========================================
-      if (status === 'DELIVERED' && order.status !== 'DELIVERED') {
-        if (order.paymentMethod === 'Stripe' || order.paymentMethod === 'WALLET') {
+      if (status === 'PROCESSING' && order.status !== 'PROCESSING') {
+        if (order.paymentMethod === 'Stripe' || order.paymentMethod === 'WALLET' || order.paymentMethod === 'COD') {
           const adminWallet = await getAdminWallet(tx);
           const salesmanWallet = await ensureWallet(shopOwnerId, tx);
 
@@ -594,7 +596,7 @@ export const updateOrderStatus = async (req, res) => {
               senderWalletId: adminWallet.id,
               receiverWalletId: salesmanWallet.id,
               orderId: order.id,
-              description: `Sale earnings released for delivered order ${order.orderNumber}`
+              description: `Sale earnings released for order ${order.orderNumber}`
             }
           });
         }
@@ -1433,6 +1435,62 @@ export const getCustomerOrdersSimple = async (req, res) => {
 };
 
 /**
+ * Reverses the money movement for a cancelled/refunded order, inside the
+ * caller's existing prisma transaction:
+ *  - If the salesman was already credited (SALE_EARNING exists for this
+ *    order — earnings release early, at PROCESSING, for every payment
+ *    method), claw that back: Salesman → Admin (REFUND_SETTLEMENT).
+ *  - If the customer actually paid upfront (paymentStatus === 'PAID',
+ *    i.e. Stripe/Wallet), refund them: Admin → Customer (REFUND). COD
+ *    orders never collect payment upfront, so there's nothing to return.
+ * Safe to call even if neither condition applies — it's just a no-op then.
+ */
+const reverseOrderMoneyMovement = async (tx, order) => {
+  const earning = await tx.walletTransaction.findFirst({
+    where: { orderId: order.id, type: 'SALE_EARNING' },
+  });
+
+  if (earning && earning.receiverWalletId) {
+    const adminWallet = await getAdminWallet(tx);
+    await tx.wallet.update({
+      where: { id: earning.receiverWalletId },
+      data: { balance: { decrement: order.total } },
+    });
+    await tx.wallet.update({
+      where: { id: adminWallet.id },
+      data: { balance: { increment: order.total } },
+    });
+    await tx.walletTransaction.create({
+      data: {
+        amount: order.total,
+        type: 'REFUND_SETTLEMENT',
+        senderWalletId: earning.receiverWalletId,
+        receiverWalletId: adminWallet.id,
+        orderId: order.id,
+        description: `Salesman earnings clawed back for cancelled/refunded order ${order.orderNumber}`,
+      },
+    });
+  }
+
+  if (order.paymentStatus === 'PAID') {
+    const adminWallet = await getAdminWallet(tx);
+    const customerWallet = await ensureWallet(order.customerId, tx);
+    await tx.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: order.total } } });
+    await tx.wallet.update({ where: { id: customerWallet.id }, data: { balance: { increment: order.total } } });
+    await tx.walletTransaction.create({
+      data: {
+        amount: order.total,
+        type: 'REFUND',
+        senderWalletId: adminWallet.id,
+        receiverWalletId: customerWallet.id,
+        orderId: order.id,
+        description: `Refund for order ${order.orderNumber}`,
+      },
+    });
+  }
+};
+
+/**
  * Customer requests cancellation or refund.
  * PENDING/CONFIRMED → customer changed their mind before processing.
  * DELIVERED → product arrived defective/wrong, customer wants refund.
@@ -1629,21 +1687,30 @@ export const approveCancellation = async (req, res) => {
       });
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: {
-        status: 'CANCELLED',
-        // Payment status reflects that money needs to be returned (Stripe handles actual transfer)
-        paymentStatus: order.paymentStatus === 'PAID' ? 'REFUNDED' : order.paymentStatus,
-      }
-    });
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      const updated = await tx.order.update({
+        where: { id },
+        data: {
+          status: 'CANCELLED',
+          paymentStatus: order.paymentStatus === 'PAID' ? 'REFUNDED' : order.paymentStatus,
+        }
+      });
 
-    await prisma.orderTracking.create({
-      data: {
-        orderId: id,
-        status: 'CANCELLED',
-        description: 'Admin approved the cancellation/refund request'
-      }
+      await tx.orderTracking.create({
+        data: {
+          orderId: id,
+          status: 'CANCELLED',
+          description: 'Admin approved the cancellation/refund request'
+        }
+      });
+
+      await reverseOrderMoneyMovement(tx, order);
+
+      return updated;
+    }, {
+      // See updateOrderStatus for why this needs generous headroom over the 5s default.
+      maxWait: 10000,
+      timeout: 20000,
     });
 
     // Notify both parties in real-time so their dashboards update instantly
@@ -1653,7 +1720,9 @@ export const approveCancellation = async (req, res) => {
         orderId: id,
         orderNumber: order.orderNumber,
         status: 'CANCELLED',
-        message: `Refund approved for Order ${order.orderNumber}. Please refund customer ${order.customer?.name || ''}.`.trim(),
+        message: order.paymentStatus === 'PAID'
+          ? `Refund approved for Order ${order.orderNumber}. ${order.customer?.name || 'The customer'} has been refunded.`
+          : `Cancellation approved for Order ${order.orderNumber}.`,
       };
       const shopMemberIds = await getShopMemberIds(order.salesmanId);
       for (const memberId of shopMemberIds) {
@@ -1762,7 +1831,7 @@ export const rejectCancellation = async (req, res) => {
 export const acceptComplaint = async (req, res) => {
   try {
     const { id } = req.params;
-    // Scope to the shop owner so a salesman/manager can only act on their own shop's orders.
+    // Scope to the full shop so a salesman/manager can act on any order in their store.
     const shopOwnerId = await resolveShopOwnerId(req.user);
     const shopOrderOwnerIds = await getShopMemberIds(shopOwnerId);
 
@@ -1781,21 +1850,29 @@ export const acceptComplaint = async (req, res) => {
       return res.status(400).json({ success: false, message: 'This order has no pending complaint to review' });
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: {
-        status: 'CANCELLED',
-        // Marks that money should be returned — wallet transfer handled elsewhere.
-        paymentStatus: order.paymentStatus === 'PAID' ? 'REFUNDED' : order.paymentStatus,
-      }
-    });
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      const updated = await tx.order.update({
+        where: { id },
+        data: {
+          status: 'CANCELLED',
+          paymentStatus: order.paymentStatus === 'PAID' ? 'REFUNDED' : order.paymentStatus,
+        }
+      });
 
-    await prisma.orderTracking.create({
-      data: {
-        orderId: id,
-        status: 'CANCELLED',
-        description: 'Store accepted the complaint and approved the refund request',
-      }
+      await tx.orderTracking.create({
+        data: {
+          orderId: id,
+          status: 'CANCELLED',
+          description: 'Store accepted the complaint and approved the refund request',
+        }
+      });
+
+      await reverseOrderMoneyMovement(tx, order);
+
+      return updated;
+    }, {
+      maxWait: 10000,
+      timeout: 20000,
     });
 
     const io = req.app.get('io');

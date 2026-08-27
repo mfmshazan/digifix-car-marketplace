@@ -9,45 +9,45 @@ datasource db {
 }
 
 model User {
-  id               String         @id @default(cuid())
-  email            String         @unique
+  id               String       @id @default(cuid())
+  email            String       @unique
   password         String?
   name             String?
   phone            String?
   avatar           String?
-  role             UserRole       @default(CUSTOMER)
-  authProvider     AuthProvider   @default(EMAIL)
-  googleId         String?        @unique
-  isVerified       Boolean        @default(false)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  status           UserStatus     @default(ACTIVE)
-  stripeAccountId  String?        @unique
-  deliveryStatus   String?        @default("offline")
-  rating           Float          @default(5.0)
-  total_deliveries Int            @default(0)
+  role             UserRole     @default(CUSTOMER)
+  authProvider     AuthProvider @default(EMAIL)
+  googleId         String?      @unique
+  isVerified       Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  status           UserStatus   @default(ACTIVE)
+  stripeAccountId  String?      @unique
+  deliveryStatus   String?      @default("offline")
+  rating           Float        @default(5.0)
+  total_deliveries Int          @default(0)
   vehicleNumber    String?
   vehicleType      String?
-  total_reviews    Int            @default(0)
+  total_reviews    Int          @default(0)
 
   // Manager / Salesman hierarchy.
   // A SALESMAN belongs to a SHOP_MANAGER (managerId set). A SHOP_MANAGER has
   // managerId = null and is the store/catalog/wallet owner salesmen operate under.
-  managerId        String?
-  manager          User?          @relation("ManagerSalesmen", fields: [managerId], references: [id], onDelete: SetNull)
-  salesmen         User[]         @relation("ManagerSalesmen")
+  managerId String?
+  manager   User?   @relation("ManagerSalesmen", fields: [managerId], references: [id], onDelete: SetNull)
+  salesmen  User[]  @relation("ManagerSalesmen")
 
-  addresses        Address[]
-  carParts         CarPart[]      @relation("SellerCarParts")
-  cart             CartItem[]
-  orders           Order[]        @relation("CustomerOrders")
-  salesOrders      Order[]        @relation("SalesmanOrders")
-  products         Product[]      @relation("SalesmanProducts")
-  reviews          Review[]
-  reviewReplies    ReviewReply[]
-  store            Store?
-  wallet           Wallet?
-  wishlist         WishlistItem[]
+  addresses     Address[]
+  carParts      CarPart[]      @relation("SellerCarParts")
+  cart          CartItem[]
+  orders        Order[]        @relation("CustomerOrders")
+  salesOrders   Order[]        @relation("SalesmanOrders")
+  products      Product[]      @relation("SalesmanProducts")
+  reviews       Review[]
+  reviewReplies ReviewReply[]
+  store         Store?
+  wallet        Wallet?
+  wishlist      WishlistItem[]
 
   @@index([managerId])
 }
@@ -133,7 +133,11 @@ model Product {
   // Which delivery vehicle is needed to carry this product. Required for new
   // products (enforced in the API/UI); nullable in the DB so existing rows are
   // preserved. Drives which riders can be dispatched for an order.
-  deliveryVehicleType DeliveryVehicleType?
+  // Column in the live DB is named "deliveryVehicleType" (created before this
+  // field was renamed in the schema) — @map keeps the two in sync without a
+  // migration, since it already holds real data on existing products.
+  deliveryVehicle    DeliveryVehicleType?   @map("deliveryVehicleType")
+
   cartItems          CartItem[]
   orderItems         OrderItem[]
   category           Category?              @relation(fields: [categoryId], references: [id])
@@ -547,21 +551,21 @@ model DeliveryOffer {
 }
 
 model VehicleType {
-  id             String         @id @default(cuid())
-  name           String         @unique
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  vehicleModels  VehicleModel[]
+  id            String         @id @default(cuid())
+  name          String         @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  vehicleModels VehicleModel[]
 
   @@index([name])
 }
 
 model VehicleBrand {
-  id             String         @id @default(cuid())
-  name           String         @unique
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  vehicleModels  VehicleModel[]
+  id            String         @id @default(cuid())
+  name          String         @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  vehicleModels VehicleModel[]
 
   @@index([name])
 }
@@ -586,12 +590,12 @@ model VehicleModel {
 }
 
 model VehicleRegistration {
-  id             String       @id @default(cuid())
-  registrationNumber String     @unique
-  vehicleModelId String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  vehicleModel   VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
+  id                 String       @id @default(cuid())
+  registrationNumber String       @unique
+  vehicleModelId     String
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  vehicleModel       VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
 
   @@index([registrationNumber])
   @@index([vehicleModelId])

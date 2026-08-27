@@ -10,8 +10,8 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
-import { getMyWallet, triggerSalesmanPayout, WalletTransaction, WalletData, checkStripeAccountStatus, getStripeOnboardingLink } from '../../src/api/wallet';
+import { useFocusEffect, router } from 'expo-router';
+import { getMyWallet, WalletTransaction, WalletData, checkStripeAccountStatus, getStripeOnboardingLink } from '../../src/api/wallet';
 import * as WebBrowser from 'expo-web-browser';
 import { formatCurrency } from '../../src/lib/currency';
 
@@ -99,6 +99,7 @@ export default function SalesmanWalletScreen() {
     );
   };
 
+
   const handleOnboardStripe = async () => {
     try {
       setPayingOut(true);
@@ -135,7 +136,7 @@ export default function SalesmanWalletScreen() {
         <Text style={styles.balanceAmount}>
           {formatCurrency(wallet?.balance)}
         </Text>
-        {!stripeReady ? (
+        {!stripeReady && (
           <TouchableOpacity
             style={[styles.payoutButton, { backgroundColor: '#6366F1' }, payingOut && styles.payoutButtonDisabled]}
             onPress={handleOnboardStripe}
@@ -150,25 +151,13 @@ export default function SalesmanWalletScreen() {
               </>
             )}
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.payoutButton, (payingOut || !wallet || wallet.balance <= 0) && styles.payoutButtonDisabled]}
-            onPress={handlePayout}
-            disabled={payingOut || !wallet || wallet.balance <= 0}
-          >
-            {payingOut ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="arrow-up-circle-outline" size={18} color="#fff" />
-                <Text style={styles.payoutButtonText}>Withdraw to Bank</Text>
-              </>
-            )}
-          </TouchableOpacity>
         )}
         <Text style={styles.payoutNote}>
           Funds are released after order delivery is confirmed.
         </Text>
+        <TouchableOpacity onPress={() => router.push('/(salesman)/receipts')}>
+          <Text>Upload Repayment Receipt</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Transactions */}

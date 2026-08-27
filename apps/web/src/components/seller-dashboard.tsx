@@ -8,6 +8,7 @@ import {
   Package,
   Plus,
   DollarSign,
+  Wallet,
   ShoppingCart,
   TrendingUp,
   LogOut,
@@ -45,6 +46,8 @@ import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequest
 import type { Review, ShopSalesman } from '@/lib/api';
 import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket';
 import { initOneSignal, loginOneSignalUser, logoutOneSignalUser, requestNotificationPermission } from '@/lib/onesignal';
+import WalletDashboard from '@/components/wallet/WalletDashboard';
+import ReceiptUploadPanel from '@/components/receipts/ReceiptUploadPanel';
 
 // ─── Push Notification Hook ───────────────────────────────────────────────────
 
@@ -2369,12 +2372,13 @@ function TeamTab() {
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 
-type Tab = 'orders' | 'products' | 'history' | 'reviews' | 'team';
+type Tab = 'orders' | 'products' | 'history' | 'wallet' | 'receipts' | 'reviews' | 'team';
 
 export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALESMAN' | 'SHOP_MANAGER' }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, logout, isAuthenticated, refreshProfile } = useAuthStore();
+  const socketSetupKeyRef = useRef<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<Tab>('orders');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -2490,6 +2494,10 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
 
     if (!userId) return;
 
+    const socketKey = `${userId}:${user?.role ?? 'unknown'}`;
+    if (socketSetupKeyRef.current === socketKey) return;
+    socketSetupKeyRef.current = socketKey;
+
     const socket = connectSocket(userId);
 
     // Refund and complaint messages are for the store owner (manager) only —
@@ -2557,6 +2565,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
       socket.off('newOrder', handleNewOrder);
       socket.off('cancellationApproved', handleRefundApproved);
       socket.off('complaintRaised', handleComplaintRaised);
+      socketSetupKeyRef.current = null;
     };
   }, [user?.id, user?.role, mounted]);
 
@@ -2624,6 +2633,8 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
     { id: 'orders' as const, label: 'Current Orders', icon: ListOrdered },
     { id: 'products' as const, label: 'My Products', icon: Package },
     { id: 'history' as const, label: 'Sales History', icon: BarChart3 },
+    { id: 'wallet' as const, label: 'Wallet', icon: Wallet },
+    { id: 'receipts' as const, label: 'Receipts', icon: Receipt },
     { id: 'reviews' as const, label: 'Store Reviews', icon: Star },
     // Managers own the shop and approve the salesmen who work under them.
     ...(isManager ? [{ id: 'team' as const, label: 'Team', icon: Users }] : []),
@@ -2838,6 +2849,8 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
             {activeTab === 'orders' && 'Current Orders'}
             {activeTab === 'products' && 'My Products'}
             {activeTab === 'history' && 'Sales History'}
+            {activeTab === 'wallet' && 'Wallet'}
+            {activeTab === 'receipts' && 'Receipts'}
             {activeTab === 'reviews' && 'Store Reviews'}
             {activeTab === 'team' && 'Team'}
           </h1>
@@ -2845,6 +2858,8 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
             {activeTab === 'orders' && 'Manage and update orders placed by your customers.'}
             {activeTab === 'products' && 'View and manage your listed products.'}
             {activeTab === 'history' && 'Track your revenue, completed orders, and top products.'}
+            {activeTab === 'wallet' && 'Track balances, settlements, and recent transactions.'}
+            {activeTab === 'receipts' && 'Upload and review repayment proof for wallet settlement.'}
             {activeTab === 'reviews' && 'See what customers are saying and reply to their reviews.'}
             {activeTab === 'team' && 'Share your join code and approve salesmen who join your shop.'}
           </p>
@@ -2854,6 +2869,13 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
         {activeTab === 'orders' && <CurrentOrdersTab userId={user.id} />}
         {activeTab === 'products' && <ProductsTab />}
         {activeTab === 'history' && <SalesHistoryTab />}
+        {activeTab === 'wallet' && (
+          <WalletDashboard
+            roleLabel={user.role === 'SHOP_MANAGER' ? 'Manager' : 'Salesman'}
+            onUploadReceiptClick={() => setActiveTab('receipts')}
+          />
+        )}
+        {activeTab === 'receipts' && <ReceiptUploadPanel />}
         {/* Reviews target the shop owner (manager); a salesman scopes to their manager. */}
         {activeTab === 'reviews' && <ReviewsTab salesmanId={user.managerId || user.id} />}
         {activeTab === 'team' && <TeamTab />}

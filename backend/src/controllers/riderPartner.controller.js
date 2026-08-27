@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { riderQuery } from '../lib/riderDb.js';
 import { dispatchAvailableJobs, cancelPendingOffersForPartner } from '../services/riderRealtimeDispatch.js';
-import { recordRiderAvailability } from '../services/riderAvailability.js';
 import { hasValue, isFloatInRange, validationError } from '../utils/riderValidation.js';
 
 export const uploadRiderPhoto = async (req, res, next) => {
@@ -240,40 +239,9 @@ export const updateRiderStatus = async (req, res, next) => {
       });
     }
 
-    const currentRider = await riderQuery(
-      `SELECT status,
-              EXISTS (
-                SELECT 1
-                  FROM "DeliveryJob"
-                 WHERE partner_id = $1
-                   AND status IN ('assigned', 'accepted', 'arrived_at_pickup', 'picked_up', 'in_transit', 'arrived_at_dropoff')
-              ) AS has_active_job
-         FROM "Rider"
-        WHERE id = $1`,
-      [req.user.id]
-    );
-
-    if (!currentRider.rows.length) {
-      return res.status(404).json({ success: false, message: 'Partner not found' });
-    }
-
-    if (currentRider.rows[0].has_active_job || currentRider.rows[0].status === 'busy') {
-      return res.status(409).json({
-        success: false,
-        message: 'Availability cannot be changed while you have an active delivery',
-        data: { status: 'busy' },
-      });
-    }
-
     const result = await riderQuery(
       'UPDATE "Rider" SET status = $1 WHERE id = $2 RETURNING status',
       [status, req.user.id]
-    );
-    await recordRiderAvailability(
-      { query: riderQuery },
-      req.user.id,
-      status,
-      status === 'online' ? 'rider_went_online' : 'rider_went_offline'
     );
 
     if (status === 'offline') {

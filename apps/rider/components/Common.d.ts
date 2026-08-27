@@ -21,8 +21,6 @@ export interface ButtonProps {
     loading?: boolean;
     style?: StyleProp<ViewStyle>;
     textStyle?: StyleProp<TextStyle>;
-    icon?: string;
-    iconPosition?: 'left' | 'right';
 }
 
 export declare function Button(props: ButtonProps): React.JSX.Element;
@@ -55,18 +53,6 @@ export interface SurfaceCardProps {
 
 export declare function SurfaceCard(props: SurfaceCardProps): React.JSX.Element;
 
-export interface ScreenHeroProps {
-    eyebrow?: string;
-    title: string;
-    subtitle?: string;
-    icon?: string;
-    right?: ReactNode;
-    children?: ReactNode;
-    style?: StyleProp<ViewStyle>;
-}
-
-export declare function ScreenHero(props: ScreenHeroProps): React.JSX.Element;
-
 export interface SectionHeaderProps {
     eyebrow?: string;
     title: string;
@@ -84,7 +70,6 @@ export interface StatusBadgeProps {
     label: string;
     tone?: StatusBadgeTone;
     style?: StyleProp<ViewStyle>;
-    showDot?: boolean;
 }
 
 export declare function StatusBadge(
@@ -95,7 +80,6 @@ export interface EmptyStateProps {
     title: string;
     body?: string;
     action?: ReactNode;
-    icon?: string;
 }
 
 export declare function EmptyState(props: EmptyStateProps): React.JSX.Element;

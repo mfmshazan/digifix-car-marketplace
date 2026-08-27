@@ -1,7 +1,5 @@
 import prisma from '../lib/prisma.js';
 import { riderQuery } from '../lib/riderDb.js';
-import { buildDeliveryRoadRoute } from '../services/roadRoute.js';
-import { resolveShopOwnerId } from '../lib/shopAccess.js';
 
 // GET /api/tracking/order/:orderId/rider-location
 // Returns the rider's latest GPS location for a given order (customer live tracking)
@@ -19,13 +17,9 @@ export const getRiderLiveLocation = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    // A salesman acts on behalf of their manager, so the order's salesmanId is
-    // the shop owner's id — resolve it before comparing, otherwise salesmen get 403.
-    const shopOwnerId = await resolveShopOwnerId(req.user);
     const isAuthorized =
       order.customerId === userId ||
       order.salesmanId === userId ||
-      order.salesmanId === shopOwnerId ||
       req.user.role === 'ADMIN';
 
     if (!isAuthorized) {
@@ -104,31 +98,6 @@ export const getRiderLiveLocation = async (req, res) => {
         }
       : null;
 
-    const pickup = {
-      latitude: parseFloat(job.pickup_latitude),
-      longitude: parseFloat(job.pickup_longitude),
-      address: job.pickup_address,
-    };
-    const dropoff = {
-      latitude: parseFloat(job.dropoff_latitude),
-      longitude: parseFloat(job.dropoff_longitude),
-      address: job.dropoff_address,
-    };
-    let roadRoute = null;
-    let routeError = null;
-
-    try {
-      roadRoute = await buildDeliveryRoadRoute({
-        status: job.status,
-        riderLocation,
-        pickup,
-        dropoff,
-      });
-    } catch (error) {
-      routeError = error.message || 'Real road route is temporarily unavailable';
-      console.warn('Road route unavailable for customer tracking:', routeError);
-    }
-
     return res.status(200).json({
       success: true,
       data: {
@@ -137,11 +106,17 @@ export const getRiderLiveLocation = async (req, res) => {
         riderName: job.rider_name,
         riderLocation,
         route: {
-          pickup,
-          dropoff,
+          pickup: {
+            latitude: parseFloat(job.pickup_latitude),
+            longitude: parseFloat(job.pickup_longitude),
+            address: job.pickup_address,
+          },
+          dropoff: {
+            latitude: parseFloat(job.dropoff_latitude),
+            longitude: parseFloat(job.dropoff_longitude),
+            address: job.dropoff_address,
+          },
         },
-        roadRoute,
-        routeError,
       },
     });
   } catch (err) {
@@ -166,13 +141,9 @@ export const getOrderDeliveryStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    // A salesman acts on behalf of their manager, so the order's salesmanId is
-    // the shop owner's id — resolve it before comparing, otherwise salesmen get 403.
-    const shopOwnerId = await resolveShopOwnerId(req.user);
     const isAuthorized =
       order.customerId === userId ||
       order.salesmanId === userId ||
-      order.salesmanId === shopOwnerId ||
       req.user.role === 'ADMIN';
 
     if (!isAuthorized) {

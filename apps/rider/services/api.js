@@ -226,6 +226,8 @@ export const jobsAPI = {
     getAssigned: () => api.get('/jobs/assigned'),
     getHistory: (limit = 20, offset = 0) =>
         api.get(`/jobs/history?limit=${limit}&offset=${offset}`),
+    // Used by AvailableJobsScreen to claim an open job from the browse list.
+    acceptJob: (jobId) => api.post(`/jobs/${jobId}/accept`),
     acceptAssigned: (jobId) => api.put(`/jobs/${jobId}/status`, { status: 'accepted' }),
     acceptIncomingRequest: (offerId) =>
         api.post(`/jobs/request-offers/${offerId}/accept`),
@@ -261,6 +263,8 @@ export const jobsAPI = {
             formData.append('signature', proofData.signatureData);
         }
 
+        // Uses raw fetch (not the axios instance) — axios's FormData handling on
+        // RN silently drops the multipart boundary for large photo uploads.
         const token = await getAccessToken();
         if (!token) {
             throw new Error('Your rider session has expired. Please sign in again.');
@@ -314,3 +318,6 @@ export const reviewsAPI = {
 };
 
 export default api;
+
+
+

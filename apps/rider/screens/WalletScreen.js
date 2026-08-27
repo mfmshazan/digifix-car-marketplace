@@ -29,7 +29,7 @@ const TRANSACTION_LABELS = {
     REFUND_SETTLEMENT: 'Refund Settlement',
 };
 
-export default function WalletScreen() {
+export default function WalletScreen({ navigation }) {
     const [wallet, setWallet] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -63,41 +63,6 @@ export default function WalletScreen() {
             fetchWallet();
         }, [fetchWallet])
     );
-
-    const handlePayout = async () => {
-        if (!wallet || wallet.balance <= 0) {
-            Alert.alert('No Balance', 'You have no funds available to withdraw.');
-            return;
-        }
-        Alert.alert(
-            'Withdraw to Bank',
-            `Transfer Rs. ${wallet.balance.toLocaleString()} to your connected Stripe account?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Withdraw',
-                    style: 'default',
-                    onPress: async () => {
-                        setPayingOut(true);
-                        try {
-                            const response = await api.post('/wallet/payout');
-                            const result = response.data;
-                            if (result.success) {
-                                Alert.alert('Success', result.msg);
-                                fetchWallet();
-                            } else {
-                                Alert.alert('Failed', result.msg || 'Withdrawal failed. Try again.');
-                            }
-                        } catch (err) {
-                            Alert.alert('Error', err.response?.data?.msg || 'Network error. Please try again.');
-                        } finally {
-                            setPayingOut(false);
-                        }
-                    },
-                },
-            ]
-        );
-    };
 
     const handleOnboardStripe = async () => {
         try {
@@ -136,7 +101,7 @@ export default function WalletScreen() {
                     Rs. {wallet ? wallet.balance.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}
                 </Text>
                 
-                {!stripeReady ? (
+                {!stripeReady && (
                     <TouchableOpacity
                         style={[styles.payoutButton, { backgroundColor: '#6366F1' }, payingOut && styles.payoutButtonDisabled]}
                         onPress={handleOnboardStripe}
@@ -151,26 +116,18 @@ export default function WalletScreen() {
                             </>
                         )}
                     </TouchableOpacity>
-                ) : (
-                    <TouchableOpacity
-                        style={[styles.payoutButton, (payingOut || !wallet || wallet.balance <= 0) && styles.payoutButtonDisabled]}
-                        onPress={handlePayout}
-                        disabled={payingOut || !wallet || wallet.balance <= 0}
-                    >
-                        {payingOut ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                            <>
-                                <Ionicons name="arrow-up-circle-outline" size={18} color="#fff" />
-                                <Text style={styles.payoutButtonText}>Withdraw to Bank</Text>
-                            </>
-                        )}
-                    </TouchableOpacity>
                 )}
                 
                 <Text style={styles.payoutNote}>
                     Funds are released after order delivery is confirmed.
                 </Text>
+                <TouchableOpacity
+                    style={styles.receiptAction}
+                    onPress={() => navigation?.navigate?.('ReceiptUpload')}
+                >
+                    <Ionicons name="receipt-outline" size={18} color={colors.secondary} />
+                    <Text style={styles.receiptActionText}>Upload Repayment Receipt</Text>
+                </TouchableOpacity>
             </View>
 
             <Text style={styles.sectionTitle}>Transaction History</Text>
@@ -233,6 +190,23 @@ const styles = StyleSheet.create({
     payoutButtonDisabled: { opacity: 0.5 },
     payoutButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
     payoutNote: { color: colors.textMuted, fontSize: 12, textAlign: 'center' },
+    receiptAction: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        marginTop: 12,
+        paddingVertical: 12,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.surface,
+    },
+    receiptActionText: {
+        color: colors.secondary,
+        fontSize: 14,
+        fontWeight: '600',
+    },
     sectionTitle: { ...typography.h3, color: colors.text, marginHorizontal: spacing.lg, marginTop: spacing.sm, marginBottom: spacing.sm },
     emptyContainer: { alignItems: 'center', padding: 40 },
     emptyText: { color: colors.textMuted, fontSize: 14, marginTop: 12 },

@@ -165,6 +165,7 @@ export const updateReviewAggregates = async (targetId, targetType) => {
         break;
       }
 
+
       default:
         console.warn(`Unknown review targetType: ${targetType}`);
     }

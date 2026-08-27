@@ -58,8 +58,6 @@ export default function LoginPage() {
         // Redirect based on user role
         if (user.role === 'ADMIN') {
           window.location.href = '/dashboard/admin';
-        } else if (user.role === 'SHOP_MANAGER') {
-          window.location.href = '/dashboard/manager';
         } else if (user.role === 'SALESMAN') {
           window.location.href = '/dashboard/salesman';
         } else {

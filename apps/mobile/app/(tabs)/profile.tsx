@@ -389,7 +389,7 @@ export default function ProfileScreen() {
             style={styles.menuItem}
             onPress={() => {
               if (item.route) {
-                router.push(item.route as any);
+                router.push(item.route);
               }
             }}
           >

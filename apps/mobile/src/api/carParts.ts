@@ -25,8 +25,6 @@ export interface CarPart {
   discountPrice?: number;
   stock: number;
   condition: 'NEW' | 'USED' | 'REFURBISHED';
-  averageRating: number;
-  totalReviews: number;
   images: string[];
   isActive: boolean;
   createdAt: string;

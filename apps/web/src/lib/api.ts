@@ -512,6 +512,27 @@ export const adminApi = {
     const response = await api.patch(`/reviews/admin/${reviewId}/status`, { status });
     return response.data;
   },
+
+  // Fetch repayment receipts for admin review
+  getDebtReceipts: async (params?: { status?: string }) => {
+    const response = await api.get('/wallet/receipts/admin', { params });
+    return response.data;
+  },
+
+  // Fetch salespersons / delivery persons whose wallet balance is negative
+  getWalletDebtors: async () => {
+    const response = await api.get('/wallet/receipts/admin/debtors');
+    return response.data;
+  },
+
+  // Approve or reject a repayment receipt
+  reviewDebtReceipt: async (receiptId: string, decision: 'APPROVE' | 'REJECT', rejectionReason?: string) => {
+    const response = await api.post(`/wallet/receipts/${receiptId}/review`, {
+      decision,
+      ...(rejectionReason ? { rejectionReason } : {}),
+    });
+    return response.data;
+  },
 };
 
 // ─── Reviews Types ────────────────────────────────────────────────────────────

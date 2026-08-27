@@ -4,10 +4,13 @@
  * Every payment enters via Admin and exits via Admin, keeping the ledger balanced.
  *
  * Money flow:
- *  Stripe card payment  →  DEPOSIT (null → Admin)
- *  Order DELIVERED      →  SALE_EARNING (Admin → Salesman)
- *  Order REFUNDED       →  REFUND (Admin → Customer)
- *  Salesman PAYOUT      →  PAYOUT (Salesman → null) + stripe.transfers.create
+ *  Stripe card payment       →  DEPOSIT (null → Admin)
+ *  Order status → PROCESSING →  SALE_EARNING (Admin → Salesman), any payment
+ *                                method incl. COD — simplified for demo purposes
+ *                                rather than waiting for actual delivery/cash
+ *                                collection.  [order.controller.js]
+ *  Order REFUNDED             →  REFUND (Admin → Customer)
+ *  Salesman PAYOUT            →  PAYOUT (Salesman → null) + stripe.transfers.create
  */
 
 import prisma from './prisma.js';

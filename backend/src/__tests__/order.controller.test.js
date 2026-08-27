@@ -23,7 +23,7 @@ vi.mock('../lib/adminWallet.js', () => ({
 }));
 
 import prisma from '../lib/prisma.js';
-import { createOrder } from '../controllers/order.controller.js';
+import { createOrder, getSalesmanOrders } from '../controllers/order.controller.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const makeRes = () => {
@@ -415,6 +415,37 @@ describe('createOrder', () => {
       expect(data).toHaveProperty('deliveryFee');
       expect(data).toHaveProperty('status', 'PENDING');
       expect(Array.isArray(data.orders)).toBe(true);
+    });
+  });
+
+  describe('salesman shop visibility', () => {
+    it('includes orders for the manager and all salesmen in the shop when loading the sales dashboard', async () => {
+      const req = {
+        user: { id: 'salesman-1', role: 'SALESMAN' },
+        query: { page: '1', limit: '20' },
+      };
+      const res = makeRes();
+
+      prisma.user.findUnique.mockResolvedValueOnce({ managerId: 'manager-1' });
+      prisma.user.findMany.mockResolvedValueOnce([{ id: 'salesman-2' }]);
+      prisma.order.findMany.mockResolvedValueOnce([
+        { id: 'ord-1', status: 'PENDING', createdAt: new Date(), items: [], customer: { id: 'c-1', name: 'Alice', email: 'a@test.com' }, address: { id: 'a-1' }, tracking: [], salesmanId: 'manager-1' },
+        { id: 'ord-2', status: 'PROCESSING', createdAt: new Date(), items: [], customer: { id: 'c-2', name: 'Bob', email: 'b@test.com' }, address: { id: 'a-2' }, tracking: [], salesmanId: 'salesman-2' },
+      ]);
+      prisma.order.count.mockResolvedValueOnce(2);
+
+      await getSalesmanOrders(req, res);
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            salesmanId: { in: ['manager-1', 'salesman-2'] },
+          },
+        })
+      );
+      expect(res._status).toBe(200);
+      expect(res._body.success).toBe(true);
+      expect(res._body.data.orders).toHaveLength(2);
     });
   });
 });

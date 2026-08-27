@@ -525,6 +525,18 @@ export const adminApi = {
     return response.data;
   },
 
+  // Admin's own platform wallet (internal ledger balance + recent transactions)
+  getMyWallet: async () => {
+    const response = await api.get('/wallet/my');
+    return response.data;
+  },
+
+  // Real Stripe account balance (available + pending) — admin only
+  getStripeBalance: async () => {
+    const response = await api.get('/wallet/stripe-balance');
+    return response.data;
+  },
+
   // Approve or reject a repayment receipt
   reviewDebtReceipt: async (receiptId: string, decision: 'APPROVE' | 'REJECT', rejectionReason?: string) => {
     const response = await api.post(`/wallet/receipts/${receiptId}/review`, {

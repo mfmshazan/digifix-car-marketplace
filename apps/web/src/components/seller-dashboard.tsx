@@ -2527,7 +2527,8 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
     { id: 'orders' as const, label: 'Current Orders', icon: ListOrdered },
     { id: 'products' as const, label: 'My Products', icon: Package },
     { id: 'history' as const, label: 'Sales History', icon: BarChart3 },
-    { id: 'wallet' as const, label: 'Wallet', icon: Wallet },
+    // Salesmen don't have wallet access — the shop wallet belongs to the manager.
+    ...(isManager ? [{ id: 'wallet' as const, label: 'Wallet', icon: Wallet }] : []),
     { id: 'receipts' as const, label: 'Receipts', icon: Receipt },
     { id: 'reviews' as const, label: 'Store Reviews', icon: Star },
     // Managers own the shop and approve the salesmen who work under them.
@@ -2765,7 +2766,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
         {activeTab === 'history' && <SalesHistoryTab />}
         {activeTab === 'wallet' && (
           <WalletDashboard
-            roleLabel={user.role === 'SHOP_MANAGER' ? 'Manager' : 'Salesman'}
+            roleLabel="Manager"
             onUploadReceiptClick={() => setActiveTab('receipts')}
           />
         )}

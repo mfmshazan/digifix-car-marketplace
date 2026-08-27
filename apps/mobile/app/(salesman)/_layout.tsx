@@ -164,16 +164,6 @@ export default function SalesmanTabLayout() {
         }}
       />
       <Tabs.Screen
-        name="wallet"
-        options={{
-          title: "Wallet",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="wallet" size={size} color={color} />
-          ),
-          headerTitle: "My Wallet",
-        }}
-      />
-      <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",

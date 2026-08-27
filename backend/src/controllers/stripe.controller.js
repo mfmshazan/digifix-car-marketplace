@@ -2,7 +2,6 @@
 import Stripe from 'stripe';
 import prisma from '../lib/prisma.js';
 import { getAdminWallet, ensureWallet } from '../lib/adminWallet.js';
-import { resolveShopOwnerId } from '../lib/shopAccess.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -81,9 +80,11 @@ class StripeController {
 
     getOnboardingLink = async (req, res) => {
         try {
-            // Salesmen share their manager's wallet/Stripe account — see getMyWallet
-            // in wallet.controller.js for why. Onboarding must resolve the same way.
-            const userId = await resolveShopOwnerId(req.user);
+            // Salesmen don't have wallet access, so they can't onboard a payout account.
+            if (req.user?.role === 'SALESMAN') {
+                return res.status(403).json({ success: false, message: 'Salesmen do not have wallet access. Contact your shop manager.' });
+            }
+            const userId = req.user.id;
             const user = await prisma.user.findUnique({ where: { id: userId } });
             
             if (!user) return res.status(404).json({ success: false, message: 'User not found' });
@@ -112,7 +113,10 @@ class StripeController {
 
     checkAccountStatus = async (req, res) => {
         try {
-            const userId = await resolveShopOwnerId(req.user);
+            if (req.user?.role === 'SALESMAN') {
+                return res.status(200).json({ success: true, isReady: false });
+            }
+            const userId = req.user.id;
             const user = await prisma.user.findUnique({ where: { id: userId } });
             if (!user || !user.stripeAccountId) {
                  return res.status(200).json({ success: true, isReady: false });

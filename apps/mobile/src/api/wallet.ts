@@ -27,35 +27,3 @@ export const getMyWallet = async (): Promise<{ success: boolean; data?: WalletDa
   });
   return response.json();
 };
-
-export const triggerSalesmanPayout = async (): Promise<{ success: boolean; msg: string; stripeTransferId?: string }> => {
-  const token = await getToken();
-  if (!token) throw new Error('Not authenticated');
-
-  const response = await fetch(`${getApiUrl()}/wallet/payout/salesman`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-  });
-  return response.json();
-};
-export const checkStripeAccountStatus = async (): Promise<{ success: boolean; isReady: boolean }> => {
-  const token = await getToken();
-  if (!token) throw new Error('Not authenticated');
-
-  const response = await fetch(`${getApiUrl()}/stripe/account-status`, {
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-  });
-  return response.json();
-};
-
-export const getStripeOnboardingLink = async (refreshUrl?: string, returnUrl?: string): Promise<{ success: boolean; onboardingUrl?: string }> => {
-  const token = await getToken();
-  if (!token) throw new Error('Not authenticated');
-
-  const response = await fetch(`${getApiUrl()}/stripe/onboard`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ refreshUrl, returnUrl }),
-  });
-  return response.json();
-};

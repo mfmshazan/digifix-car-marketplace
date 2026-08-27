@@ -1,17 +1,112 @@
+import fs from 'fs';
+import path from 'path';
 import { riderQuery } from '../lib/riderDb.js';
 import { dispatchAvailableJobs, cancelPendingOffersForPartner } from '../services/riderRealtimeDispatch.js';
 import { hasValue, isFloatInRange, validationError } from '../utils/riderValidation.js';
 
+export const uploadRiderPhoto = async (req, res, next) => {
+  try {
+    const file = req.file || (req.files && req.files[0]);
+    if (!file) {
+      return res.status(400).json({ success: false, message: 'No photo uploaded' });
+    }
+
+    const currentRider = await riderQuery(
+      `SELECT profile_photo_url FROM "Rider" WHERE id = $1`,
+      [req.user.id]
+    );
+
+    if (currentRider.rows.length && currentRider.rows[0].profile_photo_url?.includes('/uploads/')) {
+      const oldFileName = currentRider.rows[0].profile_photo_url.split('/').pop();
+      const oldFilePath = path.join(process.cwd(), 'public/uploads', oldFileName);
+      if (fs.existsSync(oldFilePath)) {
+        try { fs.unlinkSync(oldFilePath); } catch (_) {}
+      }
+    }
+
+    const photoUrl = `/uploads/${file.filename}`;
+    const result = await riderQuery(
+      `UPDATE "Rider"
+          SET profile_photo_url = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING id, full_name, email, profile_photo_url`,
+      [photoUrl, req.user.id]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Profile photo updated successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const deleteRiderPhoto = async (req, res, next) => {
+  try {
+    const currentRider = await riderQuery(
+      `SELECT profile_photo_url FROM "Rider" WHERE id = $1`,
+      [req.user.id]
+    );
+
+    if (currentRider.rows.length && currentRider.rows[0].profile_photo_url?.includes('/uploads/')) {
+      const oldFileName = currentRider.rows[0].profile_photo_url.split('/').pop();
+      const oldFilePath = path.join(process.cwd(), 'public/uploads', oldFileName);
+      if (fs.existsSync(oldFilePath)) {
+        try { fs.unlinkSync(oldFilePath); } catch (_) {}
+      }
+    }
+
+    const result = await riderQuery(
+      `UPDATE "Rider"
+          SET profile_photo_url = NULL, updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, full_name, email, profile_photo_url`,
+      [req.user.id]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Profile photo removed successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 export const getRiderProfile = async (req, res, next) => {
   try {
     const result = await riderQuery(
-      `SELECT id, email, full_name, phone, vehicle_type, vehicle_number,
-              profile_photo_url, bio, address, emergency_contact_name, emergency_contact_phone,
-              push_token, push_platform, push_token_updated_at,
-              status, current_latitude, current_longitude, rating, total_deliveries,
-              created_at, updated_at
-         FROM "Rider"
-        WHERE id = $1`,
+      `SELECT rider.id, rider.email, rider.full_name, rider.phone, rider.vehicle_type, rider.vehicle_number,
+              rider.profile_photo_url, rider.bio, rider.address, rider.emergency_contact_name, rider.emergency_contact_phone,
+              rider.push_token, rider.push_platform, rider.push_token_updated_at,
+              rider.status, rider.current_latitude, rider.current_longitude,
+              COALESCE(
+                (SELECT AVG(review.rating)
+                   FROM "Review" review
+                   LEFT JOIN "User" marketplace_user ON LOWER(marketplace_user.email) = LOWER(rider.email)
+                  WHERE review."targetType" = 'DELIVERY_PARTNER'
+                    AND review.status = 'PUBLISHED'
+                    AND (review."targetId" = rider.id::text OR review."targetId" = marketplace_user.id)),
+                rider.rating,
+                0.00
+              ) AS rating,
+              rider.total_deliveries,
+              COALESCE(
+                (SELECT COUNT(*)
+                   FROM "Review" review
+                   LEFT JOIN "User" marketplace_user ON LOWER(marketplace_user.email) = LOWER(rider.email)
+                  WHERE review."targetType" = 'DELIVERY_PARTNER'
+                    AND review.status = 'PUBLISHED'
+                    AND (review."targetId" = rider.id::text OR review."targetId" = marketplace_user.id)),
+                rider.total_reviews,
+                0
+              ) AS total_reviews,
+              rider.created_at, rider.updated_at
+         FROM "Rider" rider
+        WHERE rider.id = $1`,
       [req.user.id]
     );
 
@@ -19,7 +114,24 @@ export const getRiderProfile = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Partner not found' });
     }
 
-    return res.json({ success: true, data: result.rows[0] });
+    const row = result.rows[0];
+    const liveRating = Number(row.rating || 0);
+    const liveTotalReviews = Number(row.total_reviews || 0);
+
+    // Keep Rider record synced in background
+    riderQuery(
+      `UPDATE "Rider" SET rating = $1, total_reviews = $2, updated_at = NOW() WHERE id = $3`,
+      [liveRating, liveTotalReviews, req.user.id]
+    ).catch(() => {});
+
+    return res.json({
+      success: true,
+      data: {
+        ...row,
+        rating: liveRating,
+        total_reviews: liveTotalReviews,
+      },
+    });
   } catch (error) {
     return next(error);
   }

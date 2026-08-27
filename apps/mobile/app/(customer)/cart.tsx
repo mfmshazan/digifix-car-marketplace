@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { getApiUrl } from "../../src/config/api.config";
 import { getToken } from "../../src/api/storage";
 import { getMyWallet } from "../../src/api/wallet";
 import { CustomerAddress, getAddresses } from "../../src/api/addresses";
+import { formatCurrency } from "../../src/lib/currency";
 
 export default function CartScreen() {
   const { items, updateQuantity, removeItem, clearCart, getTotalPrice, isLoading } = useCart();
@@ -34,11 +35,33 @@ export default function CartScreen() {
   const [isLoadingAddress, setIsLoadingAddress] = useState(false);
   
   const subtotal = getTotalPrice();
-  // We mirror the backend fee here so the customer sees the same checkout
-  // amount before placing the order.
-  const serviceCharge = parseFloat((subtotal * 0.10).toFixed(2));
-  // Delivery is intentionally left out for now because it depends on distance.
-  const total = subtotal + serviceCharge;
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  // Ask the backend for the distance/vehicle based delivery fee whenever the cart or the
+  // selected address changes, so the customer sees the exact amount before paying by Stripe.
+  useEffect(() => {
+    const estimate = async () => {
+      if (!selectedAddressId || items.length === 0) { setDeliveryFee(0); return; }
+      try {
+        const token = await getToken();
+        const res = await fetch(`${getApiUrl()}/orders/delivery-estimate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+            addressId: selectedAddressId,
+          }),
+        });
+        const json = await res.json();
+        setDeliveryFee(json?.data?.deliveryFee ?? 0);
+      } catch {
+        setDeliveryFee(0);
+      }
+    };
+    estimate();
+  }, [selectedAddressId, items]);
+  // The 10% service charge is the platform's commission taken from the manager, not the
+  // customer. The customer pays product subtotal + delivery.
+  const total = subtotal + deliveryFee;
   const selectedAddress =
     addresses.find((address) => address.id === selectedAddressId) ||
     addresses.find((address) => address.isDefault) ||
@@ -191,7 +214,7 @@ export default function CartScreen() {
           : orderResponse.data?.total || orderResponse.data?.orders?.[0]?.total;
         Alert.alert(
           "Order Placed! 🎉",
-          `Your order ${orderNum} has been placed successfully!\n\nTotal: Rs. ${orderTotal?.toLocaleString()}\n\nThe seller has been notified.`,
+          `Your order ${orderNum} has been placed successfully!\n\nTotal: ${formatCurrency(orderTotal)}\n\nThe seller has been notified.`,
           [
             { text: "View Orders", onPress: () => router.push("/(customer)/orders") },
             { text: "Continue Shopping", onPress: () => router.push("/(customer)") }
@@ -315,11 +338,11 @@ export default function CartScreen() {
         <View style={styles.priceRow}>
           {item.discountPrice ? (
             <>
-              <Text style={styles.itemPrice}>Rs. {item.discountPrice.toLocaleString()}</Text>
-              <Text style={styles.originalPrice}>Rs. {item.price.toLocaleString()}</Text>
+              <Text style={styles.itemPrice}>{formatCurrency(item.discountPrice)}</Text>
+              <Text style={styles.originalPrice}>{formatCurrency(item.price)}</Text>
             </>
           ) : (
-            <Text style={styles.itemPrice}>Rs. {item.price.toLocaleString()}</Text>
+            <Text style={styles.itemPrice}>{formatCurrency(item.price)}</Text>
           )}
         </View>
       </View>
@@ -431,15 +454,17 @@ export default function CartScreen() {
             </TouchableOpacity>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>Rs. {subtotal.toLocaleString()}</Text>
+              <Text style={styles.summaryValue}>{formatCurrency(subtotal)}</Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Service Charge (10%)</Text>
-              <Text style={styles.summaryValue}>Rs. {serviceCharge.toLocaleString()}</Text>
+              <Text style={styles.summaryLabel}>Delivery</Text>
+              <Text style={styles.summaryValue}>
+                {selectedAddressId ? formatCurrency(deliveryFee) : "Select address"}
+              </Text>
             </View>
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>Rs. {total.toLocaleString()}</Text>
+              <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
             </View>
             
             <TouchableOpacity 

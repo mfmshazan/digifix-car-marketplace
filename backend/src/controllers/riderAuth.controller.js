@@ -12,7 +12,7 @@ import { hasValue, isEmail, validationError } from '../utils/riderValidation.js'
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
-const createTokens = async (partner) => {
+export const createRiderTokens = async (partner) => {
   const tokenPayload = { id: partner.id, email: partner.email };
   const accessToken = generateRiderAccessToken(tokenPayload);
   const refreshToken = generateRiderRefreshToken(tokenPayload);
@@ -89,7 +89,7 @@ export const registerRider = async (req, res, next) => {
       console.warn('[Rider Registration] Failed to sync User table:', syncError.message);
     }
 
-    const { accessToken, refreshToken } = await createTokens(partner);
+    const { accessToken, refreshToken } = await createRiderTokens(partner);
 
     return res.status(201).json({
       success: true,
@@ -127,7 +127,7 @@ export const loginRiderByEmail = async ({ email, password }) => {
   }
 
   delete partner.password_hash;
-  const { accessToken, refreshToken } = await createTokens(partner);
+  const { accessToken, refreshToken } = await createRiderTokens(partner);
 
   return {
     success: true,

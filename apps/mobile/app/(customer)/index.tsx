@@ -27,6 +27,7 @@ import {
   Platform,
   StatusBar,
   Dimensions,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -40,6 +41,7 @@ import {
 } from "../../src/api/vehicle";
 import { getProducts } from "../../src/api/products";
 import { getCustomerOrders } from "../../src/api/orders";
+import { formatCurrency } from "../../src/lib/currency";
 
 // ─── Sample registration numbers (seeded data) — tap to try the search ───────
 const samplePlates = [
@@ -75,6 +77,12 @@ const promotions = [
     title: "Find Parts Fast",
     description: "Enter your vehicle registration number to see only parts that fit your car",
     gradient: ["#00002E", "#001060"],
+  },
+  {
+    id: "2",
+    title: "Free Delivery",
+    description: "On orders over $5,000",
+    gradient: ["#1A1A1A", "#2D2D2D"],
   },
   {
     id: "3",
@@ -529,11 +537,11 @@ export default function CustomerHomeScreen() {
           </Text>
           <View style={styles.productPriceRow}>
             <Text style={styles.productPrice}>
-              Rs. {effectivePrice.toLocaleString()}
+              {formatCurrency(effectivePrice)}
             </Text>
             {item.discountPrice && (
               <Text style={styles.productOriginalPrice}>
-                Rs. {item.price.toLocaleString()}
+                {formatCurrency(item.price)}
               </Text>
             )}
           </View>
@@ -664,7 +672,7 @@ export default function CustomerHomeScreen() {
                 {/* Price */}
                 <View style={styles.detailPriceRow}>
                   <Text style={styles.detailPrice}>
-                    Rs. {effectivePrice.toLocaleString()}
+                    {formatCurrency(effectivePrice)}
                   </Text>
                   {p.discountPrice && (
                     <View style={styles.discountBadge}>
@@ -679,7 +687,7 @@ export default function CustomerHomeScreen() {
                 </View>
                 {p.discountPrice && (
                   <Text style={styles.detailOriginalPrice}>
-                    MRP Rs. {p.price.toLocaleString()}
+                    MRP {formatCurrency(p.price)}
                   </Text>
                 )}
 
@@ -753,11 +761,20 @@ export default function CustomerHomeScreen() {
                   </View>
                 )}
 
-                {/* Service charge note */}
-                <Text style={styles.serviceChargeNote}>
-                  + Rs.{" "}
-                  {(effectivePrice * 0.1).toFixed(0)} service charge (10%)
-                </Text>
+                {/* Shop contact — customer can tap to call the shop */}
+                {((p.store as any)?.phone || (p.salesman as any)?.phone) ? (
+                  <TouchableOpacity
+                    style={styles.sellerRow}
+                    onPress={() =>
+                      Linking.openURL(`tel:${(p.store as any)?.phone || (p.salesman as any)?.phone}`)
+                    }
+                  >
+                    <Ionicons name="call-outline" size={14} color="#2563EB" />
+                    <Text style={[styles.sellerText, { color: "#2563EB", fontWeight: "600" }]}>
+                      Call shop: {(p.store as any)?.phone || (p.salesman as any)?.phone}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             </ScrollView>
 

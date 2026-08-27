@@ -297,7 +297,7 @@ export const createDeliveryRequest = async (req, res) => {
       const existingJob = existing.rows[0];
       if (
         existingJob.partner_id ||
-        !['awaiting_dispatch', 'pending', 'available'].includes(existingJob.status)
+        !['awaiting_dispatch', 'pending', 'available', 'failed', 'cancelled'].includes(existingJob.status)
       ) {
         return res.status(409).json({
           success: false,
@@ -326,10 +326,11 @@ export const createDeliveryRequest = async (req, res) => {
                 payment_type = $17,
                 items_description = $18,
                 special_instructions = $19,
+                status = 'pending',
                 updated_at = NOW()
           WHERE id = $1
             AND partner_id IS NULL
-            AND status IN ('pending', 'available')
+            AND status IN ('pending', 'available', 'awaiting_dispatch', 'failed', 'cancelled')
           RETURNING id, order_number, status, partner_id, marketplace_order_id, created_at`,
         [existingJob.id, ...jobValues]
       );
@@ -421,6 +422,12 @@ export const createDeliveryRequest = async (req, res) => {
     });
   } catch (error) {
     console.error('Create delivery request error:', error);
+    if (error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        message: 'A delivery request already exists for this order',
+      });
+    }
     return res.status(500).json({
       success: false,
       message: error.message || 'Failed to create delivery request',
@@ -553,7 +560,25 @@ export const getDeliveryRequest = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Delivery request not found' });
     }
 
-    return res.json({ success: true, data: result.rows[0] });
+    const delivery = result.rows[0];
+    if (req.user.role !== 'ADMIN') {
+      if (!delivery.marketplace_order_id) {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      const order = await prisma.order.findUnique({
+        where: { id: delivery.marketplace_order_id },
+        select: { salesmanId: true },
+      });
+      const shopOwnerId = await resolveShopOwnerId(req.user);
+      const shopMemberIds = await getShopMemberIds(shopOwnerId);
+
+      if (!order || !shopMemberIds.includes(order.salesmanId)) {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+    }
+
+    return res.json({ success: true, data: delivery });
   } catch (error) {
     return res.status(500).json({
       success: false,

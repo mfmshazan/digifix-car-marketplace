@@ -4,6 +4,7 @@ export enum DeliveryWorkflowStatus {
     ARRIVED_PICKUP = 'arrived_at_pickup',
     PICKED_UP = 'picked_up',
     IN_TRANSIT = 'in_transit',
+    ARRIVED_DROPOFF = 'arrived_at_dropoff',
     DELIVERED = 'delivered',
     CANCELLED = 'cancelled',
 }
@@ -14,6 +15,7 @@ export enum DeliveryWorkflowAction {
     ARRIVE_PICKUP = 'arrive_pickup',
     PICK_UP = 'pick_up',
     START_TRANSIT = 'start_transit',
+    ARRIVE_DROPOFF = 'arrive_dropoff',
     COMPLETE_DELIVERY = 'complete_delivery',
     CANCEL = 'cancel',
 }
@@ -38,6 +40,10 @@ export const DELIVERY_WORKFLOW_TRANSITIONS: Readonly<
         DeliveryWorkflowStatus.CANCELLED,
     ],
     [DeliveryWorkflowStatus.IN_TRANSIT]: [
+        DeliveryWorkflowStatus.ARRIVED_DROPOFF,
+        DeliveryWorkflowStatus.CANCELLED,
+    ],
+    [DeliveryWorkflowStatus.ARRIVED_DROPOFF]: [
         DeliveryWorkflowStatus.DELIVERED,
         DeliveryWorkflowStatus.CANCELLED,
     ],
@@ -65,6 +71,10 @@ export const DELIVERY_WORKFLOW_ACTIONS: Readonly<
         DeliveryWorkflowAction.CANCEL,
     ],
     [DeliveryWorkflowStatus.IN_TRANSIT]: [
+        DeliveryWorkflowAction.ARRIVE_DROPOFF,
+        DeliveryWorkflowAction.CANCEL,
+    ],
+    [DeliveryWorkflowStatus.ARRIVED_DROPOFF]: [
         DeliveryWorkflowAction.COMPLETE_DELIVERY,
         DeliveryWorkflowAction.CANCEL,
     ],
@@ -80,6 +90,7 @@ export const DELIVERY_ACTION_TARGET_STATUS: Readonly<
     [DeliveryWorkflowAction.ARRIVE_PICKUP]: DeliveryWorkflowStatus.ARRIVED_PICKUP,
     [DeliveryWorkflowAction.PICK_UP]: DeliveryWorkflowStatus.PICKED_UP,
     [DeliveryWorkflowAction.START_TRANSIT]: DeliveryWorkflowStatus.IN_TRANSIT,
+    [DeliveryWorkflowAction.ARRIVE_DROPOFF]: DeliveryWorkflowStatus.ARRIVED_DROPOFF,
     [DeliveryWorkflowAction.COMPLETE_DELIVERY]: DeliveryWorkflowStatus.DELIVERED,
     [DeliveryWorkflowAction.CANCEL]: DeliveryWorkflowStatus.CANCELLED,
 };
@@ -92,6 +103,7 @@ export const DELIVERY_ACTION_LABELS: Readonly<
     [DeliveryWorkflowAction.ARRIVE_PICKUP]: 'Arrived at Pickup',
     [DeliveryWorkflowAction.PICK_UP]: 'Confirm Pickup',
     [DeliveryWorkflowAction.START_TRANSIT]: 'Start Transit',
+    [DeliveryWorkflowAction.ARRIVE_DROPOFF]: 'Arrived at Customer',
     [DeliveryWorkflowAction.COMPLETE_DELIVERY]: 'Complete Delivery',
     [DeliveryWorkflowAction.CANCEL]: 'Cancel Delivery',
 };

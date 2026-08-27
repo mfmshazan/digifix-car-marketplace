@@ -7,6 +7,7 @@ import {
   updateOrderStatus,
   getCustomerOrders,
   createOrder,
+  estimateDelivery,
   requestCancellation,
   approveCancellation,
   rejectCancellation,
@@ -21,6 +22,8 @@ router.use(authenticate);
 
 // Customer routes — any authenticated user can place/view their own orders
 router.post('/', createOrder);
+// Delivery fee estimate for the cart (distance x vehicle), so the customer sees it before paying
+router.post('/delivery-estimate', estimateDelivery);
 router.get('/', getCustomerOrders);
 // Customer cancellation — goes to admin for review, not instant
 router.post('/:id/cancel', requestCancellation);

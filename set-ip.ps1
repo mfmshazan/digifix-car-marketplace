@@ -1,77 +1,67 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# set-ip.ps1  —  Auto-detect your LAN IP and update both app .env files
-#
-# Usage (from repo root):
-#   .\set-ip.ps1            # auto-detects your Wi-Fi IP
-#   .\set-ip.ps1 192.168.x.x  # use a specific IP instead
-#
-# You only need this if Expo's auto-detection (Constants.expoConfig.hostUri)
-# fails — e.g. when running in tunnel mode or on a VPN.
-# ─────────────────────────────────────────────────────────────────────────────
+# Auto-detect the active LAN IPv4 address and update both Expo app environments.
+# Usage: .\set-ip.ps1 [192.168.8.100]
 
-param([string]$ManualIp = "")
+param([string]$ManualIp = '')
 
 function Get-LanIp {
-    # Get all IPv4 addresses except loopback, pick the first private LAN one
-    $addresses = [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+    $defaultRoute = route print -4 |
+        Select-String '^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+\S+\s+(\S+)' |
+        Select-Object -First 1
+
+    if ($defaultRoute -and $defaultRoute.Matches[0].Groups[1].Value) {
+        return $defaultRoute.Matches[0].Groups[1].Value
+    }
+
+    return [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
         Where-Object { $_.AddressFamily -eq 'InterNetwork' } |
         Select-Object -ExpandProperty IPAddressToString |
-        Where-Object { $_ -ne '127.0.0.1' } |
-        Where-Object { $_ -match '^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)' }
-
-    return $addresses | Select-Object -First 1
+        Where-Object { $_ -match '^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)' } |
+        Select-Object -First 1
 }
 
-$ip = if ($ManualIp -ne "") { $ManualIp } else { Get-LanIp }
-
+$ip = if ($ManualIp) { $ManualIp.Trim() } else { Get-LanIp }
 if (-not $ip) {
-    Write-Host "❌ Could not detect a LAN IP address. Are you connected to Wi-Fi?" -ForegroundColor Red
-    Write-Host "   Run:  .\set-ip.ps1 <your-ip>  to set it manually." -ForegroundColor Yellow
+    Write-Host 'Could not detect a LAN IP address. Pass one explicitly.' -ForegroundColor Red
     exit 1
 }
 
-Write-Host "🌐 Setting IP to: $ip" -ForegroundColor Cyan
-
-# ─── Update apps/rider/.env ───────────────────────────────────────────────────
-$riderEnv = "apps\rider\.env"
-if (Test-Path $riderEnv) {
-    $content = Get-Content $riderEnv -Raw
-    if ($content -match "(?m)^#?\s*EXPO_PUBLIC_API_HOST=.*$") {
-        # Replace the existing (commented or uncommented) host line
-        $content = $content -replace "(?m)^#?\s*EXPO_PUBLIC_API_HOST=.*$", "EXPO_PUBLIC_API_HOST=$ip"
-    } else {
-        # Append if not found
-        $content += "`nEXPO_PUBLIC_API_HOST=$ip`n"
-    }
-    Set-Content $riderEnv $content -NoNewline
-    Write-Host "   ✅ Updated $riderEnv" -ForegroundColor Green
-} else {
-    Write-Host "   ⚠️  $riderEnv not found — skipping." -ForegroundColor Yellow
+if ($ip -notmatch '^(?:\d{1,3}\.){3}\d{1,3}$') {
+    Write-Host "Invalid IPv4 address: $ip" -ForegroundColor Red
+    exit 1
 }
 
-# ─── Update apps/mobile/.env ─────────────────────────────────────────────────
-$mobileEnv = "apps\mobile\.env"
-if (Test-Path $mobileEnv) {
-    $content = Get-Content $mobileEnv -Raw
-    # Replace or uncomment EXPO_PUBLIC_API_URL
-    if ($content -match "(?m)^#?\s*EXPO_PUBLIC_API_URL=.*$") {
-        $content = $content -replace "(?m)^#?\s*EXPO_PUBLIC_API_URL=.*$", "EXPO_PUBLIC_API_URL=http://${ip}:3000/api"
+Write-Host "Setting API host to $ip" -ForegroundColor Cyan
+
+$riderEnv = 'apps\rider\.env'
+if (Test-Path -LiteralPath $riderEnv) {
+    $content = Get-Content -LiteralPath $riderEnv -Raw
+    if ($content -match '(?m)^#?\s*EXPO_PUBLIC_API_URL=.*$') {
+        $content = $content -replace '(?m)^#?\s*EXPO_PUBLIC_API_URL=.*$', "EXPO_PUBLIC_API_URL=http://${ip}:3000/api"
+    }
+    if ($content -match '(?m)^#?\s*EXPO_PUBLIC_API_HOST=.*$') {
+        $content = $content -replace '(?m)^#?\s*EXPO_PUBLIC_API_HOST=.*$', "EXPO_PUBLIC_API_HOST=$ip"
+    } else {
+        $content += "`nEXPO_PUBLIC_API_HOST=$ip`n"
+    }
+    Set-Content -LiteralPath $riderEnv -Value $content -NoNewline
+    Write-Host "Updated $riderEnv" -ForegroundColor Green
+}
+
+$mobileEnv = 'apps\mobile\.env'
+if (Test-Path -LiteralPath $mobileEnv) {
+    $content = Get-Content -LiteralPath $mobileEnv -Raw
+    if ($content -match '(?m)^#?\s*EXPO_PUBLIC_API_URL=.*$') {
+        $content = $content -replace '(?m)^#?\s*EXPO_PUBLIC_API_URL=.*$', "EXPO_PUBLIC_API_URL=http://${ip}:3000/api"
     } else {
         $content += "`nEXPO_PUBLIC_API_URL=http://${ip}:3000/api`n"
     }
-    # Replace or uncomment EXPO_PUBLIC_API_HOST
-    if ($content -match "(?m)^#?\s*EXPO_PUBLIC_API_HOST=.*$") {
-        $content = $content -replace "(?m)^#?\s*EXPO_PUBLIC_API_HOST=.*$", "EXPO_PUBLIC_API_HOST=$ip"
+    if ($content -match '(?m)^#?\s*EXPO_PUBLIC_API_HOST=.*$') {
+        $content = $content -replace '(?m)^#?\s*EXPO_PUBLIC_API_HOST=.*$', "EXPO_PUBLIC_API_HOST=$ip"
     } else {
         $content += "`nEXPO_PUBLIC_API_HOST=$ip`n"
     }
-    Set-Content $mobileEnv $content -NoNewline
-    Write-Host "   ✅ Updated $mobileEnv" -ForegroundColor Green
-} else {
-    Write-Host "   ⚠️  $mobileEnv not found — skipping." -ForegroundColor Yellow
+    Set-Content -LiteralPath $mobileEnv -Value $content -NoNewline
+    Write-Host "Updated $mobileEnv" -ForegroundColor Green
 }
 
-Write-Host ""
-Write-Host "✨ Done! Now restart your Expo servers:" -ForegroundColor Cyan
-Write-Host "   cd apps\rider   && npm start -- --clear" -ForegroundColor White
-Write-Host "   cd apps\mobile  && npm start -- --clear" -ForegroundColor White
+Write-Host 'Done. Restart Expo with a cleared Metro cache.' -ForegroundColor Cyan

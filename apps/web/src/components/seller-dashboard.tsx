@@ -39,6 +39,7 @@ import {
   Send,
   Copy,
   Check,
+  Search,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { resolveMediaUrl, ordersApi, productsApi, categoriesApi, deliveryRequestsApi, reviewsApi, vehicleApi, managerApi } from '@/lib/api';
@@ -206,8 +207,8 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   );
 }
 
-function formatRs(amount: number) {
-  return `Rs. ${amount.toLocaleString()}`;
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(amount || 0);
 }
 
 function timeAgo(dateStr: string) {
@@ -339,7 +340,40 @@ function DeliveryStatusBadge({ status }: { status: string }) {
   );
 }
 
-// ─── Google Map Picker (Delivery Location) ───────────────────────────────────
+// ─── Interactive Map Picker (Delivery Location) ──────────────────────────────
+
+function loadLeafletLibrary(): Promise<any> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') return;
+    if ((window as any).L) {
+      resolve((window as any).L);
+      return;
+    }
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+    if (!document.getElementById('leaflet-js')) {
+      const script = document.createElement('script');
+      script.id = 'leaflet-js';
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.async = true;
+      script.onload = () => resolve((window as any).L);
+      script.onerror = reject;
+      document.head.appendChild(script);
+    } else {
+      const interval = setInterval(() => {
+        if ((window as any).L) {
+          clearInterval(interval);
+          resolve((window as any).L);
+        }
+      }, 100);
+    }
+  });
+}
 
 function GoogleMapPicker({
   onSelect,
@@ -354,7 +388,6 @@ function GoogleMapPicker({
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const onSelectRef = useRef(onSelect);
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
   const initialLatitude = initialCoordinates?.lat;
   const initialLongitude = initialCoordinates?.lng;
   const [status, setStatus] = useState<'idle' | 'selected' | 'geocoding' | 'error'>(
@@ -363,125 +396,229 @@ function GoogleMapPicker({
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
     initialCoordinates || null
   );
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     onSelectRef.current = onSelect;
   }, [onSelect]);
 
   useEffect(() => {
-    if (!apiKey) {
-      setStatus('error');
-      return;
-    }
+    let mapInstance: any = null;
+    let isMounted = true;
 
-    let poll: ReturnType<typeof setInterval> | null = null;
+    loadLeafletLibrary()
+      .then((L) => {
+        if (!isMounted || !containerRef.current) return;
 
-    const initMap = () => {
-      if (!containerRef.current || mapRef.current) return;
-      const google = (window as any).google;
-      if (!google?.maps) return;
+        if ((containerRef.current as any)._leaflet_id) {
+          delete (containerRef.current as any)._leaflet_id;
+        }
 
-      const hasInitialCoordinates =
-        initialLatitude !== undefined && initialLongitude !== undefined;
-      const center = hasInitialCoordinates
-        ? { lat: initialLatitude, lng: initialLongitude }
-        : { lat: 6.9271, lng: 79.8612 };
-      const map = new google.maps.Map(containerRef.current, {
-        center,
-        zoom: hasInitialCoordinates ? 15 : 13,
-        disableDefaultUI: readOnly,
-        clickableIcons: false,
-        gestureHandling: readOnly ? 'none' : 'auto',
-        streetViewControl: false,
-        mapTypeControl: false,
-        fullscreenControl: false,
-      });
-      const geocoder = new google.maps.Geocoder();
+        const hasInitialCoordinates =
+          initialLatitude !== undefined &&
+          initialLongitude !== undefined &&
+          Number.isFinite(Number(initialLatitude)) &&
+          Number.isFinite(Number(initialLongitude));
 
-      const handlePick = (lat: number, lng: number) => {
-        setCoords({ lat, lng });
-        setStatus('geocoding');
-        geocoder.geocode(
-          { location: { lat, lng } },
-          (results: any[], geocodeStatus: string) => {
-            const address = geocodeStatus === 'OK' && results?.[0]?.formatted_address
-              ? results[0].formatted_address
-              : `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        const centerLat = hasInitialCoordinates ? Number(initialLatitude) : 6.9271;
+        const centerLng = hasInitialCoordinates ? Number(initialLongitude) : 79.8612;
+
+        const map = L.map(containerRef.current, {
+          center: [centerLat, centerLng],
+          zoom: hasInitialCoordinates ? 15 : 12,
+          attributionControl: false,
+          zoomControl: !readOnly,
+          dragging: !readOnly,
+          scrollWheelZoom: !readOnly,
+          doubleClickZoom: !readOnly,
+          touchZoom: !readOnly,
+        });
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+        }).addTo(map);
+
+        const customPin = L.divIcon({
+          className: 'custom-leaflet-pin',
+          html: `<div style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;background:#00002E;border:2.5px solid #FFFFFF;border-radius:50%;box-shadow:0 3px 8px rgba(0,0,0,0.35);color:#FFFFFF;cursor:pointer;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+              <circle cx="12" cy="10" r="3"></circle>
+            </svg>
+          </div>`,
+          iconSize: [34, 34],
+          iconAnchor: [17, 34],
+        });
+
+        const reverseGeocode = async (lat: number, lng: number) => {
+          setStatus('geocoding');
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+              { headers: { 'Accept-Language': 'en' } }
+            );
+            const data = await res.json();
+            const address = data?.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
             onSelectRef.current(lat, lng, address);
             setStatus('selected');
+          } catch {
+            const fallback = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            onSelectRef.current(lat, lng, fallback);
+            setStatus('selected');
           }
-        );
-      };
+        };
 
-      const setMarker = (lat: number, lng: number) => {
-        if (markerRef.current) {
-          markerRef.current.setPosition({ lat, lng });
-          return;
+        let marker: any = null;
+        if (hasInitialCoordinates) {
+          marker = L.marker([initialLatitude, initialLongitude], {
+            icon: customPin,
+            draggable: !readOnly,
+          }).addTo(map);
+
+          if (!readOnly) {
+            marker.on('dragend', (e: any) => {
+              const pos = e.target.getLatLng();
+              setCoords({ lat: pos.lat, lng: pos.lng });
+              void reverseGeocode(pos.lat, pos.lng);
+            });
+          }
         }
-        markerRef.current = new google.maps.Marker({
-          map,
-          position: { lat, lng },
-          draggable: !readOnly,
-          title: readOnly ? 'Customer delivery location' : 'Delivery location',
-        });
+
         if (!readOnly) {
-          markerRef.current.addListener('dragend', (event: any) => {
-            if (event.latLng) handlePick(event.latLng.lat(), event.latLng.lng());
+          map.on('click', (e: any) => {
+            const { lat, lng } = e.latlng;
+            setCoords({ lat, lng });
+            if (marker) {
+              marker.setLatLng([lat, lng]);
+            } else {
+              marker = L.marker([lat, lng], {
+                icon: customPin,
+                draggable: true,
+              }).addTo(map);
+              marker.on('dragend', (ev: any) => {
+                const pos = ev.target.getLatLng();
+                setCoords({ lat: pos.lat, lng: pos.lng });
+                void reverseGeocode(pos.lat, pos.lng);
+              });
+            }
+            markerRef.current = marker;
+            void reverseGeocode(lat, lng);
           });
         }
-      };
 
-      if (hasInitialCoordinates) setMarker(initialLatitude, initialLongitude);
-      if (!readOnly) {
-        map.addListener('click', (event: any) => {
-          if (!event.latLng) return;
-          const lat = event.latLng.lat();
-          const lng = event.latLng.lng();
-          setMarker(lat, lng);
-          handlePick(lat, lng);
-        });
-      }
-      mapRef.current = map;
-    };
-
-    if ((window as any).google?.maps) {
-      initMap();
-    } else if (!document.getElementById('google-maps-js')) {
-      const script = document.createElement('script');
-      script.id = 'google-maps-js';
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
-      script.async = true;
-      script.defer = true;
-      script.onload = initMap;
-      script.onerror = () => setStatus('error');
-      document.head.appendChild(script);
-    } else {
-      poll = setInterval(() => {
-        if ((window as any).google?.maps) {
-          if (poll) clearInterval(poll);
-          initMap();
-        }
-      }, 100);
-    }
+        mapInstance = map;
+        mapRef.current = map;
+        markerRef.current = marker;
+      })
+      .catch((err) => {
+        console.error('Failed to load map library:', err);
+        setStatus('error');
+      });
 
     return () => {
-      if (poll) clearInterval(poll);
-      const google = (window as any).google;
-      if (mapRef.current && google?.maps) {
-        google.maps.event.clearInstanceListeners(mapRef.current);
+      isMounted = false;
+      if (mapInstance) {
+        mapInstance.remove();
       }
       mapRef.current = null;
       markerRef.current = null;
     };
-  }, [apiKey, initialLatitude, initialLongitude, readOnly]);
+  }, [initialLatitude, initialLongitude, readOnly]);
+
+  const handleSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const query = searchQuery.trim();
+    if (!query || !mapRef.current) return;
+
+    setSearching(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`,
+        { headers: { 'Accept-Language': 'en' } }
+      );
+      const data = await res.json();
+      if (data && data[0]) {
+        const lat = parseFloat(data[0].lat);
+        const lng = parseFloat(data[0].lon);
+        const address = data[0].display_name;
+
+        mapRef.current.setView([lat, lng], 15);
+        setCoords({ lat, lng });
+
+        const L = (window as any).L;
+        if (L) {
+          const customPin = L.divIcon({
+            className: 'custom-leaflet-pin',
+            html: `<div style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;background:#00002E;border:2.5px solid #FFFFFF;border-radius:50%;box-shadow:0 3px 8px rgba(0,0,0,0.35);color:#FFFFFF;cursor:pointer;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                <circle cx="12" cy="10" r="3"></circle>
+              </svg>
+            </div>`,
+            iconSize: [34, 34],
+            iconAnchor: [17, 34],
+          });
+
+          if (markerRef.current) {
+            markerRef.current.setLatLng([lat, lng]);
+          } else {
+            const marker = L.marker([lat, lng], {
+              icon: customPin,
+              draggable: !readOnly,
+            }).addTo(mapRef.current);
+            if (!readOnly) {
+              marker.on('dragend', (ev: any) => {
+                const pos = ev.target.getLatLng();
+                setCoords({ lat: pos.lat, lng: pos.lng });
+              });
+            }
+            markerRef.current = marker;
+          }
+        }
+        onSelectRef.current(lat, lng, address);
+        setStatus('selected');
+      } else {
+        alert('Location not found. Try entering a city or street name.');
+      }
+    } catch (err) {
+      console.error('Search failed:', err);
+    } finally {
+      setSearching(false);
+    }
+  };
 
   return (
     <div className="space-y-2">
+      {!readOnly && (
+        <form onSubmit={handleSearch} className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search area (e.g. Colombo, Kandy, Dehiwala)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={searching || !searchQuery.trim()}
+            className="px-3 py-1.5 bg-[#00002E] text-white rounded-lg text-xs font-semibold hover:bg-[#00002E]/90 disabled:opacity-50 transition-colors shrink-0 flex items-center gap-1.5"
+          >
+            {searching ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+            <span>Search</span>
+          </button>
+        </form>
+      )}
+
       <div
         ref={containerRef}
-        className="w-full rounded-lg overflow-hidden border border-gray-200"
+        className="w-full rounded-xl overflow-hidden border border-gray-200 shadow-inner relative z-0"
         style={{ height: 260 }}
       />
+
       {status === 'idle' && (
         <p className="text-xs text-gray-400 text-center">
           Click anywhere on the map to pin the delivery location
@@ -489,17 +626,17 @@ function GoogleMapPicker({
       )}
       {status === 'geocoding' && (
         <p className="text-xs text-amber-600 text-center animate-pulse">
-          Fetching address...
+          Fetching address details...
         </p>
       )}
       {status === 'selected' && coords && !readOnly && (
         <p className="text-xs text-green-700 font-medium text-center">
-          {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}. Drag the pin to adjust.
+          Pinned: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}. Click or drag the pin to adjust.
         </p>
       )}
       {status === 'error' && (
         <p className="text-xs text-red-600 text-center">
-          Google Maps could not load. Check the Maps JavaScript API key configuration.
+          Map could not be loaded. Please check your internet connection.
         </p>
       )}
     </div>
@@ -513,9 +650,6 @@ interface DeliveryFormState {
   deliveryLatitude: string;
   deliveryLongitude: string;
   deliveryAddress: string;
-  paymentType: 'PREPAID' | 'COD';
-  packageNotes: string;
-  estimatedEarnings: string;
 }
 
 interface AvailableRider {
@@ -565,9 +699,11 @@ function CreateDeliveryRequestModal({
     deliveryLatitude: hasSavedCustomerLocation ? String(savedDeliveryLatitude) : '',
     deliveryLongitude: hasSavedCustomerLocation ? String(savedDeliveryLongitude) : '',
     deliveryAddress: savedDeliveryAddress,
-    paymentType: 'COD',
+    // Bank/prepaid only — no cash on delivery.
+    paymentType: 'PREPAID',
     packageNotes: '',
-    estimatedEarnings: '',
+    // Prefill the rider's pay with the order's calculated delivery fee.
+    estimatedEarnings: (order as any).deliveryFee ? String((order as any).deliveryFee) : '',
   });
   const [gettingLocation, setGettingLocation] = useState(false);
   const [shopLocationLoading, setShopLocationLoading] = useState(true);
@@ -601,6 +737,7 @@ function CreateDeliveryRequestModal({
             pickupLongitude: saved.longitude.toFixed(6),
             pickupAddress: saved.address,
           }));
+          void loadAvailableRiders(saved.latitude, saved.longitude);
         } else {
           setEditingShopLocation(true);
         }
@@ -675,6 +812,7 @@ function CreateDeliveryRequestModal({
         pickupLongitude: saved.longitude.toFixed(6),
         pickupAddress: saved.address,
       }));
+      void loadAvailableRiders(saved.latitude, saved.longitude);
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || 'Failed to save the shop location.');
     } finally {
@@ -695,21 +833,23 @@ function CreateDeliveryRequestModal({
     setError(null);
   };
 
-  const loadAvailableRiders = async () => {
+  const loadAvailableRiders = async (customLat?: number, customLng?: number) => {
     setError(null);
     setSelectedRiderId(null);
 
-    if (!shopLocationConfigured || editingShopLocation) {
-      setError('Save the fixed shop location before loading available riders.');
+    const lat = typeof customLat === 'number' ? customLat : parseFloat(form.pickupLatitude);
+    const lng = typeof customLng === 'number' ? customLng : parseFloat(form.pickupLongitude);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      if (!shopLocationConfigured || editingShopLocation) {
+        setError('Save the fixed shop location before loading available riders.');
+      }
       return;
     }
 
     setLoadingRiders(true);
     try {
-      const res = await deliveryRequestsApi.getAvailableRiders(
-        parseFloat(form.pickupLatitude),
-        parseFloat(form.pickupLongitude)
-      );
+      const res = await deliveryRequestsApi.getAvailableRiders(lat, lng);
       setAvailableRiders(res.data || []);
       if (!res.data?.length) {
         setError('No online riders are available near this pickup location right now.');
@@ -749,9 +889,7 @@ function CreateDeliveryRequestModal({
         deliveryLatitude: parseFloat(deliveryLatitude),
         deliveryLongitude: parseFloat(deliveryLongitude),
         deliveryAddress,
-        packageNotes: form.packageNotes || undefined,
-        paymentType: form.paymentType,
-        estimatedEarnings: form.estimatedEarnings ? parseFloat(form.estimatedEarnings) : undefined,
+        paymentType: 'PREPAID',
         customerName: order.customer?.name,
         partnerId: selectedRiderId,
       });
@@ -948,23 +1086,11 @@ function CreateDeliveryRequestModal({
             )}
           </div>
 
-          {/* Payment Type */}
+          {/* Payment — bank/prepaid only, no cash on delivery */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-2">Payment Type</label>
-            <div className="flex gap-2">
-              {(['COD', 'PREPAID'] as const).map((pt) => (
-                <button
-                  key={pt}
-                  onClick={() => setForm((f) => ({ ...f, paymentType: pt }))}
-                  className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
-                    form.paymentType === pt
-                      ? 'bg-[#00002E] text-white border-[#00002E]'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-[#00002E]/40'
-                  }`}
-                >
-                  {pt === 'COD' ? 'Cash on Delivery' : 'Prepaid'}
-                </button>
-              ))}
+            <label className="block text-xs font-semibold text-gray-700 mb-2">Payment</label>
+            <div className="py-2 px-3 rounded-xl text-sm font-semibold bg-[#00002E] text-white text-center">
+              Bank (Prepaid)
             </div>
           </div>
 
@@ -972,11 +1098,11 @@ function CreateDeliveryRequestModal({
           <div className="grid grid-cols-2 gap-2">
             <input
               type="number"
-              step="any"
-              placeholder="Rider earnings (Rs)"
+              readOnly
               value={form.estimatedEarnings}
-              onChange={(e) => setForm((f) => ({ ...f, estimatedEarnings: e.target.value }))}
-              className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00002E]/20"
+              title="Rider pay = this shop's delivery fee (fixed)"
+              placeholder="Delivery fee"
+              className="px-3 py-2 rounded-xl border border-gray-200 text-sm bg-gray-100 text-gray-700 cursor-not-allowed focus:outline-none"
             />
             <input
               type="text"
@@ -996,7 +1122,7 @@ function CreateDeliveryRequestModal({
               </label>
               <button
                 type="button"
-                onClick={loadAvailableRiders}
+                onClick={() => void loadAvailableRiders()}
                 disabled={loadingRiders || !shopLocationConfigured || editingShopLocation || shopLocationLoading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               >
@@ -1156,7 +1282,7 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
       <div className="p-4 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-bold text-gray-900 text-sm">{order.orderNumber}</span>
+            <span className="font-bold text-gray-900 text-xs">{order.orderNumber}</span>
             <span className="text-gray-400 text-xs">·</span>
             <span className="text-gray-500 text-xs">{timeAgo(order.createdAt)}</span>
           </div>
@@ -1168,7 +1294,7 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <StatusDropdown order={order} onUpdate={onUpdate} deliveryStatus={deliveryStatus} />
-          <span className="font-bold text-gray-900 text-sm">{formatRs(order.total)}</span>
+          <span className="font-bold text-gray-900 text-sm">{formatCurrency(order.total)}</span>
         </div>
       </div>
 
@@ -1205,23 +1331,23 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{item.product?.name ?? item.itemName ?? 'Item'}</p>
-                  <p className="text-xs text-gray-500">Qty: {item.quantity} × {formatRs(item.price)}</p>
+                  <p className="text-xs text-gray-500">Qty: {item.quantity} × {formatCurrency(item.price)}</p>
                 </div>
-                <span className="text-sm font-semibold text-gray-900 shrink-0">{formatRs(item.total)}</span>
+                <span className="text-sm font-semibold text-gray-900 shrink-0">{formatCurrency(item.total)}</span>
               </div>
             ))}
             {/* Totals */}
             <div className="pt-2 space-y-1">
               <div className="flex justify-between text-xs text-gray-500">
-                <span>Subtotal</span><span>{formatRs(order.subtotal)}</span>
+                <span>Subtotal</span><span>{formatCurrency(order.subtotal)}</span>
               </div>
               {order.deliveryFee > 0 && (
                 <div className="flex justify-between text-xs text-gray-500">
-                  <span>Delivery</span><span>{formatRs(order.deliveryFee)}</span>
+                  <span>Delivery</span><span>{formatCurrency(order.deliveryFee)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm font-bold text-gray-900 border-t border-gray-100 pt-1 mt-1">
-                <span>Total</span><span>{formatRs(order.total)}</span>
+                <span>Total</span><span>{formatCurrency(order.total)}</span>
               </div>
             </div>
           </div>
@@ -1279,26 +1405,14 @@ function OrderCard({ order, onUpdate, onComplaint, isManager }: { order: Order; 
                 <span className="text-xs text-gray-500 font-medium">Delivery Status</span>
                 <DeliveryStatusBadge status={deliveryStatus} />
               </div>
-              {['pending', 'available'].includes(deliveryStatus) && (
-                <>
-                  <button
-                    onClick={retryDelivery}
-                    disabled={retryingDelivery}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-xl text-sm font-semibold hover:bg-orange-700 disabled:opacity-60 transition-colors"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${retryingDelivery ? 'animate-spin' : ''}`} />
-                    {retryingDelivery ? 'Searching...' : 'Find Another Rider'}
-                  </button>
-                  {retryMessage && (
-                    <p className={`text-xs rounded-lg px-3 py-2 ${
-                      retryMessage.type === 'success'
-                        ? 'bg-green-50 text-green-700'
-                        : 'bg-red-50 text-red-700'
-                    }`}>
-                      {retryMessage.text}
-                    </p>
-                  )}
-                </>
+              {['pending', 'available', 'failed', 'cancelled'].includes(deliveryStatus) && (
+                <button
+                  onClick={() => setShowDispatchModal(true)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-xl text-sm font-semibold hover:bg-orange-700 transition-colors"
+                >
+                  <Truck className="w-4 h-4" />
+                  Find Another Rider
+                </button>
               )}
               {/* Rider has collected the package → prompt the seller/manager to ship */}
               {PICKED_UP_DELIVERY_STATES.includes(deliveryStatus) && order.status !== 'SHIPPED' && (
@@ -1618,21 +1732,21 @@ function SalesHistoryTab() {
   const statsCards = [
     {
       label: "Today's Revenue",
-      value: formatRs(summary?.today.totalRevenue ?? 0),
+      value: formatCurrency(summary?.today.totalRevenue ?? 0),
       sub: `${summary?.today.totalOrders ?? 0} orders today`,
       icon: DollarSign,
       color: 'from-emerald-500 to-teal-500',
     },
     {
       label: 'Weekly Revenue',
-      value: formatRs(summary?.weekly.totalRevenue ?? 0),
+      value: formatCurrency(summary?.weekly.totalRevenue ?? 0),
       sub: `${summary?.weekly.totalOrders ?? 0} orders this week`,
       icon: TrendingUp,
       color: 'from-blue-500 to-indigo-500',
     },
     {
       label: 'Monthly Revenue',
-      value: formatRs(summary?.monthly.totalRevenue ?? 0),
+      value: formatCurrency(summary?.monthly.totalRevenue ?? 0),
       sub: `${summary?.monthly.totalOrders ?? 0} orders this month`,
       icon: BarChart3,
       color: 'from-violet-500 to-purple-500',
@@ -1690,8 +1804,8 @@ function SalesHistoryTab() {
                   <p className="text-xs text-gray-500">{product.totalSold} units sold</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-sm font-bold text-gray-900">{formatRs(product.totalRevenue ?? 0)}</p>
-                  <p className="text-xs text-gray-400">{formatRs(product.price)} each</p>
+                  <p className="text-sm font-bold text-gray-900">{formatCurrency(product.totalRevenue ?? 0)}</p>
+                  <p className="text-xs text-gray-400">{formatCurrency(product.price)} each</p>
                 </div>
               </div>
             ))}
@@ -1730,7 +1844,7 @@ function SalesHistoryTab() {
                       <div className="text-xs text-gray-400">{order.customer?.email}</div>
                     </td>
                     <td className="py-3 text-gray-600">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</td>
-                    <td className="py-3 font-semibold text-gray-900">{formatRs(order.total)}</td>
+                    <td className="py-3 font-semibold text-gray-900">{formatCurrency(order.total)}</td>
                     <td className="py-3 text-gray-500 text-xs">{new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                     <td className="py-3"><StatusBadge status={order.status as OrderStatus} /></td>
                   </tr>
@@ -1783,10 +1897,6 @@ function ProductsTab() {
           </div>
         ) : (
           products.map(product => {
-            const status = product.computedStatus || 'IN_STORE';
-            const statusLabel = status === 'IN_STORE' ? 'In Store' : (STATUS_META[status as OrderStatus]?.label || status);
-            const statusBg = status === 'IN_STORE' ? 'bg-emerald-100' : (STATUS_META[status as OrderStatus]?.bg || 'bg-gray-100');
-            const statusColor = status === 'IN_STORE' ? 'text-emerald-700' : (STATUS_META[status as OrderStatus]?.color || 'text-gray-700');
 
             return (
               <div key={product.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
@@ -1808,7 +1918,7 @@ function ProductsTab() {
                 <div className="p-4 flex-1 flex flex-col">
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="font-bold text-gray-900 text-sm line-clamp-1 flex-1">{product.name}</h3>
-                    <span className="text-sm font-bold text-[#00002E] ml-2">{formatRs(product.price)}</span>
+                    <span className="text-sm font-bold text-[#00002E] ml-2">{formatCurrency(product.price)}</span>
                   </div>
                   <p className="text-xs text-gray-500 line-clamp-2 mb-2">{product.description}</p>
 
@@ -1835,11 +1945,7 @@ function ProductsTab() {
                     )}
                   </div>
 
-                  <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-50">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Status</span>
-                      <span className={`text-xs font-semibold ${statusColor}`}>{statusLabel}</span>
-                    </div>
+                  <div className="mt-auto flex items-center justify-end pt-4 border-t border-gray-50">
                     {isManager && (
                       <div className="flex gap-1">
                         <button title="Edit product" className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#00002E] transition-colors">
@@ -2676,7 +2782,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
                                 <span className="text-xs text-gray-400 shrink-0 ml-2">{timeAgo(notif.time.toISOString())}</span>
                               </div>
                               {notif.type === 'NEW_ORDER' ? (
-                                <p className="text-xs text-gray-600">Total: Rs. {(notif.total || 0).toLocaleString()}</p>
+                                <p className="text-xs text-gray-600">Total: {formatCurrency(notif.total || 0)}</p>
                               ) : (
                                 <p className="text-xs text-gray-600">{notif.message}</p>
                               )}
@@ -2796,7 +2902,7 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
               <div>
                 <h4 className="font-bold text-gray-900 text-sm">{toastNotif.type === 'REFUND_APPROVED' ? 'Refund Approved' : toastNotif.type === 'COMPLAINT' ? 'New Complaint' : 'New Order!'}</h4>
                 {toastNotif.type === 'NEW_ORDER' ? (
-                  <p className="text-xs text-gray-500 mt-0.5">Order {toastNotif.orderNumber} for Rs. {(toastNotif.total || 0).toLocaleString()}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Order {toastNotif.orderNumber} for {formatCurrency(toastNotif.total || 0)}</p>
                 ) : (
                   <p className="text-xs text-gray-500 mt-0.5">{toastNotif.message || `Order ${toastNotif.orderNumber}`}</p>
                 )}
@@ -3227,7 +3333,7 @@ function AddProductModal({ onClose }: { onClose: () => void }) {
           {/* Price & Stock */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Price (Rs.) *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Price (AUD) *</label>
               <input
                 type="number"
                 value={formData.price}

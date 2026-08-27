@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useFocusEffect } from "expo-router";
 import {
   View,
   Text,
@@ -26,6 +27,7 @@ import {
   getShopPickupLocation,
   saveShopPickupLocation,
   resolveComplaint,
+  type ShopPickupLocation,
 } from "../../src/api/orders";
 import { usePendingOrders } from "../../src/store/pendingOrdersStore";
 import { getSocket } from "../../src/lib/socket";
@@ -48,6 +50,7 @@ const DELIVERY_LABEL: Record<string, string> = {
 // Rider delivery statuses meaning the package has physically left the shop —
 // only then can the seller/manager mark the order SHIPPED.
 const PICKED_UP_DELIVERY_STATES = ["picked_up", "in_transit", "arrived_at_dropoff", "delivered"];
+const SHOP_LOCATION_QUERY_KEY = ["salesman-shop-location"] as const;
 
 interface AvailableRider {
   id: number;
@@ -79,6 +82,7 @@ function DispatchModal({
   onClose: () => void;
   onDispatched: () => void;
 }) {
+  const queryClient = useQueryClient();
   const savedDeliveryLatitude = order.deliveryLatitude ?? order.address?.latitude ?? null;
   const savedDeliveryLongitude = order.deliveryLongitude ?? order.address?.longitude ?? null;
   const hasSavedCustomerLocation =
@@ -97,9 +101,11 @@ function DispatchModal({
     hasSavedCustomerLocation ? String(savedDeliveryLongitude) : "",
   );
   const [deliveryAddress, setDeliveryAddress] = useState(savedDeliveryAddress);
-  const [paymentType, setPaymentType] = useState<"COD" | "PREPAID">("COD");
+  // Rider dispatch is bank/prepaid only — no cash on delivery.
+  const paymentType = "PREPAID" as const;
   const [notes, setNotes] = useState("");
-  const [earnings, setEarnings] = useState("");
+  // Prefill the rider's pay with the order's calculated delivery fee.
+  const [earnings] = useState(order.deliveryFee ? String(order.deliveryFee) : "");
   const [gettingGps, setGettingGps] = useState(false);
   const [shopLocationLoading, setShopLocationLoading] = useState(true);
   const [shopLocationSaving, setShopLocationSaving] = useState(false);
@@ -125,22 +131,37 @@ function DispatchModal({
 
   useEffect(() => {
     let mounted = true;
+
+    const applyLocation = (location: ShopPickupLocation) => {
+      if (location.configured && location.latitude !== null && location.longitude !== null) {
+        setPickupLat(location.latitude.toFixed(6));
+        setPickupLng(location.longitude.toFixed(6));
+        setPickupAddress(location.address || "");
+        setSavedShopLocation({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          address: location.address || "",
+        });
+        setShopLocationConfigured(true);
+      } else {
+        setEditingShopLocation(true);
+      }
+    };
+
+    const cachedLocation = queryClient.getQueryData<ShopPickupLocation>(SHOP_LOCATION_QUERY_KEY);
+    if (cachedLocation) {
+      applyLocation(cachedLocation);
+      setShopLocationLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
     getShopPickupLocation()
       .then((location) => {
         if (!mounted) return;
-        if (location.configured && location.latitude !== null && location.longitude !== null) {
-          setPickupLat(location.latitude.toFixed(6));
-          setPickupLng(location.longitude.toFixed(6));
-          setPickupAddress(location.address || "");
-          setSavedShopLocation({
-            latitude: location.latitude,
-            longitude: location.longitude,
-            address: location.address || "",
-          });
-          setShopLocationConfigured(true);
-        } else {
-          setEditingShopLocation(true);
-        }
+        queryClient.setQueryData(SHOP_LOCATION_QUERY_KEY, location);
+        applyLocation(location);
       })
       .catch((error) => {
         if (!mounted) return;
@@ -153,7 +174,7 @@ function DispatchModal({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [queryClient]);
 
   const getMyLocation = async () => {
     setGettingGps(true);
@@ -211,6 +232,7 @@ function DispatchModal({
         longitude: Number(saved.longitude),
         address: saved.address || "",
       });
+      queryClient.setQueryData(SHOP_LOCATION_QUERY_KEY, saved);
       setShopLocationConfigured(true);
       setEditingShopLocation(false);
       setAvailableRiders([]);
@@ -537,17 +559,10 @@ function DispatchModal({
             </View>
           </Modal>
 
-          <Text style={[dispatchStyles.label, { marginTop: 14 }]}>Payment Type</Text>
-          <View style={dispatchStyles.row}>
-            {(["COD", "PREPAID"] as const).map((pt) => (
-              <TouchableOpacity key={pt} style={[dispatchStyles.payBtn, paymentType === pt && dispatchStyles.payBtnActive]} onPress={() => setPaymentType(pt)}>
-                <Text style={[dispatchStyles.payBtnText, paymentType === pt && dispatchStyles.payBtnTextActive]}>{pt === "COD" ? "Cash on Delivery" : "Prepaid"}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <Text style={[dispatchStyles.label, { marginTop: 14 }]}>Payment: Bank (Prepaid)</Text>
 
           <View style={[dispatchStyles.row, { marginTop: 12 }]}>
-            <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Rider pay (Rs)" keyboardType="decimal-pad" value={earnings} onChangeText={setEarnings} />
+            <TextInput style={[dispatchStyles.input, dispatchStyles.half, { backgroundColor: "#F3F4F6", color: "#374151" }]} placeholder="Delivery fee" keyboardType="decimal-pad" value={earnings} editable={false} />
             <TextInput style={[dispatchStyles.input, dispatchStyles.half]} placeholder="Package notes" value={notes} onChangeText={setNotes} />
           </View>
 
@@ -704,6 +719,16 @@ export default function SalesmanOrdersScreen() {
   const [resolvingComplaintId, setResolvingComplaintId] = useState<string | null>(null);
   // Post-delivery complaints are reviewed by the manager (shop owner).
   const [isManager, setIsManager] = useState(false);
+  const hasFocusedOrdersOnce = React.useRef(false);
+
+  // Fetch the fixed pickup point alongside the orders list. Opening Dispatch Rider
+  // can then render it from cache instead of starting another visible network wait.
+  useQuery<ShopPickupLocation>({
+    queryKey: SHOP_LOCATION_QUERY_KEY,
+    queryFn: getShopPickupLocation,
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
 
   useEffect(() => {
     getUser().then((u) => setIsManager(u?.role === 'SHOP_MANAGER')).catch(() => {});
@@ -730,6 +755,25 @@ export default function SalesmanOrdersScreen() {
   const error = queryError ? ((queryError as any).message || "Failed to load orders") : null;
 
   const fetchOrders = useCallback(() => { refetch(); }, [refetch]);
+
+  // Socket events are the fast path. Refresh immediately when returning to this
+  // tab and keep a short fallback only while it is visible, so a missed socket
+  // event cannot leave a newly purchased order hidden for a long time.
+  useFocusEffect(
+    useCallback(() => {
+      if (hasFocusedOrdersOnce.current) {
+        void refetch();
+      } else {
+        hasFocusedOrdersOnce.current = true;
+      }
+
+      const intervalId = setInterval(() => {
+        void refetch();
+      }, 5000);
+
+      return () => clearInterval(intervalId);
+    }, [refetch])
+  );
 
   // Patch the currently-cached orders list in place (used by socket + action handlers).
   const patchOrders = useCallback(
@@ -794,16 +838,31 @@ export default function SalesmanOrdersScreen() {
   }, [orders, loadDeliveryStatus]);
 
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {
+    const previousOrders = orders;
+
+    // Reflect the requested step immediately. If the backend rejects it, restore
+    // the exact previous cache and show the server's reason.
+    patchOrders((prev) => {
+      const updated = prev.map((order) =>
+        order.id === orderId ? { ...order, status: newStatus } : order
+      );
+      if (selectedFilter === "All" || selectedFilter === newStatus) return updated;
+      return updated.filter((order) => order.id !== orderId);
+    });
+
     try {
       const response = await updateOrderStatus(orderId, newStatus);
       if (response.success) {
         Alert.alert("Success", `Order status updated to ${newStatus}`);
-        fetchOrders(); // Refresh orders
-        refreshPendingCount(); // Update badge count
+        // Revalidate quietly; the visible status is already updated.
+        void queryClient.invalidateQueries({ queryKey: ["salesman-orders-mobile"] });
+        void refreshPendingCount();
       } else {
+        queryClient.setQueryData(ordersKey, previousOrders);
         Alert.alert("Error", response.message || "Failed to update status");
       }
     } catch (err: any) {
+      queryClient.setQueryData(ordersKey, previousOrders);
       Alert.alert("Error", err.message || "Failed to update status");
     }
   };

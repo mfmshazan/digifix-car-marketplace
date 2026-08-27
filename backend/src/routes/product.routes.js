@@ -15,10 +15,10 @@ const router = Router();
 router.get('/', getProducts);
 router.get('/:id', getProductById);
 
-// Salesman only routes
-router.post('/', authenticate, authorize('SALESMAN'), createProduct);
-router.put('/:id', authenticate, authorize('SALESMAN'), updateProduct);
-router.delete('/:id', authenticate, authorize('SALESMAN'), deleteProduct);
-router.get('/salesman/my-products', authenticate, authorize('SALESMAN'), getSalesmanProducts);
+// Salesman / Shop Manager routes
+router.post('/', authenticate, authorize('SALESMAN', 'SHOP_MANAGER'), createProduct);
+router.put('/:id', authenticate, authorize('SALESMAN', 'SHOP_MANAGER'), updateProduct);
+router.delete('/:id', authenticate, authorize('SALESMAN', 'SHOP_MANAGER'), deleteProduct);
+router.get('/salesman/my-products', authenticate, authorize('SALESMAN', 'SHOP_MANAGER'), getSalesmanProducts);
 
 export default router;

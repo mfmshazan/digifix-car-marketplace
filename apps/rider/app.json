@@ -24,7 +24,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#1a7a4a"
+        "backgroundColor": "#FFFFFF"
       },
       "package": "com.digifix.rider",
       "usesCleartextTraffic": true

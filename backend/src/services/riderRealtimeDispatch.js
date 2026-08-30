@@ -795,9 +795,11 @@ export const listEligibleDeliveryPartners = async ({ pickupLatitude, pickupLongi
             )
           : null,
     }))
-    .filter((partner) =>
-      partner.distanceToPickupKm !== null && partner.distanceToPickupKm <= MATCH_RADIUS_KM
-    )
+    // DEMO: distance restriction removed — every online rider is shown to the
+    // shop regardless of how far they are from the pickup. Distance is still
+    // computed above for display/sorting. To re-enable the radius gate for
+    // production, restore:
+    //   .filter((p) => p.distanceToPickupKm !== null && p.distanceToPickupKm <= MATCH_RADIUS_KM)
     .sort((a, b) => {
       if (a.distanceToPickupKm === null && b.distanceToPickupKm === null) return Number(a.id) - Number(b.id);
       if (a.distanceToPickupKm === null) return 1;

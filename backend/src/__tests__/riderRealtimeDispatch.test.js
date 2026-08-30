@@ -72,7 +72,7 @@ beforeEach(async () => {
 });
 
 describe('eligible rider discovery and competing offers', () => {
-  it('includes online idle riders within 5 km and filters connected riders outside the match radius', async () => {
+  it('lists every online idle rider regardless of distance, sorted nearest first (demo — radius gate removed)', async () => {
     state.riderQuery.mockResolvedValueOnce({ rows: [
       {
         id: 8,
@@ -95,7 +95,9 @@ describe('eligible rider discovery and competing offers', () => {
 
     expect(sql).toContain("dp.status = 'online'");
     expect(sql).toContain('active_job.status = ANY');
-    expect(partners.map((partner) => partner.id)).toEqual([8]);
+    // Both online riders are returned (distance no longer filters); the nearer
+    // rider (8, ~4 km) sorts before the far one (9).
+    expect(partners.map((partner) => partner.id)).toEqual([8, 9]);
   });
 
   it('sends the delivery offer to multiple nearby online riders', async () => {

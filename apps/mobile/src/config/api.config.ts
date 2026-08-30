@@ -91,12 +91,16 @@ export const API_PORT = 3000;
  * `hostUri` once Metro is ready, and falls back to LAN IP when it is not.
  */
 export function getApiUrl(): string {
-  if (!__DEV__) {
-    return 'https://api.your-production-domain.com/api';
-  }
-
+  // An explicit override (EXPO_PUBLIC_API_URL) always wins — this is how
+  // production/preview builds are pointed at the deployed backend. It must be
+  // checked BEFORE the __DEV__ branch, otherwise release APKs ignore the env
+  // entirely and hit the placeholder domain (login then fails to parse HTML).
   if (ENV_API_URL) {
     return ENV_API_URL;
+  }
+
+  if (!__DEV__) {
+    return 'https://api.your-production-domain.com/api';
   }
 
   if (Platform.OS === 'web') {

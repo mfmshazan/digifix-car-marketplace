@@ -650,6 +650,9 @@ interface DeliveryFormState {
   deliveryLatitude: string;
   deliveryLongitude: string;
   deliveryAddress: string;
+  paymentType: string;
+  packageNotes: string;
+  estimatedEarnings: string;
 }
 
 interface AvailableRider {

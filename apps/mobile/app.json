@@ -43,7 +43,21 @@
         }
       ],
       "@clerk/expo",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "development"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

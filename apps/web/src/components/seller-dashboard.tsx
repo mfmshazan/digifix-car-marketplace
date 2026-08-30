@@ -2388,6 +2388,20 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [toastNotif, setToastNotif] = useState<AppNotification | null>(null);
 
+  // "More" overflow menu in the desktop nav (Wallet / Receipts / Reviews / Team).
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [showMoreMenu]);
+
   // ── OneSignal push notifications ─────────────────────────────────────────────
   const { subscribed: pushEnabled, loading: pushLoading, isReady: pushReady, permission: pushPermission, toggle: togglePush } = useOneSignalPush();
 
@@ -2641,6 +2655,14 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
     ...(isManager ? [{ id: 'team' as const, label: 'Team', icon: Users }] : []),
   ];
 
+  // Desktop nav keeps the daily-operations tabs inline and tucks the occasional
+  // management sections (Wallet, Receipts, Reviews, Team) behind a "More" menu so
+  // the top bar stays uncluttered. The mobile tab bar still lists every tab.
+  const PRIMARY_TAB_IDS: Tab[] = ['orders', 'products', 'history'];
+  const primaryTabs = tabs.filter(tab => PRIMARY_TAB_IDS.includes(tab.id));
+  const moreTabs = tabs.filter(tab => !PRIMARY_TAB_IDS.includes(tab.id));
+  const activeMoreTab = moreTabs.find(tab => tab.id === activeTab);
+
 
   return (
     <div className="min-h-screen bg-[#f4f6fb]">
@@ -2681,9 +2703,9 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
               </div>
             </div>
 
-            {/* Tabs (Desktop) */}
+            {/* Tabs (Desktop) — primary tabs inline, the rest under a "More" menu */}
             <div className="hidden lg:flex items-center bg-[#15152E] rounded-[14px] p-1 gap-0.5">
-              {tabs.map(tab => {
+              {primaryTabs.map(tab => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
                 return (
@@ -2701,6 +2723,55 @@ export default function SellerDashboard({ expectedRole }: { expectedRole: 'SALES
                   </button>
                 );
               })}
+
+              {moreTabs.length > 0 && (
+                <div className="relative" ref={moreMenuRef}>
+                  <button
+                    onClick={() => setShowMoreMenu(v => !v)}
+                    className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-[13px] font-semibold transition-all duration-200 ${
+                      activeMoreTab
+                        ? 'bg-white text-[#060618] shadow-sm'
+                        : 'text-[#8A8A9B] hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    {activeMoreTab ? (
+                      <>
+                        <activeMoreTab.icon className="w-4 h-4" />
+                        {activeMoreTab.label}
+                      </>
+                    ) : (
+                      'More'
+                    )}
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showMoreMenu ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {showMoreMenu && (
+                    <div className="absolute top-full mt-2 right-0 w-52 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-50">
+                      {moreTabs.map(tab => {
+                        const Icon = tab.icon;
+                        const isActive = activeTab === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            onClick={() => {
+                              setActiveTab(tab.id as Tab);
+                              setShowMoreMenu(false);
+                            }}
+                            className={`w-full flex items-center gap-2.5 px-4 py-2 text-[13px] font-semibold transition-colors ${
+                              isActive
+                                ? 'text-[#060618] bg-gray-100'
+                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" />
+                            {tab.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Actions */}

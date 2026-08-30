@@ -103,9 +103,12 @@ export const getSalesmanSalesSummary = async (req, res) => {
       totalItems: 0
     });
 
-    // Get this week's orders for comparison
+    // Get this week's orders for comparison. The week starts on Monday, so
+    // Sunday (getDay() === 0) counts as the last day of the *previous* week.
     const startOfWeek = new Date();
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    const dayOfWeek = startOfWeek.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
+    const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    startOfWeek.setDate(startOfWeek.getDate() - daysSinceMonday);
     startOfWeek.setHours(0, 0, 0, 0);
 
     const weekOrders = await prisma.order.findMany({

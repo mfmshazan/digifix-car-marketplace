@@ -118,13 +118,13 @@ export default function AvailabilityToggle() {
 
 const styles = StyleSheet.create({
     wrapper: {
-        alignItems: 'flex-end',
+        alignSelf: 'stretch',
         gap: spacing.xs,
-        maxWidth: 220,
     },
     topRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
         gap: spacing.sm,
     },
     labelRow: {
@@ -173,9 +173,7 @@ const styles = StyleSheet.create({
     },
     helperText: {
         ...typography.caption,
-        maxWidth: 220,
         color: colors.textSecondary,
-        textAlign: 'right',
         lineHeight: 18,
     },
 });

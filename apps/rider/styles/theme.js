@@ -4,10 +4,12 @@ export const colors = {
     primarySoft: '#F1F5F9',  
     secondary: '#3B82F6',    // Vibrant blue for accents/CTA
     secondarySoft: '#DBEAFE',
+    secondaryDark: '#2563EB',
     accent: '#8B5CF6',       // Purple accent
     accentSoft: '#EDE9FE',
     danger: '#EF4444',
     dangerSoft: '#FEE2E2',
+    dangerDark: '#DC2626',
     warning: '#F59E0B',
     warningSoft: '#FEF3C7',
     info: '#0EA5E9',
@@ -19,10 +21,16 @@ export const colors = {
     text: '#0F172A',         // Slate 900
     textSecondary: '#64748B',// Slate 500
     textMuted: '#94A3B8',    // Slate 400
+    textOnDark: '#FFFFFF',       // White text for dark hero/surfaces
+    textOnDarkMuted: '#CBD5E1',  // Muted light text on dark backgrounds
     border: '#E2E8F0',
     borderStrong: '#CBD5E1',
+    // Very light hairline border. Referenced widely across the app; when it was
+    // missing every `borderColor: colors.borderSubtle` fell back to solid black.
+    borderSubtle: '#EEF2F7',
     success: '#10B981',
     successSoft: '#D1FAE5',
+    successDark: '#059669',
     disabled: '#CBD5E1',
     overlay: 'rgba(15, 23, 42, 0.4)',
 };
@@ -85,6 +93,13 @@ export const typography = {
         color: colors.textMuted,
         fontWeight: '600',
         letterSpacing: 0.5,
+    },
+    overline: {
+        fontSize: 11,
+        fontWeight: '700',
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+        color: colors.textMuted,
     },
 };
 

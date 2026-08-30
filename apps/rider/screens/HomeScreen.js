@@ -423,10 +423,9 @@ const styles = StyleSheet.create({
         maxWidth: 310,
     },
     availabilityPanel: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        justifyContent: 'space-between',
-        gap: spacing.md,
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        gap: spacing.sm,
         marginHorizontal: spacing.lg,
         marginTop: -30,
         padding: spacing.md,
@@ -437,7 +436,6 @@ const styles = StyleSheet.create({
         ...shadows.medium,
     },
     availabilityCopy: {
-        flex: 1,
         paddingTop: 2,
     },
     availabilityEyebrow: {

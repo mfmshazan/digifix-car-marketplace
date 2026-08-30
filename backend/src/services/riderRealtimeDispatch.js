@@ -772,7 +772,11 @@ export const listEligibleDeliveryPartners = async ({ pickupLatitude, pickupLongi
   );
 
   return result.rows
-    .filter((row) => isPartnerRealtimeConnected(row.id))
+    // A DB-online rider with no active job / pending offer is a valid candidate.
+    // We deliberately do NOT require a live WebSocket to this backend instance:
+    // the dispatch offer reaches the rider over socket OR push (same as the
+    // auto-dispatch pickNearestEligiblePartners). Requiring a live socket made
+    // the manager's "available riders" list empty even when riders were online.
     .map((row) => ({
       id: row.id,
       fullName: row.full_name,

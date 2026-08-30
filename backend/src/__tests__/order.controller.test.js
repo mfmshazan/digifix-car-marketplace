@@ -287,7 +287,7 @@ describe('createOrder', () => {
       await createOrder(splitReq(20), res);
 
       expect(res._status).toBe(201);
-      // grand total is 1100 but only 20 leaves the customer wallet
+      // grand total is 1000 but only 20 leaves the customer wallet
       expect(walletUpdate).toHaveBeenCalledWith(expect.objectContaining({
         where: { id: 'cust-wallet' },
         data: { balance: { decrement: 20 } },
@@ -327,8 +327,8 @@ describe('createOrder', () => {
       await createOrder(splitReq(5000), res);
 
       expect(res._status).toBe(201);
-      // clamped to the 1100 grand total -> fully wallet paid
-      expect(res._body.data.walletAmount).toBe(1100);
+      // clamped to the 1000 grand total -> fully wallet paid
+      expect(res._body.data.walletAmount).toBe(1000);
       expect(res._body.data.paymentStatus).toBe('PAID');
     });
   });
@@ -363,8 +363,9 @@ describe('createOrder', () => {
 
       expect(res._status).toBe(201);
       const data = res._body.data;
-      // grandTotal = subtotal (1000) + serviceCharge (100) + deliveryFee (0)
-      expect(data.total).toBe(1100);
+      // grandTotal = subtotal (1000) + deliveryFee (0); the 10% margin is baked
+      // into the product price, not added to the customer total.
+      expect(data.total).toBe(1000);
       expect(data.deliveryFee).toBe(0);
     });
 

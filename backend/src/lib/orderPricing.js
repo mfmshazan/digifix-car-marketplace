@@ -202,8 +202,11 @@ export const buildOrderPlan = async ({ prisma, items, address }) => {
   let grandTotal = 0;
   for (const sellerGroup of Object.values(groupedBySeller)) {
     sellerGroup.subtotal = sellerGroup.items.reduce((sum, item) => sum + item.total, 0);
+    // The 10% platform margin is baked into each product's price by the manager,
+    // so it is NOT added on top of what the customer pays. It's recorded per
+    // seller only so settlement can route the platform's share to the super admin.
     sellerGroup.serviceCharge = parseFloat((sellerGroup.subtotal * SERVICE_CHARGE_RATE).toFixed(2));
-    grandTotal += sellerGroup.subtotal + sellerGroup.serviceCharge;
+    grandTotal += sellerGroup.subtotal;
   }
   grandTotal += deliveryFee;
 

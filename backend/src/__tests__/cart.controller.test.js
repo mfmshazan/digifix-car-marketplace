@@ -222,8 +222,8 @@ describe('getCart', () => {
 
     const data = res._body.data;
     expect(data.subtotal).toBe(1000);              // 500 × 2
-    expect(data.serviceCharge).toBe(100);           // 10%
-    expect(data.total).toBe(1100);                  // 1000 + 100
+    expect(data.serviceCharge).toBe(100);           // 10% margin, reported only
+    expect(data.total).toBe(1000);                  // margin baked into price, not added
     expect(data.itemCount).toBe(2);
   });
 

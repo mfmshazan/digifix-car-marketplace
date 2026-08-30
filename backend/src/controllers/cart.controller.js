@@ -71,7 +71,8 @@ const getCart = async (req, res) => {
       return sum + (item.discountPrice || item.price) * item.quantity;
     }, 0);
 
-    // The fee is calculated on the server so every client sees the same total.
+    // The 10% platform margin is baked into each product's price by the manager,
+    // so it is reported for admin/manager use but NOT added to the customer total.
     const serviceCharge = parseFloat((total * 0.10).toFixed(2));
 
     res.json({
@@ -80,7 +81,7 @@ const getCart = async (req, res) => {
         items: normalizedItems,
         subtotal: total,
         serviceCharge,
-        total: total + serviceCharge,
+        total,
         itemCount: normalizedItems.reduce((sum, item) => sum + item.quantity, 0),
       },
     });

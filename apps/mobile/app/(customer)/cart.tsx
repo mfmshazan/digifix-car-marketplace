@@ -59,11 +59,11 @@ export default function CartScreen() {
     };
     estimate();
   }, [selectedAddressId, items]);
-  // Order total the backend actually charges: product subtotal + 10% service
-  // charge + distance delivery fee. Keep this in sync with buildOrderPlan()
-  // on the server so the wallet-split maths lines up.
-  const serviceCharge = Math.round(subtotal * 0.1 * 100) / 100;
-  const total = subtotal + serviceCharge + deliveryFee;
+  // The 10% platform margin is already baked into each product's listed price by
+  // the manager, so it is NOT charged to the customer on top. The customer pays
+  // the product subtotal plus the distance-based delivery fee. Keep this in sync
+  // with buildOrderPlan() on the server.
+  const total = subtotal + deliveryFee;
   const selectedAddress =
     addresses.find((address) => address.id === selectedAddressId) ||
     addresses.find((address) => address.isDefault) ||
@@ -472,10 +472,6 @@ export default function CartScreen() {
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal</Text>
               <Text style={styles.summaryValue}>{formatCurrency(subtotal)}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Service charge (10%)</Text>
-              <Text style={styles.summaryValue}>{formatCurrency(serviceCharge)}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Delivery</Text>

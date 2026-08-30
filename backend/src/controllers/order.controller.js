@@ -962,7 +962,9 @@ export const createOrder = async (req, res) => {
     // to the order total so the slices sum back to `walletAmount` exactly).
     const sellerEntries = Object.entries(groupedBySeller);
     const orderTotals = sellerEntries.map(
-      ([sellerId, g]) => g.subtotal + g.serviceCharge + (feeByShop.get(sellerId) || 0)
+      // Customer pays product subtotal + delivery. The 10% margin is already in
+      // the product price (recorded as serviceCharge for settlement, not added).
+      ([sellerId, g]) => g.subtotal + (feeByShop.get(sellerId) || 0)
     );
     const walletSlices = splitWalletAmount(walletAmount, orderTotals);
 

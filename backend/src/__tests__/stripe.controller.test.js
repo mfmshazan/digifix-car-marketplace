@@ -75,10 +75,11 @@ describe('createCheckoutSession', () => {
     const res = makeRes();
     await stripeController.createCheckoutSession(req, res);
 
-    // grandTotal = 1000 + 10% = 1100; remainder = 900 -> 90000 cents
+    // grandTotal = 1000 (10% margin baked into price, not added); remainder =
+    // 1000 - 200 wallet = 800 -> 80000 cents
     const arg = stripeMock.checkout.sessions.create.mock.calls[0][0];
     expect(arg.line_items).toHaveLength(1);
-    expect(arg.line_items[0].price_data.unit_amount).toBe(90000);
+    expect(arg.line_items[0].price_data.unit_amount).toBe(80000);
     expect(arg.metadata.walletAmount).toBe('200');
     expect(res._body.url).toBe('https://stripe.test/pay');
   });
@@ -143,11 +144,11 @@ describe('verifyPaymentAndSaveOrder', () => {
       where: { id: 'p-1' }, data: { stock: { decrement: 1 } },
     }));
 
-    // wallet slice: customer -> admin PURCHASE (200); card slice: DEPOSIT (900)
+    // wallet slice: customer -> admin PURCHASE (200); card slice: DEPOSIT (800)
     const txnTypes = txSpy.walletTransaction.create.mock.calls.map((c) => c[0].data);
     expect(txnTypes).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'PURCHASE', amount: 200 }),
-      expect.objectContaining({ type: 'DEPOSIT', amount: 900, sourceRef: 'sess_1' }),
+      expect.objectContaining({ type: 'DEPOSIT', amount: 800, sourceRef: 'sess_1' }),
     ]));
   });
 

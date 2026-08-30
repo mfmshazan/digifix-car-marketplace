@@ -33,18 +33,20 @@ const product = (over = {}) => ({
 });
 
 describe('buildOrderPlan', () => {
-  it('adds a 10% service charge on the subtotal', async () => {
+  it('records a 10% service charge but does not add it to the customer total', async () => {
     const prisma = makePrisma({ products: [product()] });
     const plan = await buildOrderPlan({
       prisma,
       items: [{ productId: 'p-1', quantity: 2 }],
       address,
     });
-    expect(plan.grandTotal).toBe(2000 + 2000 * SERVICE_CHARGE_RATE); // 2200
+    // The 10% margin is baked into the product price, so the total is just the
+    // subtotal (+ delivery); serviceCharge is recorded for settlement only.
+    expect(plan.grandTotal).toBe(2000);
     expect(plan.deliveryFee).toBe(0); // no pickup coords on the store
     const group = Object.values(plan.groupedBySeller)[0];
     expect(group.subtotal).toBe(2000);
-    expect(group.serviceCharge).toBe(200);
+    expect(group.serviceCharge).toBe(2000 * SERVICE_CHARGE_RATE); // 200, reported only
   });
 
   it('prefers discountPrice when present', async () => {
@@ -54,7 +56,7 @@ describe('buildOrderPlan', () => {
       items: [{ productId: 'p-1', quantity: 1 }],
       address,
     });
-    expect(plan.grandTotal).toBe(800 + 80);
+    expect(plan.grandTotal).toBe(800); // discountPrice used; 10% margin not added
   });
 
   it('adds a distance-based delivery fee when the store has pickup coords', async () => {
@@ -72,7 +74,7 @@ describe('buildOrderPlan', () => {
       address,
     });
     expect(plan.deliveryFee).toBeGreaterThan(0);
-    expect(plan.grandTotal).toBe(1000 + 100 + plan.deliveryFee);
+    expect(plan.grandTotal).toBe(1000 + plan.deliveryFee); // margin not added
   });
 
   it('throws {status:400} when an item id is not found', async () => {

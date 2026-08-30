@@ -46,7 +46,7 @@ describe('buildOrderPlan', () => {
     expect(plan.deliveryFee).toBe(0); // no pickup coords on the store
     const group = Object.values(plan.groupedBySeller)[0];
     expect(group.subtotal).toBe(2000);
-    expect(group.serviceCharge).toBe(2000 * SERVICE_CHARGE_RATE); // 200, reported only
+    expect(group.serviceCharge).toBe(181.82); // 2000 − 2000/1.1 markup, reported only
   });
 
   it('prefers discountPrice when present', async () => {

@@ -590,12 +590,18 @@ export const updateOrderStatus = async (req, res) => {
           const adminWallet = await getAdminWallet(tx);
           const salesmanWallet = await ensureWallet(shopOwnerId, tx);
 
-          await tx.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: order.total } } });
-          await tx.wallet.update({ where: { id: salesmanWallet.id }, data: { balance: { increment: order.total } } });
+          // The super-admin retains the platform margin baked into the price
+          // (serviceCharge = price − price/1.1); the salesman receives the rest
+          // (base price + this order's delivery leg).
+          const platformFee = order.serviceCharge || 0;
+          const salesmanEarning = order.total - platformFee;
+
+          await tx.wallet.update({ where: { id: adminWallet.id }, data: { balance: { decrement: salesmanEarning } } });
+          await tx.wallet.update({ where: { id: salesmanWallet.id }, data: { balance: { increment: salesmanEarning } } });
 
           await tx.walletTransaction.create({
             data: {
-              amount: order.total,
+              amount: salesmanEarning,
               type: 'SALE_EARNING',
               senderWalletId: adminWallet.id,
               receiverWalletId: salesmanWallet.id,
@@ -603,6 +609,21 @@ export const updateOrderStatus = async (req, res) => {
               description: `Sale earnings released for order ${order.orderNumber}`
             }
           });
+
+          // Record the platform's retained margin (stays in the admin pool) so
+          // it surfaces in the super-admin's revenue reporting.
+          if (platformFee > 0) {
+            await tx.walletTransaction.create({
+              data: {
+                amount: platformFee,
+                type: 'PLATFORM_FEE',
+                senderWalletId: null,
+                receiverWalletId: adminWallet.id,
+                orderId: order.id,
+                description: `Platform margin retained for order ${order.orderNumber}`
+              }
+            });
+          }
         }
       }
 

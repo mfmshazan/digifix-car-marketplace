@@ -11,6 +11,14 @@
 
 export const SERVICE_CHARGE_RATE = 0.10;
 
+// The manager lists each product at base × (1 + SERVICE_CHARGE_RATE), so the
+// platform's margin already baked into the listed price is (price − price/1.1).
+// This is the super-admin's retained share on settlement; the salesman keeps the
+// rest (the base price).
+export const MARGIN_DIVISOR = 1 + SERVICE_CHARGE_RATE; // 1.1
+export const platformMargin = (subtotal) =>
+  parseFloat((subtotal - subtotal / MARGIN_DIVISOR).toFixed(2));
+
 // Per-km delivery rate by the vehicle the order needs. An order uses the largest
 // vehicle any of its items requires (LORRY > CAR > MOTORBIKE).
 export const VEHICLE_RATE_PER_KM = { MOTORBIKE: 50, CAR: 70, LORRY: 30 };
@@ -202,10 +210,11 @@ export const buildOrderPlan = async ({ prisma, items, address }) => {
   let grandTotal = 0;
   for (const sellerGroup of Object.values(groupedBySeller)) {
     sellerGroup.subtotal = sellerGroup.items.reduce((sum, item) => sum + item.total, 0);
-    // The 10% platform margin is baked into each product's price by the manager,
-    // so it is NOT added on top of what the customer pays. It's recorded per
-    // seller only so settlement can route the platform's share to the super admin.
-    sellerGroup.serviceCharge = parseFloat((sellerGroup.subtotal * SERVICE_CHARGE_RATE).toFixed(2));
+    // The platform margin is baked into each product's price by the manager, so
+    // it is NOT added on top of what the customer pays. It's recorded per seller
+    // (as the price − price/1.1 markup portion) so settlement routes that share
+    // to the super admin and the base price to the salesman.
+    sellerGroup.serviceCharge = platformMargin(sellerGroup.subtotal);
     grandTotal += sellerGroup.subtotal;
   }
   grandTotal += deliveryFee;

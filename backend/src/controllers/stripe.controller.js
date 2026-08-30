@@ -391,7 +391,9 @@ class StripeController {
 
             const sellerEntries = Object.entries(groupedBySeller);
             const orderTotals = sellerEntries.map(
-                ([sellerId, g]) => g.subtotal + g.serviceCharge + (feeByShop.get(sellerId) || 0)
+                // Customer pays product subtotal + delivery. The platform margin is
+                // already in the price (recorded as serviceCharge for settlement).
+                ([sellerId, g]) => g.subtotal + (feeByShop.get(sellerId) || 0)
             );
             const walletSlices = splitWalletAmount(walletAmount, orderTotals);
 

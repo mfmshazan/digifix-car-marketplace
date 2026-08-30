@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { platformMargin } from '../lib/orderPricing.js';
 
 /**
  * Why the old code was slow:
@@ -71,9 +72,10 @@ const getCart = async (req, res) => {
       return sum + (item.discountPrice || item.price) * item.quantity;
     }, 0);
 
-    // The 10% platform margin is baked into each product's price by the manager,
-    // so it is reported for admin/manager use but NOT added to the customer total.
-    const serviceCharge = parseFloat((total * 0.10).toFixed(2));
+    // The platform margin (price − price/1.1) is baked into each product's price
+    // by the manager, so it is reported for admin/manager use but NOT added to
+    // the customer total.
+    const serviceCharge = platformMargin(total);
 
     res.json({
       success: true,

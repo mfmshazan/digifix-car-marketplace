@@ -132,10 +132,11 @@ describe('verifyPaymentAndSaveOrder', () => {
 
     expect(res._body).toEqual({ success: true, status: 'paid', orderId: 'ord-1' });
 
-    // order.total includes the 10% service charge
+    // order.total is subtotal + delivery (margin baked into price, not added);
+    // serviceCharge is the retained markup portion (1000 − 1000/1.1 = 90.91)
     const orderData = txSpy.order.create.mock.calls[0][0].data;
-    expect(orderData.total).toBe(1100);
-    expect(orderData.serviceCharge).toBe(100);
+    expect(orderData.total).toBe(1000);
+    expect(orderData.serviceCharge).toBe(90.91);
     expect(orderData.walletAmount).toBe(200);
     expect(orderData.paymentStatus).toBe('PAID');
 

@@ -28,7 +28,7 @@ const product = (over = {}) => ({
   stock: 10,
   salesmanId: 'seller-1',
   salesman: { id: 'seller-1', name: 'Ali', managerId: null, store: null },
-  deliveryVehicleType: null,
+  deliveryVehicle: null,
   ...over,
 });
 
@@ -65,7 +65,7 @@ describe('buildOrderPlan', () => {
         id: 'seller-1', name: 'Ali', managerId: null,
         store: { name: 'Ali', pickupLatitude: 6.90, pickupLongitude: 79.85 },
       },
-      deliveryVehicleType: 'CAR',
+      deliveryVehicle: 'CAR',
     });
     const prisma = makePrisma({ products: [withStore] });
     const plan = await buildOrderPlan({

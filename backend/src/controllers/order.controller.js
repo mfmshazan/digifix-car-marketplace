@@ -859,12 +859,12 @@ export const estimateDelivery = async (req, res) => {
     }
     const itemIds = items.map((i) => i.productId);
     const [products, carParts] = await Promise.all([
-      prisma.product.findMany({ where: { id: { in: itemIds } }, select: { deliveryVehicleType: true, salesman: { select: { store: { select: { id: true, pickupLatitude: true, pickupLongitude: true } } } } } }),
+      prisma.product.findMany({ where: { id: { in: itemIds } }, select: { deliveryVehicle: true, salesman: { select: { store: { select: { id: true, pickupLatitude: true, pickupLongitude: true } } } } } }),
       prisma.carPart.findMany({ where: { id: { in: itemIds } }, select: { seller: { select: { store: { select: { id: true, pickupLatitude: true, pickupLongitude: true } } } } } }),
     ]);
     const all = [
-      ...products.map((p) => ({ v: p.deliveryVehicleType, shopId: p.salesman?.store?.id, lat: p.salesman?.store?.pickupLatitude, lng: p.salesman?.store?.pickupLongitude })),
-      ...carParts.map((p) => ({ v: p.deliveryVehicleType, shopId: p.seller?.store?.id, lat: p.seller?.store?.pickupLatitude, lng: p.seller?.store?.pickupLongitude })),
+      ...products.map((p) => ({ v: p.deliveryVehicle, shopId: p.salesman?.store?.id, lat: p.salesman?.store?.pickupLatitude, lng: p.salesman?.store?.pickupLongitude })),
+      ...carParts.map((p) => ({ v: p.deliveryVehicle, shopId: p.seller?.store?.id, lat: p.seller?.store?.pickupLatitude, lng: p.seller?.store?.pickupLongitude })),
     ];
     const RATE = { MOTORBIKE: 50, CAR: 70, LORRY: 30 };
     const RANK = { MOTORBIKE: 1, CAR: 2, LORRY: 3 };

@@ -49,7 +49,7 @@ const productRow = {
   id: 'p-1', name: 'Brake Pad', price: 1000, discountPrice: null, images: [], stock: 10,
   salesmanId: 'seller-1',
   salesman: { id: 'seller-1', name: 'Ali', managerId: null, store: null },
-  deliveryVehicleType: null,
+  deliveryVehicle: null,
 };
 
 beforeEach(() => {

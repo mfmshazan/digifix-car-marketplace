@@ -87,7 +87,7 @@ export const resolveOrderItems = async (prisma, items) => {
       sellerId: product.salesman?.managerId || product.salesmanId,
       sellerName: product.salesman?.name || 'Unknown Seller',
       storeName: product.salesman?.store?.name,
-      deliveryVehicleType: product.deliveryVehicleType || null,
+      deliveryVehicleType: product.deliveryVehicle || null,
       pickupLat: product.salesman?.store?.pickupLatitude ?? null,
       pickupLng: product.salesman?.store?.pickupLongitude ?? null,
     });
@@ -104,7 +104,7 @@ export const resolveOrderItems = async (prisma, items) => {
       sellerId: part.seller?.managerId || part.sellerId,
       sellerName: part.seller?.name || 'Unknown Seller',
       storeName: part.seller?.store?.name,
-      deliveryVehicleType: part.deliveryVehicleType || null,
+      deliveryVehicleType: part.deliveryVehicle || null,
       pickupLat: part.seller?.store?.pickupLatitude ?? null,
       pickupLng: part.seller?.store?.pickupLongitude ?? null,
     });

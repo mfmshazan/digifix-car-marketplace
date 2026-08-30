@@ -9,7 +9,6 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
-  Alert,
   Animated,
   Pressable,
 } from "react-native";
@@ -20,6 +19,7 @@ import { loginUser } from "../../src/api/auth";
 import { saveToken, saveUser, getUserPrefs, saveUserPrefs, mergeServerUserAndPrefs } from "../../src/api/storage";
 import { useAuth } from "@clerk/expo";
 import { useGoogleSignIn } from "../../src/api/google-signin";
+import BrandedLoading from "../../src/components/BrandedLoading";
 
 
 /** RN-web has no native driver — avoids console noise on web. */
@@ -31,6 +31,9 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  // After a successful login we show the branded loading screen briefly while
+  // the app transitions to the home screen.
+  const [redirecting, setRedirecting] = useState(false);
 
   const { isLoaded, isSignedIn } = useAuth();
   const { signInWithGoogle } = useGoogleSignIn();
@@ -118,14 +121,14 @@ export default function LoginScreen() {
 
         await saveUser(merged);
 
-
-        Alert.alert("Success", "Login successful!");
-
-        if (response.data.user.role === "SALESMAN" || response.data.user.role === "SHOP_MANAGER") {
-          router.replace("/(salesman)");
-        } else {
-          router.replace("/(customer)");
-        }
+        // Show the branded Digifix loading screen, then land on the home screen.
+        const destination =
+          response.data.user.role === "SALESMAN" || response.data.user.role === "SHOP_MANAGER"
+            ? "/(salesman)"
+            : "/(customer)";
+        setRedirecting(true);
+        setTimeout(() => router.replace(destination), 1400);
+        return;
       } else {
         setError(response.message || "Login failed");
       }
@@ -176,6 +179,10 @@ export default function LoginScreen() {
   const handleForgotPassword = () => {
     router.push('/(auth)/forgot-password');
   };
+
+  if (redirecting) {
+    return <BrandedLoading />;
+  }
 
   return (
     <SafeAreaView style={styles.container}>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Redirect } from "expo-router";
-import { View, ActivityIndicator } from "react-native";
 import { getValidToken } from "../src/api/storage";
+import BrandedLoading from "../src/components/BrandedLoading";
 
 export default function Index() {
   const [isChecking, setIsChecking] = useState(true);
@@ -22,11 +22,7 @@ export default function Index() {
   }, []);
 
   if (isChecking) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#00002E" }}>
-        <ActivityIndicator size="large" color="#FFFFFF" />
-      </View>
-    );
+    return <BrandedLoading />;
   }
 
   if (isAuthenticated) {

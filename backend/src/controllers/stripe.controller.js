@@ -122,8 +122,18 @@ class StripeController {
             if (!user || !user.stripeAccountId) {
                  return res.status(200).json({ success: true, isReady: false });
             }
-            const account = await stripe.accounts.retrieve(user.stripeAccountId);
-            res.status(200).json({ success: true, isReady: account.charges_enabled });
+            let isReady = false;
+            try {
+                const account = await stripe.accounts.retrieve(user.stripeAccountId);
+                isReady = account.charges_enabled;
+            } catch (stripeErr) {
+                // A stored connected-account id this platform key can't retrieve
+                // (stale id, wrong key, or Connect not enabled) just means the
+                // manager can't withdraw yet — report "not ready" rather than a 500
+                // that would break the whole wallet screen.
+                console.warn(`account-status: could not retrieve ${user.stripeAccountId}: ${stripeErr.message}`);
+            }
+            res.status(200).json({ success: true, isReady });
         } catch (error) {
             console.error("Error checking account status:", error.message);
             res.status(500).json({ success: false, message: "Failed to check account status.", error: error.message });

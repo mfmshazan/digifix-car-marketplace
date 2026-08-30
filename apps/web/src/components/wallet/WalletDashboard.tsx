@@ -67,15 +67,24 @@ export default function WalletDashboard({
   const loadWallet = async () => {
     try {
       setLoading(true);
-      const requests = [api.get('/wallet/my'), api.get('/wallet/receipts/my')];
-      if (canPayout) requests.push(api.get('/stripe/account-status'));
-
-      const [walletRes, receiptRes, stripeRes] = await Promise.all(requests);
+      const [walletRes, receiptRes] = await Promise.all([
+        api.get('/wallet/my'),
+        api.get('/wallet/receipts/my'),
+      ]);
 
       setWallet(walletRes.data?.data ?? { balance: 0, transactions: [] });
       setReceipts(receiptRes.data?.data ?? []);
-      if (canPayout && stripeRes?.data?.success) {
-        setStripeReady(stripeRes.data.isReady);
+
+      // Stripe onboarding status is non-critical — never let it block the wallet
+      // from rendering the balance and transactions.
+      if (canPayout) {
+        try {
+          const stripeRes = await api.get('/stripe/account-status');
+          if (stripeRes?.data?.success) setStripeReady(stripeRes.data.isReady);
+        } catch (stripeErr) {
+          console.warn('Stripe account-status check failed; treating as not ready.', stripeErr);
+          setStripeReady(false);
+        }
       }
     } catch (err: any) {
       console.error('Failed to load wallet:', err);

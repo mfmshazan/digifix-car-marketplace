@@ -154,28 +154,36 @@ Each step:
 3. Records GPS location if provided (L447–L461)
 4. **Calls `syncMarketplaceOrderStatus()`** (L470) ← **KEY: this syncs back to customer's order**
 
-### `syncMarketplaceOrderStatus` (L350–L377):
+### `syncMarketplaceOrderStatus`:
+
+The rider's progress **automatically** drives the customer-facing order status — the
+seller/manager no longer has to manually mark the order SHIPPED. The rider's detailed
+steps collapse onto the simple 5-step user flow:
 
 ```javascript
-// L351-L358 — maps rider status to marketplace Order status
-const statusMap = {
-  accepted:           'ACCEPTED',
-  arrived_at_pickup:  'ARRIVED_AT_PICKUP',
-  picked_up:          'PICKED_UP',
-  in_transit:         'IN_TRANSIT',
-  arrived_at_dropoff: 'ARRIVED_AT_DROPOFF',
+// Rider step → user-facing Order status
+const userFacingStatusMap = {
+  accepted:           'PROCESSING', // heading to shop
+  arrived_at_pickup:  'PROCESSING', // collecting
+  picked_up:          'SHIPPED',    // ← auto-advances to SHIPPED (was manual before)
+  in_transit:         'SHIPPED',
+  arrived_at_dropoff: 'SHIPPED',
   delivered:          'DELIVERED',
   failed:             'FAILED',
 };
-
-// L372 — updates the main Order table in the marketplace DB
-await client.query('UPDATE "Order" SET status = $1, "updatedAt" = NOW() WHERE id = $2', [marketplaceStatus, marketplaceOrderId]);
-
-// L373-L376 — creates an OrderTracking entry for audit trail
-await client.query('INSERT INTO "OrderTracking" ...', [marketplaceStatus, `Delivery status updated to ${riderStatus}`, marketplaceOrderId]);
 ```
 
-> **This is the bridge** — every rider status change is automatically written to the main `Order` table and `OrderTracking` so the customer and salesman both see it.
+The update is **forward-only** (rank-guarded): a late/out-of-order rider event can never
+downgrade a more advanced status (e.g. an `in_transit` arriving after `DELIVERED`). It then:
+
+1. Updates the main `Order` table (only if it moves the status forward)
+2. Writes an `OrderTracking` row with the detailed rider step for the audit timeline
+3. Emits `orderStatusUpdated` over Socket.IO to the **customer** and **every shop member**
+   (manager + all salesmen), and fires OneSignal pushes to both
+
+> **This is the bridge** — every rider status change is automatically written to the main
+> `Order` table and `OrderTracking` **and** pushed live to the customer, salesman (mobile +
+> web) and manager, with no manual step in between.
 
 ---
 

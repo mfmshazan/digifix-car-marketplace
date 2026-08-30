@@ -534,15 +534,18 @@ export const rejectRiderAssignedJob = async (req, res, next) => {
 const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   // Rider step → user-facing order status mapping.
   //
-  // IMPORTANT: pickup and the steps after it (picked_up, in_transit,
-  // arrived_at_dropoff) deliberately do NOT auto-advance the order. After the
-  // rider collects the package the order stays PROCESSING and the seller/manager
-  // manually marks it SHIPPED (gated on pickup in updateOrderStatus). Only the
-  // terminal steps move the order on their own.
+  // The rider's progress drives the customer-facing status automatically — the
+  // seller/manager no longer needs to manually mark the order SHIPPED. As soon as
+  // the rider collects the package (picked_up) the order advances to SHIPPED, and
+  // the terminal step delivers it. The seller/manager can still override manually
+  // via updateOrderStatus, but no manual action is required for the happy path.
   const userFacingStatusMap = {
-    accepted: 'PROCESSING', // Rider accepted & heading to shop → still being prepared
+    accepted: 'PROCESSING',          // Rider accepted & heading to shop → still being prepared
     arrived_at_pickup: 'PROCESSING', // Rider at shop collecting → PROCESSING
-    delivered: 'DELIVERED',  // Final step
+    picked_up: 'SHIPPED',            // Rider has the package → auto-advance to SHIPPED
+    in_transit: 'SHIPPED',           // On the way to the customer → SHIPPED
+    arrived_at_dropoff: 'SHIPPED',   // Rider at the customer's door → still SHIPPED until delivered
+    delivered: 'DELIVERED',          // Final step
     failed: 'FAILED',
   };
 
@@ -577,11 +580,16 @@ const syncMarketplaceOrderStatus = async (client, jobId, riderStatus) => {
   const mappedStatus = userFacingStatusMap[riderStatus];
   let effectiveStatus = orderRow.status;
 
-  // Move the order only when there is a mapped status, and never downgrade a
-  // manual SHIPPED back to PROCESSING (the seller already shipped it).
+  // Only ever move the order forward. Rank the linear happy-path statuses so a
+  // late/out-of-order rider event (e.g. an in_transit arriving after DELIVERED,
+  // or arrived_at_pickup after the seller already shipped) can never downgrade a
+  // more advanced status. FAILED is terminal and is applied unconditionally.
+  const STATUS_RANK = { PENDING: 0, CONFIRMED: 1, PROCESSING: 2, SHIPPED: 3, DELIVERED: 4 };
   if (mappedStatus && mappedStatus !== orderRow.status) {
-    const isDowngrade = mappedStatus === 'PROCESSING' && orderRow.status === 'SHIPPED';
-    if (!isDowngrade) {
+    const isForward =
+      mappedStatus === 'FAILED' ||
+      (STATUS_RANK[mappedStatus] ?? -1) > (STATUS_RANK[orderRow.status] ?? -1);
+    if (isForward) {
       await client.query(
         'UPDATE "Order" SET status = $1, "updatedAt" = NOW() WHERE id = $2',
         [mappedStatus, marketplaceOrderId]

@@ -1,10 +1,10 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { View, Text, StyleSheet, Alert } from "react-native";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePendingOrders } from "../../src/store/pendingOrdersStore";
 import { connectSocket } from "../../src/lib/socket";
-import { getToken } from "../../src/api/storage";
+import { getToken, getUser } from "../../src/api/storage";
 import { formatCurrency } from "../../src/lib/currency";
 
 function TabBarIconWithBadge({
@@ -34,6 +34,11 @@ function TabBarIconWithBadge({
 
 export default function SalesmanTabLayout() {
   const { pendingCount, refreshPendingCount, incrementPendingCount } = usePendingOrders();
+  // Only managers own the catalog and may add products/parts; salesmen are view-only.
+  const [isManager, setIsManager] = useState(false);
+  useEffect(() => {
+    getUser().then((u) => setIsManager(u?.role === 'SHOP_MANAGER')).catch(() => {});
+  }, []);
 
   // Initial badge count fetch + 30s polling as fallback
   useEffect(() => {
@@ -137,6 +142,8 @@ export default function SalesmanTabLayout() {
             <Ionicons name="add-circle" size={size} color={color} />
           ),
           headerTitle: "Add Car Part",
+          // Hidden for salesmen — only managers can add to the catalog.
+          href: isManager ? undefined : null,
         }}
       />
       <Tabs.Screen
@@ -147,7 +154,7 @@ export default function SalesmanTabLayout() {
             <Ionicons name="cube-outline" size={size} color={color} />
           ),
           headerTitle: "Add New Product",
-          href: null,
+          href: isManager ? undefined : null,
         }}
       />
       <Tabs.Screen

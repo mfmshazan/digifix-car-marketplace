@@ -75,7 +75,7 @@ DIRECT_URL="YOUR_DIRECT_CONNECTION_URL_HERE"
 NODE_ENV=development
 BACKEND_PORT=3000
 
-JWT_SECRET=digifix-car-marketplace-super-secret-jwt-key-2026
+JWT_SECRET=<your-strong-random-secret>
 FRONTEND_URL=*
 ```
 
@@ -156,15 +156,15 @@ docker exec -it digifix-backend npx prisma studio
 
 ### **Example Connection Strings (with encoded password):**
 
-If your password is: `C$zv!X4n&NnWzr3`
-Encoded it becomes: `C%24zv%21X4n%26NnWzr3`
+If your password is: `YOUR$PASSWORD!HERE`
+Encoded it becomes: `YOUR%24PASSWORD%21HERE`  (URL-encode special characters)
 
 ```env
 # Connection Pooling (Port 6543)
-DATABASE_URL="postgresql://postgres.dietuoumcsfwhwirxtux:C%24zv%21X4n%26NnWzr3@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+DATABASE_URL="postgresql://postgres.<your-project-ref>:<url-encoded-password>@<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
 
 # Direct Connection (Port 5432)
-DIRECT_URL="postgresql://postgres.dietuoumcsfwhwirxtux:C%24zv%21X4n%26NnWzr3@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres"
+DIRECT_URL="postgresql://postgres.<your-project-ref>:<url-encoded-password>@<region>.pooler.supabase.com:5432/postgres"
 ```
 
 ---

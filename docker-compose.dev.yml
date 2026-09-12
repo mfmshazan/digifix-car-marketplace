@@ -21,7 +21,7 @@ services:
       # Supabase PostgreSQL connection (from backend/.env)
       DATABASE_URL: ${DATABASE_URL}
       DIRECT_URL: ${DIRECT_URL}
-      JWT_SECRET: ${JWT_SECRET:-digifix-car-marketplace-super-secret-jwt-key-2026}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-.env}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       FRONTEND_URL: ${FRONTEND_URL:-*}
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}

@@ -197,28 +197,6 @@ export default function AdminDashboard() {
                             </div>
                         </div>
 
-                        {/* Tabs (Desktop) */}
-                        <div className="hidden lg:flex items-center bg-[#15152E] rounded-[14px] p-1 gap-0.5">
-                            {tabs.map(tab => {
-                                const Icon = tab.icon;
-                                const isActive = activeTab === tab.id;
-                                return (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => setActiveTab(tab.id)}
-                                        className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-[13px] font-semibold transition-all duration-200 ${
-                                            isActive
-                                                ? 'bg-white text-[#060618] shadow-sm'
-                                                : 'text-[#8A8A9B] hover:text-white hover:bg-white/5'
-                                        }`}
-                                    >
-                                        <Icon className="w-4 h-4" />
-                                        {tab.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-
                         {/* Actions */}
                         <div className="flex items-center gap-2">
                             <div className="relative">
@@ -309,6 +287,28 @@ export default function AdminDashboard() {
                                 <span className="hidden sm:inline">Logout</span>
                             </button>
                         </div>
+                    </div>
+
+                    {/* Tabs — own full-width row so they have breathing room */}
+                    <div className="hidden lg:flex items-center gap-1 pb-2 -mt-1 overflow-x-auto">
+                        {tabs.map(tab => {
+                            const Icon = tab.icon;
+                            const isActive = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all duration-200 ${
+                                        isActive
+                                            ? 'bg-white text-[#060618] shadow-sm'
+                                            : 'text-[#8A8A9B] hover:text-white hover:bg-white/5'
+                                    }`}
+                                >
+                                    <Icon className="w-4 h-4" />
+                                    {tab.label}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             </nav>
